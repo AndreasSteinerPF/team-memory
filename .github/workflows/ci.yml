@@ -36,3 +36,12 @@ jobs:
       - name: Test
         if: runner.os == 'Windows'
         run: go test ./...
+
+      # The flagship demo (PRD §12.1 item 12) must stay runnable end-to-end.
+      # Gated off Windows: Git Bash's mktemp emits POSIX paths the win32 tm
+      # binary resolves inconsistently in the hook's filepath.Abs/Rel, so the
+      # check-action steps no-op there. The hook lifecycle itself is covered on
+      # Windows by TestCheckActionHookBlocksUntilAcked in the e2e suite.
+      - name: Flagship demo script
+        if: runner.os != 'Windows'
+        run: bash demo/run.sh
