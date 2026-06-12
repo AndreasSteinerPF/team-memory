@@ -67,16 +67,16 @@ func newInitCmd(g *globalOpts) *cobra.Command {
 	return cmd
 }
 
-// printSetup prints integration next-steps. Installs the PreToolUse hook into
+// printSetup prints integration next-steps. Installs Claude Code hooks into
 // .claude/settings.json when .claude/ is present.
 func printSetup(w io.Writer, repoDir, remote string) {
-	installed, err := installClaudeCodeHook(repoDir)
+	installed, err := installClaudeCodeHooks(repoDir)
 	if err != nil {
-		fmt.Fprintf(w, "Warning: could not install Claude Code hook: %v\n", err)
+		fmt.Fprintf(w, "Warning: could not install Claude Code hooks: %v\n", err)
 	} else if installed {
-		fmt.Fprintln(w, "Installed PreToolUse hook in .claude/settings.json.")
+		fmt.Fprintln(w, "Installed Claude Code hooks (PreToolUse check + SessionStart brief) in .claude/settings.json.")
 	} else if _, serr := os.Stat(filepath.Join(repoDir, ".claude")); serr == nil {
-		fmt.Fprintln(w, "Claude Code hook already present in .claude/settings.json.")
+		fmt.Fprintln(w, "Claude Code hooks already present in .claude/settings.json.")
 	}
 	fmt.Fprintln(w, "Next steps:")
 	fmt.Fprintln(w, "  • MCP (Claude Code / Cursor / Codex): add to your .mcp.json —")

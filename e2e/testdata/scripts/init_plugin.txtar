@@ -1,11 +1,14 @@
-# tm init installs the PreToolUse hook when .claude/ is present.
+# tm init installs the PreToolUse check hook and the SessionStart brief hook
+# when .claude/ is present.
 mkdir .claude
 exec tm init
-stdout 'Installed PreToolUse hook'
+stdout 'Installed Claude Code hooks'
 
 exec cat .claude/settings.json
 stdout 'tm check-action --hook'
+stdout 'tm brief'
+stdout 'SessionStart'
 
-# Running tm init a second time should report the hook is already present.
+# Running tm init a second time should report the hooks are already present.
 exec tm init
 stdout 'already'

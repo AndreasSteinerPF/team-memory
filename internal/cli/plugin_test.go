@@ -10,7 +10,7 @@ import (
 func TestInstallClaudeCodeHookNoClaude(t *testing.T) {
 	dir := t.TempDir()
 	// No .claude/ directory exists
-	installed, err := installClaudeCodeHook(dir)
+	installed, err := installClaudeCodeHooks(dir)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -26,7 +26,7 @@ func TestInstallClaudeCodeHookFreshSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	installed, err := installClaudeCodeHook(dir)
+	installed, err := installClaudeCodeHooks(dir)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -45,7 +45,7 @@ func TestInstallClaudeCodeHookFreshSettings(t *testing.T) {
 		t.Fatalf("settings.json is not valid JSON: %v", err)
 	}
 
-	if !hasHookEntry(settings) {
+	if countHookEntries(settings, claudeHookSpecs[0]) == 0 {
 		t.Fatal("expected hook entry to be present in settings.json")
 	}
 }
@@ -58,7 +58,7 @@ func TestInstallClaudeCodeHookIdempotent(t *testing.T) {
 	}
 
 	// First install
-	installed, err := installClaudeCodeHook(dir)
+	installed, err := installClaudeCodeHooks(dir)
 	if err != nil {
 		t.Fatalf("first install error: %v", err)
 	}
@@ -67,7 +67,7 @@ func TestInstallClaudeCodeHookIdempotent(t *testing.T) {
 	}
 
 	// Second install (idempotent)
-	installed, err = installClaudeCodeHook(dir)
+	installed, err = installClaudeCodeHooks(dir)
 	if err != nil {
 		t.Fatalf("second install error: %v", err)
 	}
@@ -85,7 +85,7 @@ func TestInstallClaudeCodeHookIdempotent(t *testing.T) {
 	if err := json.Unmarshal(data, &settings); err != nil {
 		t.Fatalf("settings.json is not valid JSON: %v", err)
 	}
-	if n := countHookEntries(settings); n != 1 {
+	if n := countHookEntries(settings, claudeHookSpecs[0]); n != 1 {
 		t.Fatalf("expected exactly 1 hook entry, got %d", n)
 	}
 }
@@ -104,7 +104,7 @@ func TestInstallClaudeCodeHookMergesExisting(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	installed, err := installClaudeCodeHook(dir)
+	installed, err := installClaudeCodeHooks(dir)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -129,7 +129,7 @@ func TestInstallClaudeCodeHookMergesExisting(t *testing.T) {
 		t.Fatalf("expected someOtherKey=42, got %v", settings["someOtherKey"])
 	}
 
-	if !hasHookEntry(settings) {
+	if countHookEntries(settings, claudeHookSpecs[0]) == 0 {
 		t.Fatal("expected hook entry to be present after merge")
 	}
 }
@@ -146,11 +146,40 @@ func TestInstallClaudeCodeHookMalformedSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	installed, err := installClaudeCodeHook(dir)
+	installed, err := installClaudeCodeHooks(dir)
 	if err == nil {
 		t.Fatal("expected an error for malformed settings.json, got nil")
 	}
 	if installed {
 		t.Fatal("expected installed=false when settings.json is malformed")
+	}
+}
+
+func TestInstallClaudeCodeHooksAddsSessionStart(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	installed, err := installClaudeCodeHooks(dir)
+	if err != nil || !installed {
+		t.Fatalf("install: installed=%v err=%v", installed, err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, ".claude", "settings.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var settings map[string]any
+	if err := json.Unmarshal(data, &settings); err != nil {
+		t.Fatal(err)
+	}
+	for _, spec := range claudeHookSpecs {
+		if n := countHookEntries(settings, spec); n != 1 {
+			t.Fatalf("%s: want 1 entry, got %d", spec.event, n)
+		}
+	}
+	// Idempotent for the full set.
+	installed, err = installClaudeCodeHooks(dir)
+	if err != nil || installed {
+		t.Fatalf("second install: installed=%v err=%v (want false, nil)", installed, err)
 	}
 }

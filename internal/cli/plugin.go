@@ -8,14 +8,26 @@ import (
 	"path/filepath"
 )
 
-const hookCommand = "tm check-action --hook"
-const hookMatcher = "Edit|Write|MultiEdit"
+// hookSpec describes one Claude Code hook entry tm installs into
+// .claude/settings.json.
+type hookSpec struct {
+	event   string // key under "hooks": PreToolUse | SessionStart
+	matcher string // empty = no matcher field (SessionStart applies to all)
+	command string
+}
 
-// installClaudeCodeHook writes the PreToolUse hook entry to
-// <repoDir>/.claude/settings.json. Returns (true, nil) when the entry was
-// added, (false, nil) when .claude/ doesn't exist or the entry was already
-// present.
-func installClaudeCodeHook(repoDir string) (bool, error) {
+// claudeHookSpecs is everything `tm init` installs (prd.md §10.1): the
+// edit-time check hook and the session-start briefing.
+var claudeHookSpecs = []hookSpec{
+	{event: "PreToolUse", matcher: "Edit|Write|MultiEdit", command: "tm check-action --hook"},
+	{event: "SessionStart", matcher: "", command: "tm brief"},
+}
+
+// installClaudeCodeHooks writes tm's hook entries to
+// <repoDir>/.claude/settings.json. Returns (true, nil) when at least one entry
+// was added, (false, nil) when .claude/ doesn't exist or all entries were
+// already present.
+func installClaudeCodeHooks(repoDir string) (bool, error) {
 	claudeDir := filepath.Join(repoDir, ".claude")
 	if _, err := os.Stat(claudeDir); errors.Is(err, fs.ErrNotExist) {
 		return false, nil
@@ -32,11 +44,16 @@ func installClaudeCodeHook(repoDir string) (bool, error) {
 		settings = map[string]any{}
 	}
 
-	if hasHookEntry(settings) {
+	added := false
+	for _, spec := range claudeHookSpecs {
+		if countHookEntries(settings, spec) == 0 {
+			addHookEntry(settings, spec)
+			added = true
+		}
+	}
+	if !added {
 		return false, nil
 	}
-
-	addHookEntry(settings)
 
 	out, err := json.MarshalIndent(settings, "", "  ")
 	if err != nil {
@@ -48,50 +65,50 @@ func installClaudeCodeHook(repoDir string) (bool, error) {
 	return true, nil
 }
 
-func hasHookEntry(settings map[string]any) bool {
-	return countHookEntries(settings) > 0
-}
-
-func countHookEntries(settings map[string]any) int {
+func countHookEntries(settings map[string]any, spec hookSpec) int {
 	hooks, _ := settings["hooks"].(map[string]any)
 	if hooks == nil {
 		return 0
 	}
-	preToolUse, _ := hooks["PreToolUse"].([]any)
+	entries, _ := hooks[spec.event].([]any)
 	count := 0
-	for _, entry := range preToolUse {
+	for _, entry := range entries {
 		group, _ := entry.(map[string]any)
 		if group == nil {
 			continue
 		}
-		if group["matcher"] == hookMatcher {
-			inner, _ := group["hooks"].([]any)
-			for _, h := range inner {
-				hm, _ := h.(map[string]any)
-				if hm["command"] == hookCommand {
-					count++
-				}
+		matcher, _ := group["matcher"].(string)
+		if matcher != spec.matcher {
+			continue
+		}
+		inner, _ := group["hooks"].([]any)
+		for _, h := range inner {
+			hm, _ := h.(map[string]any)
+			if hm["command"] == spec.command {
+				count++
 			}
 		}
 	}
 	return count
 }
 
-func addHookEntry(settings map[string]any) {
+func addHookEntry(settings map[string]any, spec hookSpec) {
 	hooks, _ := settings["hooks"].(map[string]any)
 	if hooks == nil {
 		hooks = map[string]any{}
 		settings["hooks"] = hooks
 	}
-	preToolUse, _ := hooks["PreToolUse"].([]any)
-	entry := map[string]any{
-		"matcher": hookMatcher,
+	existing, _ := hooks[spec.event].([]any)
+	group := map[string]any{
 		"hooks": []any{
 			map[string]any{
 				"type":    "command",
-				"command": hookCommand,
+				"command": spec.command,
 			},
 		},
 	}
-	hooks["PreToolUse"] = append(preToolUse, entry)
+	if spec.matcher != "" {
+		group["matcher"] = spec.matcher
+	}
+	hooks[spec.event] = append(existing, group)
 }
