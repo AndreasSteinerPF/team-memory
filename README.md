@@ -40,9 +40,9 @@ tm propose failed_attempt \
 Output:
 
 ```
-Created memory 01J8X4QZ7M9FKE2V3R5T8WYBCD
-  type: failed_attempt   risk: high   status: provisional   confidence: low
-  scope: billing/migrations/**
+01J8X4QZ7M9FKE2V3R5T8WYBCD
+status: provisional   risk: high   confidence: low   enforcement: hint
+reason: awaiting independent confirmation
 ```
 
 ### 4. Check a path before editing
