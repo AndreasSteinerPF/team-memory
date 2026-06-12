@@ -1,0 +1,19 @@
+exec tm init
+
+# Active (low-risk decision) and provisional (medium) memories.
+exec tm propose decision --title 'use ULIDs' --guidance 'prefer ULIDs for ids' --scope 'docs/**' --session s1
+exec tm propose failed_attempt --title 'provisional only' --scope 'billing/**' --session s1
+
+# Markdown export includes only the active memory, wrapped in generated markers.
+exec tm export --format agents
+stdout 'BEGIN TeamMemory'
+stdout 'use ULIDs'
+! stdout 'provisional only'
+
+# JSON export is valid and includes the active memory.
+exec tm export --format json
+stdout '"Title": "use ULIDs"'
+
+# Unknown format errors.
+! exec tm export --format bogus
+stderr 'unknown --format'
