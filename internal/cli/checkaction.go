@@ -121,7 +121,7 @@ func maybeTriggerFetch(e *env) {
 	// creating git lock files in repos without a remote (e.g. tests), which
 	// would race with temporary-directory cleanup.
 	remote := e.ledgerRemote()
-	if !remoteAvailable(e, remote) {
+	if !e.remoteAvailable(remote) {
 		return
 	}
 

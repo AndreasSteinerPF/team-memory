@@ -42,6 +42,8 @@ func newInitCmd(g *globalOpts) *cobra.Command {
 				return err
 			}
 			if remote != "" {
+				// env isn't open yet (the ledger was just created), so run git
+				// directly rather than through e.git.
 				if _, err := (git.Runner{Dir: repoDir}).Run("config", "tm.remote", remote); err != nil {
 					return err
 				}

@@ -98,10 +98,14 @@ func (e *env) ledgerRemote() string {
 	return "origin"
 }
 
-// remoteAvailable reports whether remote is usable as a fetch/push target:
-// URLs and paths (anything with a separator) are passed to git verbatim;
-// bare names must resolve via `git remote get-url`.
-func remoteAvailable(e *env, remote string) bool {
+// remoteAvailable reports whether remote is worth attempting as a fetch/push
+// target. Its job is to keep repos with no remote (e.g. tests) from spawning a
+// doomed background git subprocess that would race temp-dir cleanup — not to
+// validate reachability. A value with a separator is a URL or path and is
+// always attempted (we can't cheaply verify a URL, and §7.1's primary mode is a
+// URL remote like git@host:acme/billing.memory.git); a bare name must resolve
+// via `git remote get-url`, which fails when no such remote is registered.
+func (e *env) remoteAvailable(remote string) bool {
 	if strings.ContainsAny(remote, "/:\\") {
 		return true
 	}

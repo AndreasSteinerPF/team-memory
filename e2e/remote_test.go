@@ -27,4 +27,12 @@ func TestInitPersistsSeparateRemote(t *testing.T) {
 		t.Fatalf("sync failed: %s", errOut)
 	}
 	gitExec(t, bare, "rev-parse", "--verify", "refs/heads/teammemory") // fails test if absent
+
+	// An explicit --remote must override the stored tm.remote config.
+	bare2 := t.TempDir()
+	gitExec(t, bare2, "init", "-q", "--bare", "-b", "main")
+	if _, errOut, code := runTM(t, dir, "", "sync", "--remote", bare2); code != 0 {
+		t.Fatalf("sync --remote override failed: %s", errOut)
+	}
+	gitExec(t, bare2, "rev-parse", "--verify", "refs/heads/teammemory") // override target got the branch
 }
