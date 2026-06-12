@@ -175,7 +175,7 @@ teammemory branch:
 
 `tm` reads and writes the branch through git plumbing (`hash-object`, `mktree`, `commit-tree`, `update-ref`) — no visible checkout, nothing ever touches the user's working tree.
 
-**Separate-remote mode:** a single config field (`remote = git@github.com:acme/billing.memory.git`) points the branch at a different remote for teams with strict branch protection. Same code path, different push target. Not the default.
+**Separate-remote mode:** a single git config key (`git config tm.remote git@github.com:acme/billing.memory.git`) points the branch at a different remote for teams with strict branch protection. Same code path, different push target. Not the default.
 
 ### 7.2 IDs and Conflict-Freedom
 
@@ -365,7 +365,7 @@ created_at: "2026-06-15T11:20:00Z"
 
 ### 10.1 Claude Code Plugin (flagship, ships in v1)
 
-The plugin installs two things:
+The plugin installs three things:
 
 **PreToolUse hook** on `Edit|Write|MultiEdit`: runs `tm check-action --hook --path <target>` against the local SQLite index. Budget: under 100ms end-to-end (no network; background fetch is detached).
 
@@ -373,6 +373,8 @@ The plugin installs two things:
 * Matching unacknowledged `requirement` memories → the hook **denies the edit**, returning the guidance and required checks as feedback:
 
 > "Requirement (mem 01J8X4…): Billing migrations require downgrade-path tests. Run the downgrade-path tests, then run `tm ack 01J8X4…` and retry the edit."
+
+**SessionStart hook**: runs `tm brief` at session start; stdout is injected as session context. The briefing carries live ledger counts plus the standing instructions for the voluntary verbs — deterministic delivery of *when to remember*, not just *what is remembered*.
 
 **MCP server** (stdio) for the voluntary verbs — see 10.3.
 
@@ -392,17 +394,18 @@ Sync is not an MCP tool — it is automatic (Section 7.4).
 
 ### 10.4 Other Agents (Cursor, Codex, Continue)
 
-Same MCP server, plus `tm export` generates instruction blocks for `AGENTS.md` and `.cursor/rules` that tell the agent when to call `tm_check_action`, `tm_propose`, and `tm_observe`. Voluntary (degraded) but functional. Projections are clearly marked generated artifacts.
+Same MCP server. As of 2026, Codex CLI, Copilot CLI, Cursor, Gemini CLI, and Continue CLI all support session-start hooks with context injection; `tm brief --format <tool>` emits the briefing in each tool's envelope (setup snippets in the README), so the session-start instruction path works everywhere. `tm export` still generates instruction blocks for `AGENTS.md` and `.cursor/rules` — including usage preambles for the three verbs — as a fallback for surfaces without hooks (e.g. IDE extensions). Projections are clearly marked generated artifacts.
 
 ### 10.5 CLI
 
-Thirteen commands:
+Fourteen commands:
 
 ```text
 tm init          # create orphan branch, default policy.yaml, local index;
                  # detect Claude Code and offer hook+MCP install; print MCP snippet
 tm sync          # fetch + union-merge + push the teammemory branch
 tm check-action  # query memory for an action (--hook mode for the plugin)
+tm brief         # session-start briefing for agent hooks (live counts + instructions)
 tm propose       # create a memory record
 tm observe       # add an observation record
 tm ack           # session-scoped requirement acknowledgment (local-only)
@@ -445,6 +448,7 @@ Symbol matching, error-signature matching, and semantic ranking are roadmap.
 11. `tm export` projections for `AGENTS.md`, `CLAUDE.md`, `.cursor/rules`, JSON.
 12. Flagship demo (Section 13) runnable from a script.
 13. Tests: lifecycle golden files, retrieval precision cases, two-clone concurrent-sync (zero conflicts), hook latency budget.
+14. Session-start briefing (`tm brief`) with per-tool envelope formats; installed as a Claude Code SessionStart hook by `tm init`.
 
 ### 12.2 Nice to Have
 
@@ -524,7 +528,7 @@ First 90 days: 500 stars; 5 external contributors; documented setups for 2+ codi
 
 ## 15. Risks and Mitigations
 
-**Agents ignore the tool** → the hook makes `check_action` deterministic in Claude Code (the headline feature, not a mitigation). Other agents: MCP + generated instructions; their experience is honestly documented as degraded.
+**Agents ignore the tool** → the hook makes `check_action` deterministic in Claude Code (the headline feature, not a mitigation). Other agents: MCP + generated instructions; their experience is honestly documented as degraded. Session-start briefing injects the voluntary-verb instructions deterministically in every major agent CLI.
 
 **Memory spam** → usage-constraining MCP descriptions with explicit non-examples; five types only (`successful_pattern` deferred); provisional memories capped at 2 per check; cheap `reject`; FTS-assisted duplicate warning at propose time ("a similar memory exists — confirm it instead?").
 
@@ -576,3 +580,4 @@ First 90 days: 500 stars; 5 external contributors; documented setups for 2+ codi
 11. Anchor-drift annotation ships in v1.
 12. Retrieval is precision-first and lexical in v1; output capped at 5 memories, 2 provisional.
 13. Implementation in **Go**.
+14. Session-start briefing is a first-class surface: `tm brief`, installed for Claude Code by `tm init`, with envelope formats for Codex, Copilot CLI, Cursor, Gemini CLI, and Continue.

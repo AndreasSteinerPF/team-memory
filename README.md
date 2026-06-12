@@ -25,7 +25,7 @@ cd your-repo
 tm init
 ```
 
-This creates an orphan branch `teammemory` and a local SQLite index under `.git/tm/`. If `.claude/` exists, it also installs the PreToolUse hook in `.claude/settings.json` automatically.
+This creates an orphan branch `teammemory` and a local SQLite index under `.git/tm/`. If `.claude/` exists, it also installs two Claude Code hooks in `.claude/settings.json` automatically: the `PreToolUse` edit-time check and a `SessionStart` briefing (`tm brief`).
 
 ### 3. Propose a memory
 
@@ -63,7 +63,7 @@ tm export --format json
 
 ## The Flagship Demo
 
-**Ambient memory validation across branches** — shows a provisional memory becoming a requirement block through normal agent work.
+**Ambient memory validation across branches** — shows a provisional memory becoming a requirement block through normal agent work. Or run the whole lifecycle in one command: `bash demo/run.sh`.
 
 ```bash
 # Agent A (session s1) proposes after a rollback failure.
@@ -124,6 +124,7 @@ Risk (`low` / `medium` / `high`) is computed deterministically from `policy.yaml
 tm init          create orphan branch, default policy, local index; install Claude Code hook
 tm sync          fetch + union-merge + push the teammemory branch
 tm check-action  query memory for an action (--hook mode for the PreToolUse hook)
+tm brief         session-start briefing for agent hooks (live counts + instructions)
 tm propose       create a memory record
 tm observe       add an observation (confirm / contradict / adjust_scope / mark_stale)
 tm ack           session-scoped requirement acknowledgment (local-only, never committed)
@@ -181,6 +182,41 @@ MCP tools: `tm_propose`, `tm_observe`, `tm_check_action`, `tm_search`, `tm_statu
 
 ---
 
+## Session-start briefing
+
+`tm brief` emits a short briefing — live ledger counts plus standing instructions for `tm_propose` / `tm_observe` / `tm_check_action` — designed to be injected into agent context at session start. `tm init` installs it automatically for Claude Code (as a `SessionStart` hook, alongside the `PreToolUse` check). In a repo without an initialized ledger it prints nothing and exits 0, so the hook is always safe to install.
+
+All major agent CLIs now support session-start hooks with context injection (snippets abridged — consult each tool's hooks reference):
+
+**Codex CLI** (`.codex/config.toml`; requires a trusted workspace):
+
+```toml
+[[hooks.SessionStart]]
+command = ["tm", "brief"]
+```
+
+**Copilot CLI** (`.github/hooks/teammemory.json`):
+
+```json
+{ "version": 1, "hooks": { "sessionStart": [{ "type": "command", "command": "tm brief --format copilot" }] } }
+```
+
+**Cursor** (`hooks.json`):
+
+```json
+{ "version": 1, "hooks": { "sessionStart": [{ "command": "tm brief --format cursor" }] } }
+```
+
+**Gemini CLI** (`settings.json`):
+
+```json
+{ "hooks": { "SessionStart": [{ "type": "command", "command": "tm brief --format gemini" }] } }
+```
+
+**Continue CLI**: hook schemas are Claude Code-compatible — use the same entry `tm init` writes for Claude Code.
+
+---
+
 ## Other Agents (Cursor, Codex, Continue)
 
 The MCP server works with any MCP-compatible agent. For agents without MCP, `tm export` generates instruction blocks:
@@ -203,6 +239,8 @@ tm sync
 # With a separate remote for the ledger branch:
 tm sync --remote git@github.com:org/repo-memory.git
 ```
+
+`tm init --remote <name-or-url>` stores a separate ledger remote as `git config tm.remote` (PRD §7.1); `tm sync`, background fetch, and background push all honor it. `propose`/`observe` push the ledger branch in the background best-effort; `tm sync` reconciles whenever you were offline or the remote diverged.
 
 Sync uses union-merge: concurrent proposals from different clones never conflict.
 
