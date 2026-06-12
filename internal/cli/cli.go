@@ -36,6 +36,8 @@ func newRootCmd() *cobra.Command {
 		newInitCmd(g),
 		newProposeCmd(g),
 		newObserveCmd(g),
+		newApproveCmd(g),
+		newRejectCmd(g),
 		// Subsequent tasks register their commands here.
 	)
 	return root
