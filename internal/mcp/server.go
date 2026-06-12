@@ -53,6 +53,7 @@ func (s *Server) registerTools(srv *sdkmcp.Server) {
 	s.addStatusTool(srv)
 	s.addSearchTool(srv)
 	s.addProposeTool(srv)
+	s.addObserveTool(srv)
 }
 
 // Run serves the MCP protocol over stdio (blocks until ctx is cancelled or EOF).
@@ -265,6 +266,104 @@ Memories earn trust through independent confirmation — redundant proposals are
 
 		var b strings.Builder
 		fmt.Fprintln(&b, id)
+		fmt.Fprintln(&b, stateStr(st.Status, st.Risk, st.Confidence, st.Enforcement))
+		fmt.Fprintf(&b, "reason: %s\n", st.Reason)
+		return textResult(b.String()), nil, nil
+	})
+}
+
+// --- tm_observe ---
+
+type observeArgs struct {
+	MemoryID string   `json:"memory_id" jsonschema:"ID of the memory to observe (the ULID from tm_propose or tm_search output)."`
+	Kind     string   `json:"kind" jsonschema:"Observation kind: confirm|contradict|adjust_scope|mark_stale"`
+	Summary  string   `json:"summary,omitempty" jsonschema:"What you observed, with enough detail to be useful evidence."`
+	Evidence []string `json:"evidence,omitempty" jsonschema:"Evidence as type:ref pairs (e.g. test_failure:logs/rollback.log). Include evidence whenever possible."`
+	Scope    []string `json:"scope,omitempty" jsonschema:"Suggested scope globs for adjust_scope (required if kind=adjust_scope)."`
+	Session  string   `json:"session,omitempty" jsonschema:"Your session ID for independence tracking. Use $CLAUDE_SESSION_ID."`
+	Actor    string   `json:"actor,omitempty" jsonschema:"Name of the observing agent."`
+}
+
+func (s *Server) addObserveTool(srv *sdkmcp.Server) {
+	sdkmcp.AddTool(srv, &sdkmcp.Tool{
+		Name: "tm_observe",
+		Description: `Add an observation to an existing TeamMemory memory. Call when your work bears on a memory you were shown by tm_check_action:
+
+- confirm: you independently encountered the same issue — include evidence (test result, log, reproduction). Independent confirmations activate provisional memories.
+- contradict: you found evidence the memory is wrong — include evidence. Contradictions immediately move the memory to contested and lower its confidence.
+- adjust_scope: the lesson is right but the scope is too broad or too narrow — provide the corrected scope in the scope field.
+- mark_stale: the code or situation this memory describes no longer exists.
+
+Always include evidence when observing. Observations without evidence are less useful.`,
+	}, func(ctx context.Context, req *sdkmcp.CallToolRequest, args observeArgs) (*sdkmcp.CallToolResult, any, error) {
+		kind := model.ObservationKind(args.Kind)
+		switch kind {
+		case model.KindConfirm, model.KindContradict, model.KindAdjustScope, model.KindMarkStale:
+		default:
+			return &sdkmcp.CallToolResult{
+				IsError: true,
+				Content: []sdkmcp.Content{&sdkmcp.TextContent{
+					Text: fmt.Sprintf("unknown kind %q: must be confirm|contradict|adjust_scope|mark_stale", args.Kind),
+				}},
+			}, nil, nil
+		}
+		if kind == model.KindAdjustScope && len(args.Scope) == 0 {
+			return &sdkmcp.CallToolResult{
+				IsError: true,
+				Content: []sdkmcp.Content{&sdkmcp.TextContent{Text: "adjust_scope requires scope field"}},
+			}, nil, nil
+		}
+
+		_, ok, err := s.deps.Ledger.Memory(args.MemoryID)
+		if err != nil {
+			return nil, nil, err
+		}
+		if !ok {
+			return &sdkmcp.CallToolResult{
+				IsError: true,
+				Content: []sdkmcp.Content{&sdkmcp.TextContent{
+					Text: fmt.Sprintf("no memory %s", args.MemoryID),
+				}},
+			}, nil, nil
+		}
+
+		actor := args.Actor
+		if actor == "" {
+			actor = "mcp"
+		}
+		o := model.Observation{
+			Target:  args.MemoryID,
+			Kind:    kind,
+			Summary: args.Summary,
+			Actor:   model.Actor{Kind: model.ActorAgent, Name: actor, SessionID: args.Session},
+		}
+		for _, ev := range args.Evidence {
+			o.Evidence = append(o.Evidence, parseEvidence(ev))
+		}
+		if kind == model.KindAdjustScope {
+			o.SuggestedScope = &model.Scope{Paths: args.Scope}
+		}
+
+		if _, err := s.deps.Ledger.AppendObservation(o); err != nil {
+			return nil, nil, err
+		}
+		if err := s.deps.Index.Update(); err != nil {
+			return nil, nil, err
+		}
+
+		// Re-derive state from all observations for this memory.
+		mem, _, err := s.deps.Ledger.Memory(args.MemoryID)
+		if err != nil {
+			return nil, nil, err
+		}
+		allObs, err := s.deps.Ledger.Observations()
+		if err != nil {
+			return nil, nil, err
+		}
+		st := derive.Derive(mem, observationsFor(allObs, args.MemoryID), s.deps.Policy)
+
+		var b strings.Builder
+		fmt.Fprintln(&b, args.MemoryID)
 		fmt.Fprintln(&b, stateStr(st.Status, st.Risk, st.Confidence, st.Enforcement))
 		fmt.Fprintf(&b, "reason: %s\n", st.Reason)
 		return textResult(b.String()), nil, nil

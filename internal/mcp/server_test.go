@@ -257,3 +257,81 @@ func TestProposeTool(t *testing.T) {
 		t.Fatalf("expected IsError=true for unknown type, got text: %s", resultText(res2))
 	}
 }
+
+func TestObserveTool(t *testing.T) {
+	ctx := context.Background()
+	_, d, cleanup := testEnv(t)
+	defer cleanup()
+
+	// Propose a medium-risk memory (session s1) → provisional.
+	m := model.Memory{
+		Type:  model.TypeFailedAttempt,
+		Title: "rollback needs downgrade tests",
+		Scope: model.Scope{Paths: []string{"billing/**"}},
+		Actor: model.Actor{Kind: model.ActorAgent, Name: "test", SessionID: "s1"},
+	}
+	id, err := d.Ledger.AppendMemory(m)
+	if err != nil {
+		t.Fatalf("AppendMemory: %v", err)
+	}
+	if err := d.Index.Update(); err != nil {
+		t.Fatalf("idx.Update: %v", err)
+	}
+
+	session := startServer(t, ctx, d)
+
+	// An independent confirm (session s2) should activate it.
+	res := callTool(t, ctx, session, "tm_observe", map[string]any{
+		"memory_id": id,
+		"kind":      "confirm",
+		"summary":   "same failure reproduced on revenue branch",
+		"evidence":  []string{"test_failure:logs/revenue_rollback.log"},
+		"session":   "s2",
+		"actor":     "test",
+	})
+	text := resultText(res)
+	if !strings.Contains(text, "status: active") {
+		t.Fatalf("independent confirm should activate medium-risk memory, got:\n%s", text)
+	}
+
+	// Assert ledger mutation: 1 observation was written.
+	obs, err := d.Ledger.Observations()
+	if err != nil {
+		t.Fatalf("Observations: %v", err)
+	}
+	if len(obs) != 1 || obs[0].Target != id || obs[0].Kind != model.KindConfirm {
+		t.Fatalf("expected 1 confirm observation, got %+v", obs)
+	}
+
+	// adjust_scope without scope field is an error.
+	res2, err := session.CallTool(ctx, &sdkmcp.CallToolParams{
+		Name: "tm_observe",
+		Arguments: map[string]any{
+			"memory_id": id,
+			"kind":      "adjust_scope",
+			"session":   "s2",
+		},
+	})
+	if err != nil {
+		t.Fatalf("transport error: %v", err)
+	}
+	if !res2.IsError {
+		t.Fatalf("expected IsError=true for adjust_scope without scope, got: %s", resultText(res2))
+	}
+
+	// Observing a non-existent memory is an error.
+	res3, err := session.CallTool(ctx, &sdkmcp.CallToolParams{
+		Name: "tm_observe",
+		Arguments: map[string]any{
+			"memory_id": "01ZZZZZZZZZZZZZZZZZZZZZZZZZ",
+			"kind":      "confirm",
+			"session":   "s2",
+		},
+	})
+	if err != nil {
+		t.Fatalf("transport error: %v", err)
+	}
+	if !res3.IsError {
+		t.Fatalf("expected IsError=true for unknown memory, got: %s", resultText(res3))
+	}
+}
