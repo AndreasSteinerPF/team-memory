@@ -43,7 +43,7 @@ func newExportCmd(g *globalOpts) *cobra.Command {
 				}
 				data = append(data, '\n')
 			case "agents", "claude", "cursor":
-				data = []byte(export.Markdown(active, "Project memory (TeamMemory)"))
+				data = []byte(export.Markdown(active, "Project memory (TeamMemory)", export.Instructions(format)))
 			default:
 				return fmt.Errorf("unknown --format %q (want agents|claude|cursor|json)", format)
 			}

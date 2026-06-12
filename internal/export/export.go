@@ -17,11 +17,32 @@ const (
 	endMarker   = "<!-- END TeamMemory -->"
 )
 
-// Markdown renders rows as a generated instruction block. title is the heading.
-func Markdown(rows []index.IndexedMemory, title string) string {
+// Instructions returns the flavor-specific usage preamble (prd.md §10.4): when
+// agents should call tm_check_action / tm_propose / tm_observe. The "claude"
+// flavor notes that edit-time checks are automatic via the PreToolUse hook;
+// other flavors instruct a voluntary check before edits.
+func Instructions(flavor string) string {
+	var b strings.Builder
+	b.WriteString("These memories are validated project judgment from prior agent work in this repo. Treat `warning` and `requirement` entries as policy.\n\n")
+	if flavor == "claude" {
+		b.WriteString("- Edit-time checks run automatically via the TeamMemory PreToolUse hook. Before planning multi-file work, call the `tm_check_action` MCP tool with the target paths.\n")
+	} else {
+		b.WriteString("- Before editing files, call the `tm_check_action` MCP tool (or `tm check-action --path <file>`) with the paths you are about to change.\n")
+	}
+	b.WriteString("- When you discover durable project judgment — a non-obvious failure, a hidden constraint, a fragile area, a stale doc, or an undocumented decision — record it with `tm_propose`. Do not record session state, trivia, or facts derivable from the code.\n")
+	b.WriteString("- When your work bears on a memory shown to you, react with `tm_observe`: `confirm` with evidence, `contradict` with evidence, `adjust_scope`, or `mark_stale`.\n")
+	return b.String()
+}
+
+// Markdown renders rows as a generated instruction block. title is the heading;
+// instructions is the usage preamble (may be empty).
+func Markdown(rows []index.IndexedMemory, title, instructions string) string {
 	var b strings.Builder
 	b.WriteString(beginMarker + "\n")
 	fmt.Fprintf(&b, "## %s\n\n", title)
+	if instructions != "" {
+		b.WriteString(instructions + "\n")
+	}
 	if len(rows) == 0 {
 		b.WriteString("_No active memories yet._\n")
 	}

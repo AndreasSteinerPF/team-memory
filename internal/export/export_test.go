@@ -21,7 +21,7 @@ func sampleRows() []index.IndexedMemory {
 }
 
 func TestMarkdownRendersGeneratedBlock(t *testing.T) {
-	md := Markdown(sampleRows(), "Project memory (TeamMemory)")
+	md := Markdown(sampleRows(), "Project memory (TeamMemory)", "")
 	for _, want := range []string{
 		beginMarker, endMarker, "## Project memory (TeamMemory)",
 		"**[warning] downgrade tests required**", "add downgrade tests",
@@ -34,8 +34,29 @@ func TestMarkdownRendersGeneratedBlock(t *testing.T) {
 }
 
 func TestMarkdownEmpty(t *testing.T) {
-	if !strings.Contains(Markdown(nil, "T"), "No active memories yet.") {
+	if !strings.Contains(Markdown(nil, "T", ""), "No active memories yet.") {
 		t.Fatal("expected empty-state line")
+	}
+}
+
+func TestInstructionsMentionMCPVerbs(t *testing.T) {
+	for _, flavor := range []string{"agents", "claude", "cursor"} {
+		s := Instructions(flavor)
+		for _, verb := range []string{"tm_check_action", "tm_propose", "tm_observe"} {
+			if !strings.Contains(s, verb) {
+				t.Fatalf("Instructions(%q) missing %s", flavor, verb)
+			}
+		}
+	}
+	if !strings.Contains(Instructions("claude"), "PreToolUse") {
+		t.Fatal("claude flavor must say edit-time checks are automatic via the hook")
+	}
+}
+
+func TestMarkdownIncludesInstructions(t *testing.T) {
+	out := Markdown(nil, "Project memory (TeamMemory)", Instructions("agents"))
+	if !strings.Contains(out, "tm_propose") {
+		t.Fatal("Markdown must embed the instruction preamble inside the generated block")
 	}
 }
 
