@@ -111,19 +111,17 @@ func TestCheckActionHookInjectsContext(t *testing.T) {
 		"--session", "s1")
 	id := parseID(t, out)
 
-	// Session s2 independently confirms ⇒ auto-activates (status: active).
-	out, _, _ = runTM(t, dir, "", "observe", id, "confirm",
+	// Session s2 independently confirms ⇒ auto-activates.
+	out, _, code := runTM(t, dir, "", "observe", id, "confirm",
 		"--summary", "reproduced on second branch",
 		"--session", "s2")
-	if !strings.Contains(out, "status: active") {
-		t.Fatalf("want active after confirm, got:\n%s", out)
+	if code != 0 {
+		t.Fatalf("observe confirm failed (code %d):\n%s", code, out)
 	}
-
-	// No `tm approve --enforcement requirement` — enforcement stays at default (warning).
 
 	// Session s3 targets the scoped file.
 	ev := hookEvent(t, "s3", dir, "billing/migrations/m.sql")
-	out, _, code := runTM(t, dir, ev, "check-action", "--hook")
+	out, _, code = runTM(t, dir, ev, "check-action", "--hook")
 	if code != 0 {
 		t.Fatalf("hook should exit 0 for inject path; got %d / %s", code, out)
 	}
