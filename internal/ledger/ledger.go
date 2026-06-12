@@ -230,6 +230,61 @@ func (l *Ledger) readFile(path string) ([]byte, error) {
 	return []byte(out), nil
 }
 
+// Tip returns the current commit SHA of the ledger branch, or "" if the branch
+// does not exist yet.
+func (l *Ledger) Tip() (string, error) {
+	if !l.Exists() {
+		return "", nil
+	}
+	return l.git.Run("rev-parse", l.ref())
+}
+
+// Memory returns the memory with the given ID. The bool is false (with a nil
+// error) if no such record exists on the branch.
+func (l *Ledger) Memory(id string) (model.Memory, bool, error) {
+	if !l.Exists() {
+		return model.Memory{}, false, nil
+	}
+	data, err := l.readFile(memoriesDir + "/" + id + ".yaml")
+	if err != nil {
+		return model.Memory{}, false, nil // absent path ⇒ not found
+	}
+	m, err := unmarshalMemory(data)
+	if err != nil {
+		return model.Memory{}, false, fmt.Errorf("ledger: parse memory %s: %w", id, err)
+	}
+	return m, true, nil
+}
+
+// ChangedSince returns the record paths added or modified between commit old and
+// the current branch tip, plus the current tip. When old is "", equals the
+// current tip, or the branch is empty, no paths are returned. Records are
+// append-only, so in practice only additions appear; modifications are still
+// reported (e.g. an unexpected policy.yaml change) so callers can react.
+func (l *Ledger) ChangedSince(old string) (paths []string, current string, err error) {
+	current, err = l.Tip()
+	if err != nil {
+		return nil, "", err
+	}
+	if old == "" || current == "" || old == current {
+		return nil, current, nil
+	}
+	out, err := l.git.Run("diff", "--name-only", "--diff-filter=AM", old, current)
+	if err != nil {
+		return nil, "", err
+	}
+	if strings.TrimSpace(out) == "" {
+		return nil, current, nil
+	}
+	return strings.Split(out, "\n"), current, nil
+}
+
+// GitDir returns the absolute path to the repository's .git directory. The local
+// index and session-local state live under <GitDir>/tm/ (prd.md §7.3).
+func (l *Ledger) GitDir() (string, error) {
+	return l.git.Run("rev-parse", "--absolute-git-dir")
+}
+
 // tempIndex returns a path for a throwaway git index plus a cleanup func. git
 // creates the index itself, so we hand it a path that does not yet exist.
 func tempIndex() (path string, cleanup func(), err error) {
