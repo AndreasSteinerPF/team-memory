@@ -1,0 +1,20 @@
+memory:
+  id: m1
+  type: failed_attempt
+  title: Billing migrations require downgrade-path tests
+  scope:
+    paths: ["billing/migrations/**"]
+  code_context:
+    branch: feature/invoice-state
+  actor:
+    kind: agent
+    name: claude-code
+    session_id: session_123
+  created_at: "2026-06-15T10:00:00Z"
+observations: []
+expected:
+  status: provisional
+  risk: high
+  confidence: low
+  enforcement: hint
+  effective_scope: ["billing/migrations/**"]

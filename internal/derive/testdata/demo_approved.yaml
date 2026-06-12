@@ -1,0 +1,30 @@
+memory:
+  id: m1
+  type: failed_attempt
+  title: Billing migrations require downgrade-path tests
+  scope:
+    paths: ["billing/migrations/**"]
+  actor:
+    kind: agent
+    name: claude-code
+    session_id: session_123
+  created_at: "2026-06-15T10:00:00Z"
+observations:
+  - id: o1
+    target: m1
+    kind: confirm
+    actor: { kind: agent, name: codex, session_id: session_456 }
+    created_at: "2026-06-15T11:20:00Z"
+  - id: o2
+    target: m1
+    kind: approve
+    set_enforcement: requirement
+    set_confidence: high
+    actor: { kind: human, name: maintainer }
+    created_at: "2026-06-15T12:00:00Z"
+expected:
+  status: active
+  risk: high
+  confidence: high
+  enforcement: requirement
+  effective_scope: ["billing/migrations/**"]
