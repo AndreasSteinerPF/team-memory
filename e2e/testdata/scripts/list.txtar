@@ -1,0 +1,13 @@
+exec tm init
+
+exec tm propose decision --title 'active decision' --scope 'docs/**' --session s1
+exec tm propose failed_attempt --title 'provisional attempt' --scope 'billing/**' --session s1
+
+# Default list shows both the active and the provisional memory.
+exec tm list
+stdout 'active decision'
+stdout 'provisional attempt'
+
+# --stale shows neither (nothing is stale).
+exec tm list --stale
+stdout 'No matching memories.'
