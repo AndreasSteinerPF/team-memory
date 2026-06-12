@@ -67,8 +67,8 @@ func seedIndex(t *testing.T, dbPath string, n int) {
 	}
 }
 
-// TestHookLatency1000 verifies that check-action --hook completes within 150ms
-// on a ledger with 1000 memories (PRD §10.1).
+// TestHookLatency1000 verifies that check-action --hook completes within 100ms
+// on a ledger with 1000 memories (PRD §10.1: "under 100ms end-to-end").
 func TestHookLatency1000(t *testing.T) {
 	dir := newGitRepo(t)
 
@@ -95,7 +95,7 @@ func TestHookLatency1000(t *testing.T) {
 		t.Skipf("host too loaded for latency assertion (warm-up=%v; skipping)", warmElapsed)
 	}
 
-	const budget = 150 * time.Millisecond
+	const budget = 100 * time.Millisecond
 	const runs = 5
 	for i := 0; i < runs; i++ {
 		start := time.Now()
@@ -106,7 +106,7 @@ func TestHookLatency1000(t *testing.T) {
 			t.Skipf("host became overloaded mid-test (run %d: %v vs warm-up %v; skipping)", i+1, elapsed, warmElapsed)
 		}
 		if elapsed > budget {
-			t.Fatalf("hook run %d/%d took %v (budget 150ms) on a 1000-memory ledger", i+1, runs, elapsed)
+			t.Fatalf("hook run %d/%d took %v (budget 100ms) on a 1000-memory ledger", i+1, runs, elapsed)
 		}
 	}
 }
