@@ -54,6 +54,7 @@ func (s *Server) registerTools(srv *sdkmcp.Server) {
 	s.addSearchTool(srv)
 	s.addProposeTool(srv)
 	s.addObserveTool(srv)
+	s.addCheckActionTool(srv)
 }
 
 // Run serves the MCP protocol over stdio (blocks until ctx is cancelled or EOF).
@@ -366,6 +367,71 @@ Always include evidence when observing. Observations without evidence are less u
 		fmt.Fprintln(&b, args.MemoryID)
 		fmt.Fprintln(&b, stateStr(st.Status, st.Risk, st.Confidence, st.Enforcement))
 		fmt.Fprintf(&b, "reason: %s\n", st.Reason)
+		return textResult(b.String()), nil, nil
+	})
+}
+
+// --- tm_check_action ---
+
+type checkActionArgs struct {
+	Description     string   `json:"description,omitempty" jsonschema:"Free-text description of what you are about to do, for FTS matching against memory titles and summaries."`
+	Paths           []string `json:"paths,omitempty" jsonschema:"Target file paths of the action (matched against memory scopes). Provide this for edit-time checks."`
+	ProvisionalMode string   `json:"provisional_mode,omitempty" jsonschema:"Override provisional surfacing: never|related|always. Default: use policy (related)."`
+}
+
+func (s *Server) addCheckActionTool(srv *sdkmcp.Server) {
+	sdkmcp.AddTool(srv, &sdkmcp.Tool{
+		Name: "tm_check_action",
+		Description: `Surface TeamMemory memories relevant to an action. Call this:
+- At the start of any planning or refactoring session — before touching files.
+- Before editing a specific file — pass the file path in the paths field.
+- When you want to know if there are known constraints or past failures in an area.
+
+Returns:
+- Active memories: trusted guidance. Follow it.
+- Provisional memories: caution-framed. Use as a hint, not policy. Add a confirm or contradict observation if your work bears on it.
+- Drift annotations: anchored files that have changed since the memory was recorded.
+
+The PreToolUse hook handles edit-time delivery automatically in Claude Code; use this tool for pre-task planning and voluntary checks in other agents.`,
+	}, func(ctx context.Context, req *sdkmcp.CallToolRequest, args checkActionArgs) (*sdkmcp.CallToolResult, any, error) {
+		results, err := s.deps.Engine.Retrieve(retrieve.Query{
+			Paths:           args.Paths,
+			Description:     args.Description,
+			ProvisionalMode: args.ProvisionalMode,
+		})
+		if err != nil {
+			return nil, nil, err
+		}
+		if len(results) == 0 {
+			return textResult("No relevant memories.\n"), nil, nil
+		}
+
+		var b strings.Builder
+		for _, r := range results {
+			m := r.Memory
+			tag := string(m.Enforcement)
+			if r.Provisional {
+				tag = "provisional/" + tag
+			}
+			fmt.Fprintf(&b, "• [%s] %s (%s)\n", tag, m.Title, m.ID)
+			if g := firstNonEmpty(m.Guidance, m.Summary); g != "" {
+				fmt.Fprintf(&b, "    %s\n", g)
+			}
+			if r.Caution != "" {
+				fmt.Fprintf(&b, "    %s\n", r.Caution)
+			}
+			if r.Request != "" {
+				fmt.Fprintf(&b, "    %s\n", r.Request)
+			}
+			for _, driftItem := range r.Drift {
+				if driftItem.Note != "" {
+					fmt.Fprintf(&b, "    drift: %s\n", driftItem.Note)
+				}
+			}
+			if m.Enforcement == model.EnforcementRequirement {
+				fmt.Fprintf(&b, "    requirement — run the checks, then `tm ack %s` and retry.\n", m.ID)
+			}
+		}
 		return textResult(b.String()), nil, nil
 	})
 }

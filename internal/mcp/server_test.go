@@ -335,3 +335,59 @@ func TestObserveTool(t *testing.T) {
 		t.Fatalf("expected IsError=true for unknown memory, got: %s", resultText(res3))
 	}
 }
+
+func TestCheckActionTool(t *testing.T) {
+	ctx := context.Background()
+	_, d, cleanup := testEnv(t)
+	defer cleanup()
+
+	// Propose and activate a memory scoped to billing/migrations.
+	m := model.Memory{
+		Type:     model.TypeFailedAttempt,
+		Title:    "billing migrations need downgrade tests",
+		Guidance: "run downgrade-path tests before any billing migration",
+		Scope:    model.Scope{Paths: []string{"billing/migrations/**"}},
+		Actor:    model.Actor{Kind: model.ActorAgent, Name: "test", SessionID: "s1"},
+	}
+	id, err := d.Ledger.AppendMemory(m)
+	if err != nil {
+		t.Fatalf("AppendMemory: %v", err)
+	}
+	// Activate with independent confirm (s2).
+	o := model.Observation{
+		Target:  id,
+		Kind:    model.KindConfirm,
+		Summary: "reproduced",
+		Actor:   model.Actor{Kind: model.ActorAgent, Name: "test", SessionID: "s2"},
+	}
+	if _, err := d.Ledger.AppendObservation(o); err != nil {
+		t.Fatalf("AppendObservation: %v", err)
+	}
+	if err := d.Index.Update(); err != nil {
+		t.Fatalf("idx.Update: %v", err)
+	}
+
+	session := startServer(t, ctx, d)
+
+	// check_action with a matching path returns the active memory.
+	res := callTool(t, ctx, session, "tm_check_action", map[string]any{
+		"paths":       []string{"billing/migrations/2026_add_invoice_state.sql"},
+		"description": "modify billing migration",
+	})
+	text := resultText(res)
+	if !strings.Contains(text, "billing migrations need downgrade tests") {
+		t.Fatalf("expected memory title in check_action output:\n%s", text)
+	}
+	if !strings.Contains(text, "run downgrade-path tests") {
+		t.Fatalf("expected guidance in check_action output:\n%s", text)
+	}
+
+	// check_action with an unrelated path returns nothing.
+	res = callTool(t, ctx, session, "tm_check_action", map[string]any{
+		"paths": []string{"frontend/components/button.tsx"},
+	})
+	text = resultText(res)
+	if !strings.Contains(text, "No relevant memories") {
+		t.Fatalf("expected no relevant memories for unrelated path, got:\n%s", text)
+	}
+}
