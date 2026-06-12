@@ -67,11 +67,11 @@ func (l *Ledger) existsInPackedRefs() bool {
 		return false
 	}
 	defer f.Close()
-	target := " " + l.ref()
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
 		line := scanner.Text()
-		if strings.HasSuffix(line, target) {
+		fields := strings.Fields(line)
+		if len(fields) >= 2 && fields[1] == l.ref() {
 			return true
 		}
 	}
