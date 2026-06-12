@@ -183,3 +183,86 @@ func TestInstallClaudeCodeHooksAddsSessionStart(t *testing.T) {
 		t.Fatalf("second install: installed=%v err=%v (want false, nil)", installed, err)
 	}
 }
+
+// TestInstallClaudeCodeHooksPartialUpgrade covers the real-world migration
+// path: an existing repo that already has the PreToolUse hook from a pre-Task-8
+// `tm init` but no SessionStart hook. Installing must add ONLY the missing
+// SessionStart entry, leave PreToolUse at exactly one (no duplicate), and
+// report that something was added.
+func TestInstallClaudeCodeHooksPartialUpgrade(t *testing.T) {
+	dir := t.TempDir()
+	claudeDir := filepath.Join(dir, ".claude")
+	if err := os.Mkdir(claudeDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Seed settings.json with only the PreToolUse hook present.
+	seed := map[string]any{}
+	addHookEntry(seed, claudeHookSpecs[0])
+	data, err := json.MarshalIndent(seed, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	settingsPath := filepath.Join(claudeDir, "settings.json")
+	if err := os.WriteFile(settingsPath, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	installed, err := installClaudeCodeHooks(dir)
+	if err != nil || !installed {
+		t.Fatalf("partial upgrade: installed=%v err=%v (want true, nil)", installed, err)
+	}
+
+	raw, err := os.ReadFile(settingsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var settings map[string]any
+	if err := json.Unmarshal(raw, &settings); err != nil {
+		t.Fatal(err)
+	}
+	if n := countHookEntries(settings, claudeHookSpecs[0]); n != 1 {
+		t.Fatalf("PreToolUse entries = %d, want 1 (must not duplicate the pre-existing hook)", n)
+	}
+	if n := countHookEntries(settings, claudeHookSpecs[1]); n != 1 {
+		t.Fatalf("SessionStart entries = %d, want 1 (the missing hook must be added)", n)
+	}
+}
+
+// TestSessionStartHookHasNoMatcherKey pins the no-matcher property directly on
+// the raw JSON. countHookEntries cannot distinguish an absent matcher key from
+// a literal "matcher":"" (both decode to the empty string), but the two differ
+// to Claude Code: SessionStart matchers are source filters (startup/resume/
+// clear), and a literal empty-string matcher is not a valid filter. An unscoped
+// briefing hook must therefore OMIT the key entirely.
+func TestSessionStartHookHasNoMatcherKey(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := installClaudeCodeHooks(dir); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, ".claude", "settings.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var settings map[string]any
+	if err := json.Unmarshal(data, &settings); err != nil {
+		t.Fatal(err)
+	}
+	hooks, ok := settings["hooks"].(map[string]any)
+	if !ok {
+		t.Fatalf("hooks missing or wrong type: %v", settings["hooks"])
+	}
+	groups, ok := hooks["SessionStart"].([]any)
+	if !ok || len(groups) != 1 {
+		t.Fatalf("want exactly 1 SessionStart group, got %v", hooks["SessionStart"])
+	}
+	group, ok := groups[0].(map[string]any)
+	if !ok {
+		t.Fatalf("SessionStart group wrong type: %v", groups[0])
+	}
+	if _, present := group["matcher"]; present {
+		t.Fatalf("SessionStart group must omit the matcher key, got matcher=%v", group["matcher"])
+	}
+}
