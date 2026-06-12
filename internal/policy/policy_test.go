@@ -1,6 +1,7 @@
 package policy
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/AndreasSteinerPF/team-memory/internal/model"
@@ -55,5 +56,26 @@ activation:
 	}
 	if p.Activation.Independence != "different_session_and_branch" {
 		t.Errorf("independence = %q", p.Activation.Independence)
+	}
+}
+
+func TestRequirementEnforcementDefaultAndRoundTrip(t *testing.T) {
+	p := Default()
+	if !p.RequirementEnforcement.HumanRequired {
+		t.Fatal("default requirement_enforcement.human_required must be true (prd.md §8.1)")
+	}
+	y, err := DefaultYAML()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(y), "requirement_enforcement:") {
+		t.Fatal("DefaultYAML must serialize the requirement_enforcement key")
+	}
+	p2, err := Load(y)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !p2.RequirementEnforcement.HumanRequired {
+		t.Fatal("Load(DefaultYAML()) must preserve human_required=true")
 	}
 }

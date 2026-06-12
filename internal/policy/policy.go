@@ -9,11 +9,12 @@ import (
 )
 
 type Policy struct {
-	BaseRisk   map[model.MemoryType]model.Risk `yaml:"base_risk"`
-	Escalators Escalators                      `yaml:"escalators"`
-	Activation Activation                      `yaml:"activation"`
-	Retrieval  Retrieval                       `yaml:"retrieval"`
-	Sync       Sync                            `yaml:"sync"`
+	BaseRisk               map[model.MemoryType]model.Risk `yaml:"base_risk"`
+	Escalators             Escalators                      `yaml:"escalators"`
+	Activation             Activation                      `yaml:"activation"`
+	RequirementEnforcement RequirementEnforcement          `yaml:"requirement_enforcement"`
+	Retrieval              Retrieval                       `yaml:"retrieval"`
+	Sync                   Sync                            `yaml:"sync"`
 }
 
 type Escalators struct {
@@ -34,6 +35,14 @@ type Activation struct {
 type Tier struct {
 	Auto               string            `yaml:"auto"` // immediate | independent_confirm | never
 	MaxAutoEnforcement model.Enforcement `yaml:"max_auto_enforcement,omitempty"`
+}
+
+// RequirementEnforcement mirrors prd.md §8.1. v1 derivation hard-codes
+// requirement-via-human-approve regardless of this value (see
+// internal/derive/enforcement.go); the key is parsed so policy.yaml matches
+// the PRD's documented default exactly.
+type RequirementEnforcement struct {
+	HumanRequired bool `yaml:"human_required"`
 }
 
 type Retrieval struct {
@@ -73,8 +82,9 @@ func Default() Policy {
 				model.RiskCritical: {Auto: "never"},
 			},
 		},
-		Retrieval: Retrieval{MaxResults: 5, MaxProvisional: 2, ProvisionalMode: "related"},
-		Sync:      Sync{AutoFetchAfter: "5m"},
+		RequirementEnforcement: RequirementEnforcement{HumanRequired: true},
+		Retrieval:              Retrieval{MaxResults: 5, MaxProvisional: 2, ProvisionalMode: "related"},
+		Sync:                   Sync{AutoFetchAfter: "5m"},
 	}
 }
 
