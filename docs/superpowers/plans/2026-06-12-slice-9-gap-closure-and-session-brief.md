@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go 1.26, cobra, existing internal packages. No new dependencies.
 
-**Conventions (from HANDOFF.md):** TDD per task; push directly to `main` when the slice is complete and CI is green on all 3 OSes; commit messages end with the trailer `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>` (model attribution updated from the Opus-era trailer — keep it honest about which model did the work). Subagents: if a test fails because the *plan* is wrong, STOP and report — do not hack the test green.
+**Conventions (from HANDOFF.md):** TDD per task; push directly to `main` when the slice is complete and CI is green on all 3 OSes; commit messages end with the trailer `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>` (the model that executed this slice — matches the pre-Slice-9 git history; keep it honest about which model did the work). Subagents: if a test fails because the *plan* is wrong, STOP and report — do not hack the test green.
 
 **Audit traceability:** Task 1 → gaps 3+7 (LICENSE, README tool list). Task 2 → gap 2 (latency budget). Task 3 → trivia (requirement_enforcement key). Task 4 → gap 5 (separate remote). Task 5 → gap 4 (push on propose/observe). Task 6 → gap 1 (export instruction blocks). Tasks 7+8 → session-start briefing (new feature). Task 9 → gap 6 (runnable demo script). Task 10 → PRD amendments + HANDOFF refresh.
 
@@ -68,7 +68,7 @@ MCP tools: `tm_propose`, `tm_observe`, `tm_check_action`, `tm_search`, `tm_statu
 git add LICENSE README.md
 git commit -m "docs: add MIT LICENSE; fix MCP tool list in README (tm_search, not tm_list)
 
-Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ```
 
 ---
@@ -133,7 +133,7 @@ Expected: PASS each time (or SKIP if the host is loaded — re-run on an idle ma
 git add e2e/bench_test.go
 git commit -m "test: tighten hook latency budget to 100ms per PRD §10.1
 
-Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ```
 
 ---
@@ -224,7 +224,7 @@ Expected: PASS. If `internal/policy/defaultyaml_test.go` compares exact serializ
 git add internal/policy/
 git commit -m "feat(policy): parse requirement_enforcement key for PRD §8.1 fidelity
 
-Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ```
 
 ---
@@ -389,7 +389,7 @@ Run: `go test ./...` → PASS (background-fetch gating behavior is unchanged for
 git add internal/cli/ e2e/remote_test.go
 git commit -m "feat: persist separate-remote mode as git config tm.remote (PRD §7.1)
 
-Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ```
 
 ---
@@ -513,7 +513,7 @@ Run: `go test ./...` → PASS. (Repos without remotes spawn no push process — 
 git add internal/cli/push.go internal/cli/propose.go internal/cli/observe.go e2e/push_test.go
 git commit -m "feat: best-effort background push on propose/observe (PRD §7.4)
 
-Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ```
 
 ---
@@ -623,7 +623,7 @@ Run: `go test ./e2e/ -run 'TestScript' -v` → if `e2e/testdata/scripts/export.t
 git add internal/export/ internal/cli/export.go e2e/testdata/scripts/export.txtar
 git commit -m "feat(export): instruction preambles telling agents when to call MCP verbs (PRD §10.4)
 
-Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ```
 
 ---
@@ -847,7 +847,7 @@ Run: `go test ./e2e/ -run TestBrief -v` → PASS (all four tests)
 git add internal/cli/brief.go internal/cli/cli.go e2e/brief_test.go
 git commit -m "feat: tm brief — session-start briefing with per-agent hook envelopes
 
-Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ```
 
 ---
@@ -1065,7 +1065,7 @@ Run: `go test ./e2e/ -v` → if `e2e/testdata/scripts/init_plugin.txtar` asserts
 git add internal/cli/plugin.go internal/cli/plugin_test.go internal/cli/init.go e2e/testdata/scripts/init_plugin.txtar
 git commit -m "feat(init): install SessionStart brief hook alongside PreToolUse (PRD §10.1)
 
-Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ```
 
 ---
@@ -1181,7 +1181,7 @@ In `.github/workflows/ci.yml`, append after the `Test` step:
 git add demo/run.sh .github/workflows/ci.yml
 git commit -m "feat(demo): runnable flagship demo script, wired into CI (PRD §12.1 #12)
 
-Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ```
 
 ---
@@ -1265,7 +1265,7 @@ tm brief         # session-start briefing for agent hooks (live counts + instruc
 Update `HANDOFF.md`:
 - "Current status": replace the slices 1–5 status with: "**Slices 1–8 plus Slice 9 (PRD gap closure + session-start briefing) are COMPLETE, pushed to `main`, CI green on {ubuntu, macos, windows}.** The 2026-06-12 PRD audit found 7 gaps; all are closed (see `docs/superpowers/plans/2026-06-12-slice-9-gap-closure-and-session-brief.md`)."
 - Replace the slice table's note and the "Next step" section with: "**Next step:** MVP complete per PRD §12.1. Remaining roadmap is Phase 2+ (`tm doctor`, release automation/curl install script, `ownership`/`successful_pattern` types). Release automation (GitHub Releases workflow) is the highest-value next item — the README references binary downloads that don't exist yet."
-- In conventions item 4, update the commit trailer to `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>` (model changed mid-project; keep attribution honest).
+- Keep conventions item 4's commit trailer as `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>` (the model that executed the slice; matches the git history — keep attribution honest).
 - Update the stale "Slice 5 scope decisions" bullet: async push and background fetch are now implemented (Slice 9 / earlier), so delete those two deferral lines.
 
 - [ ] **Step 4: Full suite + commit**
@@ -1277,7 +1277,7 @@ Expected: all PASS.
 git add README.md prd.md HANDOFF.md
 git commit -m "docs: session-start briefing in README+PRD; ratify slice-9 decisions; refresh HANDOFF
 
-Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ```
 
 ---
