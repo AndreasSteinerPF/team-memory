@@ -1,8 +1,10 @@
 package ledger
 
 import (
+	"bufio"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -21,6 +23,7 @@ const (
 type Ledger struct {
 	git    git.Runner
 	branch string
+	gitDir string // cached absolute .git dir; populated by Open, never changes
 }
 
 // Open returns a ledger handle for branch within the git repository at repoDir.
@@ -28,16 +31,52 @@ type Ledger struct {
 // already exist (call Init for that).
 func Open(repoDir, branch string) (*Ledger, error) {
 	g := git.Runner{Dir: repoDir}
-	if _, err := g.Run("rev-parse", "--git-dir"); err != nil {
+	// Use --absolute-git-dir: it both validates we're in a git repo and gives us
+	// the gitDir we'd need anyway, avoiding a second git subprocess later.
+	gitDir, err := g.Run("rev-parse", "--absolute-git-dir")
+	if err != nil {
 		return nil, fmt.Errorf("ledger: %q is not a git repository: %w", repoDir, err)
 	}
-	return &Ledger{git: g, branch: branch}, nil
+	return &Ledger{git: g, branch: branch, gitDir: gitDir}, nil
 }
 
 func (l *Ledger) ref() string { return "refs/heads/" + l.branch }
 
 // Exists reports whether the ledger branch has been created.
-func (l *Ledger) Exists() bool { return l.git.RefExists(l.ref()) }
+// It first tries a fast filesystem lookup (avoids a git subprocess); if the
+// loose-ref file is not present it also checks packed-refs before falling back
+// to the git subprocess (handles git gc and unusual repository layouts).
+func (l *Ledger) Exists() bool {
+	// Fast path 1: loose ref file.
+	looseRef := filepath.Join(l.gitDir, filepath.FromSlash(l.ref()))
+	if _, err := os.Stat(looseRef); err == nil {
+		return true
+	}
+	// Fast path 2: packed-refs file.
+	if l.existsInPackedRefs() {
+		return true
+	}
+	// Fallback: let git decide (handles worktrees, alternates, etc.).
+	return l.git.RefExists(l.ref())
+}
+
+// existsInPackedRefs reports whether l.ref() appears in packed-refs.
+func (l *Ledger) existsInPackedRefs() bool {
+	f, err := os.Open(filepath.Join(l.gitDir, "packed-refs"))
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	target := " " + l.ref()
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasSuffix(line, target) {
+			return true
+		}
+	}
+	return false
+}
 
 // Init creates the orphan branch with an initial commit containing policy.yaml.
 // It fails if the branch already exists.
@@ -282,7 +321,7 @@ func (l *Ledger) ChangedSince(old string) (paths []string, current string, err e
 // GitDir returns the absolute path to the repository's .git directory. The local
 // index and session-local state live under <GitDir>/tm/ (prd.md §7.3).
 func (l *Ledger) GitDir() (string, error) {
-	return l.git.Run("rev-parse", "--absolute-git-dir")
+	return l.gitDir, nil
 }
 
 // tempIndex returns a path for a throwaway git index plus a cleanup func. git

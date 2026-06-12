@@ -17,6 +17,7 @@ import (
 type env struct {
 	repoDir string
 	branch  string
+	gitDir  string // cached .git directory path; avoids a repeated git subprocess call
 	git     git.Runner
 	led     *ledger.Ledger
 	idx     *index.Index
@@ -37,6 +38,7 @@ func openEnv(g *globalOpts) (*env, error) {
 	if !led.Exists() {
 		return nil, fmt.Errorf("no ledger on branch %q; run `tm init` first", g.branch)
 	}
+	// Cache gitDir once to avoid repeated git subprocess calls in later operations.
 	gitDir, err := led.GitDir()
 	if err != nil {
 		return nil, err
@@ -58,6 +60,7 @@ func openEnv(g *globalOpts) (*env, error) {
 	return &env{
 		repoDir: repoDir,
 		branch:  g.branch,
+		gitDir:  gitDir,
 		git:     git.Runner{Dir: repoDir},
 		led:     led,
 		idx:     idx,
@@ -78,9 +81,5 @@ func (e *env) engine() *retrieve.Engine {
 
 // ackStore opens the local requirement-acknowledgment store under .git/tm/acks.
 func (e *env) ackStore() (*acks.Store, error) {
-	gitDir, err := e.led.GitDir()
-	if err != nil {
-		return nil, err
-	}
-	return acks.Open(gitDir)
+	return acks.Open(e.gitDir)
 }
