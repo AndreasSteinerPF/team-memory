@@ -168,6 +168,13 @@ func pathMatchesScope(path string, s model.Scope) bool {
 	return false
 }
 
+// MatchPathGlob reports whether a concrete path matches a single glob, using
+// TeamMemory's segment-exact glob semantics. Exported for the retrieval layer.
+func MatchPathGlob(path, glob string) bool { return pathMatchesGlob(path, glob) }
+
+// MatchPath reports whether a concrete path matches any glob in scope.
+func MatchPath(path string, s model.Scope) bool { return pathMatchesScope(path, s) }
+
 // effectiveScope applies adjust_scope observations in chronological order.
 // Narrowings apply immediately; broadenings apply only once substantiated.
 func effectiveScope(m model.Memory, obs []model.Observation) model.Scope {

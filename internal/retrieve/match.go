@@ -1,0 +1,78 @@
+package retrieve
+
+import (
+	"strings"
+	"unicode"
+
+	"github.com/AndreasSteinerPF/team-memory/internal/derive"
+)
+
+// segments splits a glob/path into path segments, trimming slashes.
+func segments(s string) []string {
+	s = strings.Trim(s, "/")
+	if s == "" {
+		return nil
+	}
+	return strings.Split(s, "/")
+}
+
+func hasWildcard(seg string) bool { return strings.ContainsAny(seg, "*?[") }
+
+// globSpecificity scores how precise a glob is. Any scope match scores >= 1 so
+// it outranks an FTS-only match (specificity 0); each literal (non-wildcard)
+// segment adds 2; wildcard segments and the catch-all "**" add nothing.
+func globSpecificity(glob string) int {
+	score := 1
+	for _, seg := range segments(glob) {
+		if seg != "**" && !hasWildcard(seg) {
+			score += 2
+		}
+	}
+	return score
+}
+
+// bestSpecificity returns the highest specificity among scope globs that match
+// any of the action's paths, and whether any matched at all.
+func bestSpecificity(scope, paths []string) (int, bool) {
+	best, matched := 0, false
+	for _, glob := range scope {
+		for _, p := range paths {
+			if derive.MatchPathGlob(p, glob) {
+				if spec := globSpecificity(glob); !matched || spec > best {
+					best, matched = spec, true
+				}
+				break
+			}
+		}
+	}
+	return best, matched
+}
+
+// ftsQuery turns a free-text description into a safe FTS5 MATCH expression:
+// alphanumeric tokens, each quoted (neutralizing FTS operators), OR-joined for
+// recall. Returns "" when there is nothing to search.
+func ftsQuery(desc string) string {
+	var tokens []string
+	var cur strings.Builder
+	flush := func() {
+		if cur.Len() > 0 {
+			tokens = append(tokens, cur.String())
+			cur.Reset()
+		}
+	}
+	for _, r := range desc {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			cur.WriteRune(r)
+		} else {
+			flush()
+		}
+	}
+	flush()
+	if len(tokens) == 0 {
+		return ""
+	}
+	for i, t := range tokens {
+		tokens[i] = `"` + t + `"`
+	}
+	return strings.Join(tokens, " OR ")
+}
