@@ -1,0 +1,62 @@
+# GoReleaser config — cross-compiled `tm` binaries + a GitHub Release on tag push.
+# The release is driven by .github/workflows/release.yml (triggered on `v*` tags).
+# Validate locally with:  goreleaser check  &&  goreleaser release --snapshot --clean
+version: 2
+
+project_name: team-memory
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: tm
+    main: ./cmd/tm
+    binary: tm
+    # modernc.org/sqlite is pure Go, so we cross-compile statically without cgo.
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X github.com/AndreasSteinerPF/team-memory/internal/cli.Version={{ .Version }}
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    # Standard 5 targets: drop windows/arm64.
+    ignore:
+      - goos: windows
+        goarch: arm64
+
+archives:
+  - id: tm
+    name_template: "tm_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    # tar.gz everywhere except Windows, which gets a zip.
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "^ci:"
+
+release:
+  draft: false
+  prerelease: auto
