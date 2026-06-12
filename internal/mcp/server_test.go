@@ -122,6 +122,24 @@ func gitExecTest(t *testing.T, dir string, args ...string) string {
 	return strings.TrimSpace(string(out))
 }
 
+func TestStatusTool(t *testing.T) {
+	ctx := context.Background()
+	_, d, cleanup := testEnv(t)
+	defer cleanup()
+
+	session := startServer(t, ctx, d)
+
+	// Empty ledger: 0 across all statuses.
+	res := callTool(t, ctx, session, "tm_status", map[string]any{})
+	text := resultText(res)
+	if !strings.Contains(text, "0 active") || !strings.Contains(text, "0 provisional") {
+		t.Fatalf("unexpected status output on empty ledger:\n%s", text)
+	}
+	if !strings.Contains(text, `"teammemory"`) {
+		t.Fatalf("expected branch name in status output:\n%s", text)
+	}
+}
+
 // seedFile writes a file to dir/rel and commits it, so anchors can be resolved.
 func seedFile(t *testing.T, dir, rel, content string) {
 	t.Helper()
