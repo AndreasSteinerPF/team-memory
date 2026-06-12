@@ -59,17 +59,20 @@ func newInitCmd(g *globalOpts) *cobra.Command {
 	return cmd
 }
 
-// printSetup prints integration next-steps. The MCP server (Slice 6) and the
-// Claude Code plugin/hook (Slice 7) are not wired here; this prints the config
-// snippet and detection note only.
+// printSetup prints integration next-steps. Installs the PreToolUse hook into
+// .claude/settings.json when .claude/ is present.
 func printSetup(w io.Writer, repoDir, remote string) {
-	if _, err := os.Stat(filepath.Join(repoDir, ".claude")); err == nil {
-		fmt.Fprintln(w, "Detected a Claude Code project (.claude/).")
+	installed, err := installClaudeCodeHook(repoDir)
+	if err == nil {
+		if installed {
+			fmt.Fprintln(w, "Installed PreToolUse hook in .claude/settings.json.")
+		} else if _, serr := os.Stat(filepath.Join(repoDir, ".claude")); serr == nil {
+			fmt.Fprintln(w, "Claude Code hook already present in .claude/settings.json.")
+		}
 	}
 	fmt.Fprintln(w, "Next steps:")
 	fmt.Fprintln(w, "  • MCP (Claude Code / Cursor / Codex): add to your .mcp.json —")
 	fmt.Fprintln(w, `      { "mcpServers": { "teammemory": { "command": "tm", "args": ["mcp"] } } }`)
-	fmt.Fprintln(w, "  • The Claude Code hook + plugin install ships with the plugin (later release).")
 	if remote != "" {
 		fmt.Fprintf(w, "  • Ledger remote configured: %s (run `tm sync --remote %s`).\n", remote, remote)
 	}

@@ -1,0 +1,7 @@
+# tm init installs the PreToolUse hook when .claude/ is present.
+mkdir .claude
+exec tm init
+stdout 'Installed PreToolUse hook'
+
+exec cat .claude/settings.json
+stdout 'tm check-action --hook'
