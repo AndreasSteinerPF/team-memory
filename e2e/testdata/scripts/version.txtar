@@ -1,0 +1,4 @@
+# tm version prints the tool name and exits 0.
+exec tm version
+stdout 'team-memory'
+! stderr .

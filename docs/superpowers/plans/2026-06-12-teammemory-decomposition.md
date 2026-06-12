@@ -33,6 +33,26 @@ Build order: **1 → 2 → 3 → 4 → 5 → 6 → 7 → 8.** Slices 6 and 7 bot
 - **Retrieval before CLI/MCP** so the surfaces are thin adapters over a tested retrieval core rather than carrying logic themselves.
 - **Plugin last among surfaces** because it is the highest-integration, hardest-to-unit-test piece and benefits from a stable `check-action` underneath it.
 
+## Testing strategy (per slice)
+
+Unit tests live with each package (TDD, as in Slice 1). Beyond that, **every slice lands with its integration/e2e tests green in CI before it is pushed to main** — this is part of a slice's definition of done, not an afterthought.
+
+- CI (`.github/workflows/ci.yml`) runs build + `go vet` + `go test` across {ubuntu, macos, windows}, with `-race` on Linux/macOS (the race detector needs a C toolchain on Windows, so Windows runs the plain suite).
+- End-to-end CLI scenarios live in `e2e/` as [testscript](https://pkg.go.dev/github.com/rogpeppe/go-internal/testscript) `.txtar` files driving the real `tm` command. A trivial `version` scenario seeds the harness today.
+
+| Slice | Integration / e2e tests it must add |
+|---|---|
+| 1 Derived-state engine | ✅ golden lifecycle fixtures; order-independence of observations |
+| 2 Ledger persistence | real-git round-trip in temp repos; **two-clone concurrent sync → zero conflicts, convergent state on both sides** |
+| 3 Local index | **`index == replay` invariant** (property test over random op-sequences); idempotent replay; auto-rebuild on corruption |
+| 4 Retrieval | scenario tests for scope-glob + FTS candidate selection and ranking; anchor-drift annotation against a real git history |
+| 5 CLI | testscript `.txtar` scenarios for each command; **the flagship demo (§13) as an e2e script** |
+| 6 MCP server | in-process client↔server over a pipe transport; assert tool responses AND the resulting ledger mutations |
+| 7 Claude Code plugin | `tm check-action --hook` contract tests (inject / block-on-requirement / ack-clears); **<100ms latency benchmark on a 1000-memory ledger**; one manual real-session smoke (CI can't honor the block for us) |
+| 8 Demo & benchmark | flagship demo + trap-repo benchmark (§14) wired as CI acceptance tests |
+
+Determinism is a cross-cutting invariant: derived state must not depend on observation order or host machine (the engine sorts by time then ID). Assert it wherever state is computed or materialized.
+
 ## One open spec question (resolved in this pass, flag for ratification)
 
 PRD §8.5(b) and §8.2 independence required two fields the data model lacked: optional `code_context.paths` on observations, and optional `code_context` (branch/commit) on the memory record. Both have been added to `prd.md` §9.1/§9.2 and are implemented in Slice 1. If you'd rather drop `different_session_and_branch` and path-based broadening substantiation from v1 entirely, say so and Slice 1 shrinks accordingly.

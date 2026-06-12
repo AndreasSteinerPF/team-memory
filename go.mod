@@ -2,4 +2,12 @@ module github.com/AndreasSteinerPF/team-memory
 
 go 1.26
 
-require gopkg.in/yaml.v3 v3.0.1 // indirect
+require (
+	github.com/rogpeppe/go-internal v1.15.0
+	gopkg.in/yaml.v3 v3.0.1
+)
+
+require (
+	golang.org/x/sys v0.26.0 // indirect
+	golang.org/x/tools v0.26.0 // indirect
+)
