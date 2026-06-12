@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/AndreasSteinerPF/team-memory/internal/git"
 	"github.com/AndreasSteinerPF/team-memory/internal/index"
 	"github.com/AndreasSteinerPF/team-memory/internal/ledger"
 	"github.com/AndreasSteinerPF/team-memory/internal/policy"
@@ -39,6 +40,11 @@ func newInitCmd(g *globalOpts) *cobra.Command {
 			}
 			if err := led.Init(py); err != nil {
 				return err
+			}
+			if remote != "" {
+				if _, err := (git.Runner{Dir: repoDir}).Run("config", "tm.remote", remote); err != nil {
+					return err
+				}
 			}
 			gitDir, err := led.GitDir()
 			if err != nil {
@@ -74,6 +80,6 @@ func printSetup(w io.Writer, repoDir, remote string) {
 	fmt.Fprintln(w, "  • MCP (Claude Code / Cursor / Codex): add to your .mcp.json —")
 	fmt.Fprintln(w, `      { "mcpServers": { "teammemory": { "command": "tm", "args": ["mcp"] } } }`)
 	if remote != "" {
-		fmt.Fprintf(w, "  • Ledger remote configured: %s (run `tm sync --remote %s`).\n", remote, remote)
+		fmt.Fprintf(w, "  • Ledger remote stored as git config tm.remote=%s; sync and background fetch/push use it.\n", remote)
 	}
 }

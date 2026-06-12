@@ -2,7 +2,9 @@ package cli
 
 import (
 	"fmt"
+	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/AndreasSteinerPF/team-memory/internal/acks"
 	"github.com/AndreasSteinerPF/team-memory/internal/git"
@@ -82,4 +84,26 @@ func (e *env) engine() *retrieve.Engine {
 // ackStore opens the local requirement-acknowledgment store under .git/tm/acks.
 func (e *env) ackStore() (*acks.Store, error) {
 	return acks.Open(e.gitDir)
+}
+
+// ledgerRemote returns the remote used for ledger fetch/push: the repo-local
+// `tm.remote` git config when set (prd.md §7.1 separate-remote mode), else
+// "origin". The value may be a remote name or a URL/path — git accepts both.
+func (e *env) ledgerRemote() string {
+	if out, err := e.git.Run("config", "--get", "tm.remote"); err == nil {
+		if v := strings.TrimSpace(out); v != "" {
+			return v
+		}
+	}
+	return "origin"
+}
+
+// remoteAvailable reports whether remote is usable as a fetch/push target:
+// URLs and paths (anything with a separator) are passed to git verbatim;
+// bare names must resolve via `git remote get-url`.
+func remoteAvailable(e *env, remote string) bool {
+	if strings.ContainsAny(remote, "/:\\") {
+		return true
+	}
+	return exec.Command("git", "-C", e.repoDir, "remote", "get-url", remote).Run() == nil
 }

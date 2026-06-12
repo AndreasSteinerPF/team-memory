@@ -18,6 +18,9 @@ func newSyncCmd(g *globalOpts) *cobra.Command {
 				return err
 			}
 			defer e.close()
+			if remote == "" {
+				remote = e.ledgerRemote()
+			}
 			res, err := e.led.Sync(remote)
 			if err != nil {
 				return err
@@ -29,6 +32,6 @@ func newSyncCmd(g *globalOpts) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&remote, "remote", "origin", "git remote (or path) to sync with")
+	cmd.Flags().StringVar(&remote, "remote", "", "git remote (or URL/path) to sync with (default: git config tm.remote, else origin)")
 	return cmd
 }
