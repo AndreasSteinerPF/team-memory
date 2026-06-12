@@ -3,8 +3,12 @@ package ledger
 import (
 	"fmt"
 	"os"
+	"strings"
+	"time"
 
 	"github.com/AndreasSteinerPF/team-memory/internal/git"
+	"github.com/AndreasSteinerPF/team-memory/internal/model"
+	"github.com/AndreasSteinerPF/team-memory/internal/recordid"
 )
 
 const (
@@ -99,6 +103,131 @@ func (l *Ledger) commitFiles(message string, files map[string][]byte) (string, e
 		return "", err
 	}
 	return commit, nil
+}
+
+// AppendMemory assigns a ULID if none is set, stamps CreatedAt if zero,
+// serializes the memory, and commits it as memories/<id>.yaml. It returns the
+// memory's ID. The ledger branch must already exist (call Init first).
+func (l *Ledger) AppendMemory(m model.Memory) (string, error) {
+	if !l.Exists() {
+		return "", fmt.Errorf("ledger: branch %q does not exist; run Init first", l.branch)
+	}
+	if m.ID == "" {
+		m.ID = recordid.New()
+	}
+	if m.CreatedAt.IsZero() {
+		m.CreatedAt = time.Now().UTC()
+	}
+	data, err := marshalMemory(m)
+	if err != nil {
+		return "", err
+	}
+	path := memoriesDir + "/" + m.ID + ".yaml"
+	if _, err := l.commitFiles("tm: add memory "+m.ID,
+		map[string][]byte{path: data}); err != nil {
+		return "", err
+	}
+	return m.ID, nil
+}
+
+// AppendObservation is the observation analogue of AppendMemory.
+func (l *Ledger) AppendObservation(o model.Observation) (string, error) {
+	if !l.Exists() {
+		return "", fmt.Errorf("ledger: branch %q does not exist; run Init first", l.branch)
+	}
+	if o.ID == "" {
+		o.ID = recordid.New()
+	}
+	if o.CreatedAt.IsZero() {
+		o.CreatedAt = time.Now().UTC()
+	}
+	data, err := marshalObservation(o)
+	if err != nil {
+		return "", err
+	}
+	path := observationsDir + "/" + o.ID + ".yaml"
+	if _, err := l.commitFiles("tm: add observation "+o.ID,
+		map[string][]byte{path: data}); err != nil {
+		return "", err
+	}
+	return o.ID, nil
+}
+
+// Memories returns every memory record on the branch.
+func (l *Ledger) Memories() ([]model.Memory, error) {
+	if !l.Exists() {
+		return nil, nil
+	}
+	files, err := l.listFiles(memoriesDir)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]model.Memory, 0, len(files))
+	for _, f := range files {
+		data, err := l.readFile(f)
+		if err != nil {
+			return nil, err
+		}
+		m, err := unmarshalMemory(data)
+		if err != nil {
+			return nil, fmt.Errorf("ledger: parse %s: %w", f, err)
+		}
+		out = append(out, m)
+	}
+	return out, nil
+}
+
+// Observations returns every observation record on the branch.
+func (l *Ledger) Observations() ([]model.Observation, error) {
+	if !l.Exists() {
+		return nil, nil
+	}
+	files, err := l.listFiles(observationsDir)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]model.Observation, 0, len(files))
+	for _, f := range files {
+		data, err := l.readFile(f)
+		if err != nil {
+			return nil, err
+		}
+		o, err := unmarshalObservation(data)
+		if err != nil {
+			return nil, fmt.Errorf("ledger: parse %s: %w", f, err)
+		}
+		out = append(out, o)
+	}
+	return out, nil
+}
+
+// Policy returns the raw bytes of policy.yaml from the branch.
+func (l *Ledger) Policy() ([]byte, error) {
+	if !l.Exists() {
+		return nil, fmt.Errorf("ledger: branch %q does not exist", l.branch)
+	}
+	return l.readFile(policyFile)
+}
+
+// listFiles returns the paths of every blob under dir on the branch.
+func (l *Ledger) listFiles(dir string) ([]string, error) {
+	out, err := l.git.Run("ls-tree", "-r", "--name-only", l.ref(), dir+"/")
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(out) == "" {
+		return nil, nil
+	}
+	return strings.Split(out, "\n"), nil
+}
+
+// readFile returns the content of a single path on the branch.
+func (l *Ledger) readFile(path string) ([]byte, error) {
+	out, err := l.git.Run("cat-file", "-p", l.ref()+":"+path)
+	if err != nil {
+		return nil, err
+	}
+	return []byte(out), nil
 }
 
 // tempIndex returns a path for a throwaway git index plus a cleanup func. git
