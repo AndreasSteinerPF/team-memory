@@ -11,6 +11,7 @@ import (
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/AndreasSteinerPF/team-memory/internal/acks"
+	"github.com/AndreasSteinerPF/team-memory/internal/derive"
 	"github.com/AndreasSteinerPF/team-memory/internal/index"
 	"github.com/AndreasSteinerPF/team-memory/internal/ledger"
 	"github.com/AndreasSteinerPF/team-memory/internal/model"
@@ -51,6 +52,7 @@ func New(d Deps) *Server {
 func (s *Server) registerTools(srv *sdkmcp.Server) {
 	s.addStatusTool(srv)
 	s.addSearchTool(srv)
+	s.addProposeTool(srv)
 }
 
 // Run serves the MCP protocol over stdio (blocks until ctx is cancelled or EOF).
@@ -192,6 +194,79 @@ Use for ad-hoc queries when you know what to look for by keyword. For edit-time 
 				fmt.Fprintf(&b, "%s  [%s]  %s\n", m.ID, m.Status, m.Title)
 			}
 		}
+		return textResult(b.String()), nil, nil
+	})
+}
+
+// --- tm_propose ---
+
+type proposeArgs struct {
+	Type     string   `json:"type" jsonschema:"Memory type: failed_attempt|constraint|fragile_area|stale_doc|decision"`
+	Title    string   `json:"title" jsonschema:"Short title (required). Memory-worthy: non-obvious failures, hidden constraints, fragile areas, stale docs, undocumented decisions affecting future work. NOT memory-worthy: session state, trivia, or facts derivable from the repo."`
+	Summary  string   `json:"summary,omitempty" jsonschema:"What happened or what was discovered."`
+	Guidance string   `json:"guidance,omitempty" jsonschema:"What a future agent should do when it encounters this situation."`
+	Scope    []string `json:"scope,omitempty" jsonschema:"Path globs this memory applies to (e.g. billing/migrations/**)."`
+	Evidence []string `json:"evidence,omitempty" jsonschema:"Evidence as type:ref pairs (e.g. test_failure:logs/rollback.log)."`
+	Session  string   `json:"session,omitempty" jsonschema:"Session ID of the proposing agent for independence tracking. Use $CLAUDE_SESSION_ID."`
+	Actor    string   `json:"actor,omitempty" jsonschema:"Name of the proposing agent."`
+}
+
+func (s *Server) addProposeTool(srv *sdkmcp.Server) {
+	sdkmcp.AddTool(srv, &sdkmcp.Tool{
+		Name: "tm_propose",
+		Description: `Record durable, future-action-relevant project judgment in TeamMemory. Call ONLY for:
+- Non-obvious failures: approaches tried and failed that a future agent would try again.
+- Hidden constraints: rules on how work must be done here that are not written down.
+- Fragile areas: paths where changes frequently break non-obvious things.
+- Stale docs: outdated or misleading documentation with a pointer to what supersedes it.
+- Undocumented decisions: choices that change future agent work and exist nowhere else.
+
+Do NOT call for: session state ("task in progress"), trivia, code facts derivable from the repo ("this function validates invoices"), or things already in CLAUDE.md/AGENTS.md.
+
+Memories earn trust through independent confirmation — redundant proposals are noise. If a similar memory may already exist, use tm_search first.`,
+	}, func(ctx context.Context, req *sdkmcp.CallToolRequest, args proposeArgs) (*sdkmcp.CallToolResult, any, error) {
+		mt := model.MemoryType(args.Type)
+		switch mt {
+		case model.TypeFailedAttempt, model.TypeConstraint, model.TypeFragileArea, model.TypeStaleDoc, model.TypeDecision:
+		default:
+			return &sdkmcp.CallToolResult{
+				IsError: true,
+				Content: []sdkmcp.Content{&sdkmcp.TextContent{
+					Text: fmt.Sprintf("unknown type %q: must be failed_attempt|constraint|fragile_area|stale_doc|decision", args.Type),
+				}},
+			}, nil, nil
+		}
+
+		actor := args.Actor
+		if actor == "" {
+			actor = "mcp"
+		}
+		m := model.Memory{
+			Type:     mt,
+			Title:    args.Title,
+			Summary:  args.Summary,
+			Guidance: args.Guidance,
+			Scope:    model.Scope{Paths: args.Scope},
+			Actor:    model.Actor{Kind: model.ActorAgent, Name: actor, SessionID: args.Session},
+		}
+		for _, ev := range args.Evidence {
+			m.Evidence = append(m.Evidence, parseEvidence(ev))
+		}
+
+		id, err := s.deps.Ledger.AppendMemory(m)
+		if err != nil {
+			return nil, nil, err
+		}
+		if err := s.deps.Index.Update(); err != nil {
+			return nil, nil, err
+		}
+		m.ID = id
+		st := derive.Derive(m, nil, s.deps.Policy)
+
+		var b strings.Builder
+		fmt.Fprintln(&b, id)
+		fmt.Fprintln(&b, stateStr(st.Status, st.Risk, st.Confidence, st.Enforcement))
+		fmt.Fprintf(&b, "reason: %s\n", st.Reason)
 		return textResult(b.String()), nil, nil
 	})
 }

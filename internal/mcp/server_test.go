@@ -195,3 +195,65 @@ func TestSearchTool(t *testing.T) {
 		t.Fatalf("expected no results for non-matching query, got:\n%s", resultText(res))
 	}
 }
+
+func TestProposeTool(t *testing.T) {
+	ctx := context.Background()
+	_, d, cleanup := testEnv(t)
+	defer cleanup()
+
+	session := startServer(t, ctx, d)
+
+	// Propose a low-risk decision — activates immediately.
+	res := callTool(t, ctx, session, "tm_propose", map[string]any{
+		"type":    "decision",
+		"title":   "use ULIDs for all record IDs",
+		"summary": "avoids merge conflicts across concurrent agents",
+		"scope":   []string{"docs/**"},
+		"session": "s1",
+		"actor":   "test",
+	})
+	text := resultText(res)
+	if !strings.Contains(text, "status: active") {
+		t.Fatalf("low-risk decision should activate immediately, got:\n%s", text)
+	}
+	if !strings.Contains(text, "risk: low") {
+		t.Fatalf("decision scope docs/** should be low risk, got:\n%s", text)
+	}
+
+	// Assert ledger mutation: the memory was written.
+	mems, err := d.Ledger.Memories()
+	if err != nil {
+		t.Fatalf("Memories: %v", err)
+	}
+	if len(mems) != 1 || mems[0].Title != "use ULIDs for all record IDs" {
+		t.Fatalf("expected 1 memory with the proposed title, got %d: %+v", len(mems), mems)
+	}
+
+	// Propose a migrations-scoped failed_attempt — high risk (escalated by sensitive path), provisional.
+	res = callTool(t, ctx, session, "tm_propose", map[string]any{
+		"type":    "failed_attempt",
+		"title":   "billing migrations need downgrade tests",
+		"scope":   []string{"billing/migrations/**"},
+		"session": "s1",
+		"actor":   "test",
+	})
+	text = resultText(res)
+	if !strings.Contains(text, "status: provisional") {
+		t.Fatalf("medium risk failed_attempt should be provisional, got:\n%s", text)
+	}
+	if !strings.Contains(text, "risk: high") {
+		t.Fatalf("migrations scope should escalate to high risk, got:\n%s", text)
+	}
+
+	// Unknown type is an error (IsError=true).
+	res2, err := session.CallTool(ctx, &sdkmcp.CallToolParams{
+		Name:      "tm_propose",
+		Arguments: map[string]any{"type": "nonsense", "title": "x", "session": "s1"},
+	})
+	if err != nil {
+		t.Fatalf("CallTool returned transport error (want IsError=true): %v", err)
+	}
+	if !res2.IsError {
+		t.Fatalf("expected IsError=true for unknown type, got text: %s", resultText(res2))
+	}
+}
