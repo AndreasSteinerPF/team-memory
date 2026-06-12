@@ -1,0 +1,15 @@
+exec tm init
+
+# A low-risk decision activates immediately.
+exec tm propose decision --title 'Use ULIDs for record ids' --scope 'docs/**'
+stdout 'status: active'
+stdout 'risk: low'
+
+# A migrations-scoped failed_attempt escalates to high risk and stays provisional.
+exec tm propose failed_attempt --title 'Billing migrations need downgrade tests' --scope 'billing/migrations/**' --summary 'rollback failed'
+stdout 'status: provisional'
+stdout 'risk: high'
+
+# An unknown type is rejected.
+! exec tm propose nonsense --title 'x'
+stderr 'unknown type'
