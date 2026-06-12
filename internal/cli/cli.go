@@ -33,6 +33,7 @@ func newRootCmd() *cobra.Command {
 	root.PersistentFlags().StringVar(&g.branch, "branch", "teammemory", "ledger branch name")
 	root.AddCommand(
 		newVersionCmd(),
+		newInitCmd(g),
 		// Subsequent tasks register their commands here.
 	)
 	return root

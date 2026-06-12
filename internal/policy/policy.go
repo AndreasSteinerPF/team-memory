@@ -88,3 +88,15 @@ func Load(data []byte) (Policy, error) {
 	}
 	return p, nil
 }
+
+// DefaultYAML returns the built-in policy serialized as YAML with a header
+// comment, suitable for writing to a freshly initialized ledger's policy.yaml.
+// Load(DefaultYAML()) equals Default().
+func DefaultYAML() ([]byte, error) {
+	body, err := yaml.Marshal(Default())
+	if err != nil {
+		return nil, err
+	}
+	header := "# TeamMemory policy (prd.md §8.1). Edit to tune risk, activation, retrieval, and sync.\n"
+	return append([]byte(header), body...), nil
+}
