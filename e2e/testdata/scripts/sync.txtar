@@ -1,0 +1,17 @@
+# A bare remote to sync against.
+exec git init -q --bare $WORK/remote.git
+
+exec tm init
+exec tm propose decision --title 'first memory' --scope 'docs/**' --session s1
+
+# First sync to an empty remote creates the branch there.
+exec tm sync --remote $WORK/remote.git
+stdout 'sync: created-remote'
+
+# Re-syncing with no new local commits is a no-op.
+exec tm sync --remote $WORK/remote.git
+stdout 'sync: up-to-date'
+
+# The remote now carries the memory record.
+exec git ls-remote $WORK/remote.git
+stdout 'refs/heads/teammemory'
