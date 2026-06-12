@@ -95,3 +95,54 @@ func TestCheckActionHookBlocksUntilAcked(t *testing.T) {
 		t.Fatalf("acked requirement should not be denied:\n%s", out)
 	}
 }
+
+func TestCheckActionHookInjectsContext(t *testing.T) {
+	dir := newGitRepo(t)
+	writeFile(t, dir, "billing/migrations/m.sql", "v1")
+	gitExec(t, dir, "add", ".")
+	gitExec(t, dir, "commit", "-q", "-m", "seed")
+	runTM(t, dir, "", "init")
+
+	// Session s1 proposes a failed_attempt memory.
+	out, _, _ := runTM(t, dir, "", "propose", "failed_attempt",
+		"--title", "downgrade tests required",
+		"--guidance", "run downgrade tests first",
+		"--scope", "billing/migrations/**",
+		"--session", "s1")
+	id := parseID(t, out)
+
+	// Session s2 independently confirms ⇒ auto-activates (status: active).
+	out, _, _ = runTM(t, dir, "", "observe", id, "confirm",
+		"--summary", "reproduced on second branch",
+		"--session", "s2")
+	if !strings.Contains(out, "status: active") {
+		t.Fatalf("want active after confirm, got:\n%s", out)
+	}
+
+	// No `tm approve --enforcement requirement` — enforcement stays at default (warning).
+
+	// Session s3 targets the scoped file.
+	ev := hookEvent(t, "s3", dir, "billing/migrations/m.sql")
+	out, _, code := runTM(t, dir, ev, "check-action", "--hook")
+	if code != 0 {
+		t.Fatalf("hook should exit 0 for inject path; got %d / %s", code, out)
+	}
+	if strings.Contains(out, `"deny"`) {
+		t.Fatalf("warning-enforcement memory should not deny; got:\n%s", out)
+	}
+
+	var resp struct {
+		HookSpecificOutput struct {
+			AdditionalContext string `json:"additionalContext"`
+		} `json:"hookSpecificOutput"`
+	}
+	if err := json.Unmarshal([]byte(out), &resp); err != nil {
+		t.Fatalf("hook output not JSON: %v\n%s", err, out)
+	}
+	if resp.HookSpecificOutput.AdditionalContext == "" {
+		t.Fatalf("want non-empty additionalContext; got:\n%s", out)
+	}
+	if !strings.Contains(resp.HookSpecificOutput.AdditionalContext, "downgrade tests required") {
+		t.Fatalf("additionalContext should mention memory title; got:\n%s", resp.HookSpecificOutput.AdditionalContext)
+	}
+}
