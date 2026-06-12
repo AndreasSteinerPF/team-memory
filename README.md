@@ -177,7 +177,7 @@ Add to `.mcp.json`:
 }
 ```
 
-MCP tools: `tm_propose`, `tm_observe`, `tm_check_action`, `tm_list`, `tm_status`.
+MCP tools: `tm_propose`, `tm_observe`, `tm_check_action`, `tm_search`, `tm_status`.
 
 ---
 
