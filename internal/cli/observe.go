@@ -59,6 +59,7 @@ func newObserveCmd(g *globalOpts) *cobra.Command {
 			if err := e.idx.Update(); err != nil {
 				return err
 			}
+			triggerBackgroundPush(e)
 			return printTargetState(cmd.OutOrStdout(), e, target)
 		},
 	}

@@ -62,6 +62,7 @@ func newProposeCmd(g *globalOpts) *cobra.Command {
 			if err := e.idx.Update(); err != nil {
 				return err
 			}
+			triggerBackgroundPush(e)
 			m.ID = id
 			st := derive.Derive(m, nil, e.pol)
 			out := cmd.OutOrStdout()
