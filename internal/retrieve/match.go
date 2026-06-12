@@ -76,3 +76,7 @@ func ftsQuery(desc string) string {
 	}
 	return strings.Join(tokens, " OR ")
 }
+
+// FTSQuery exposes the FTS5 query builder so the CLI's `search` command and the
+// retrieval engine tokenize identically. Returns "" if s has no usable tokens.
+func FTSQuery(s string) string { return ftsQuery(s) }

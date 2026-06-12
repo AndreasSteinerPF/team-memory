@@ -1,0 +1,10 @@
+exec tm init
+exec tm propose failed_attempt --title 'rollback failure on migration' --scope 'billing/**' --session s1
+exec tm propose decision --title 'unrelated note about caching' --scope 'cache/**' --session s1
+
+exec tm search rollback
+stdout 'rollback failure on migration'
+! stdout 'caching'
+
+exec tm search '!!!'
+stdout 'No results.'
