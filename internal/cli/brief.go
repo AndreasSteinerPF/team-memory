@@ -24,8 +24,13 @@ func newBriefCmd(g *globalOpts) *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			e, err := openEnv(g)
 			if err != nil {
-				// A session hook must never break or spam a session: in a repo
-				// without an initialized ledger, succeed silently.
+				// A session hook must never break or spam a session, so we
+				// deliberately swallow EVERY openEnv failure (not just the
+				// expected "no ledger yet" case) and succeed silently. A
+				// genuinely broken setup — corrupt index, git error — still
+				// surfaces loudly through every other command (tm list/status/
+				// sync all return this error), so nothing is hidden; only the
+				// hook stays quiet.
 				return nil
 			}
 			defer e.close()
@@ -70,6 +75,8 @@ func buildBrief(e *env) (string, error) {
 	for _, m := range rows {
 		counts[m.Status]++
 	}
+	// active/provisional/contested are the actionable statuses at session
+	// start; stale and rejected are intentionally omitted from the count line.
 	var b strings.Builder
 	fmt.Fprintf(&b, "TeamMemory: shared project memory is active in this repo — %d active, %d provisional, %d contested memories.\n",
 		counts[model.StatusActive], counts[model.StatusProvisional], counts[model.StatusContested])
