@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -28,6 +30,9 @@ func newCheckActionCmd(g *globalOpts) *cobra.Command {
 				return err
 			}
 			defer e.close()
+			// Trigger a non-blocking background fetch when the last fetch is stale
+			// (prd.md §7.4). Never waits on the network — hook latency unaffected.
+			maybeTriggerFetch(e)
 			if hook {
 				return runHook(cmd, e)
 			}
@@ -86,6 +91,36 @@ func firstNonEmpty(a, b string) string {
 		return a
 	}
 	return b
+}
+
+// maybeTriggerFetch fires a detached background `git fetch` of the ledger
+// branch when the last fetch is older than policy.Sync.AutoFetchAfter (prd.md
+// §7.4). The hook never waits on the network — this function returns immediately
+// after starting the subprocess.
+func maybeTriggerFetch(e *env) {
+	interval := 5 * time.Minute
+	if d, err := time.ParseDuration(e.pol.Sync.AutoFetchAfter); err == nil && d > 0 {
+		interval = d
+	}
+
+	stampFile := filepath.Join(e.gitDir, "tm", "last_fetch")
+	if data, err := os.ReadFile(stampFile); err == nil {
+		if t, err := time.Parse(time.RFC3339, strings.TrimSpace(string(data))); err == nil {
+			if time.Since(t) < interval {
+				return // still fresh
+			}
+		}
+	}
+
+	// Write the new timestamp before starting the subprocess so concurrent
+	// hook invocations don't pile up fetch processes.
+	_ = os.WriteFile(stampFile, []byte(time.Now().UTC().Format(time.RFC3339)+"\n"), 0o644)
+
+	ref := "refs/heads/" + e.branch
+	cmd := exec.Command("git", "-C", e.repoDir, "fetch", "--quiet", "--no-tags",
+		"origin", ref+":"+ref)
+	// Start detached — intentionally not calling Wait; parent may exit first.
+	_ = cmd.Start()
 }
 
 // --- hook mode (Claude Code PreToolUse contract) ---

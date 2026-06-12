@@ -69,6 +69,14 @@ func newShowCmd(g *globalOpts) *cobra.Command {
 					}
 				}
 			}
+			if len(st.PendingAdjustments) > 0 {
+				fmt.Fprintln(out, "pending scope adjustments (broadening, awaiting substantiation):")
+				for _, a := range st.PendingAdjustments {
+					fmt.Fprintf(out, "  %s  suggested: %s\n",
+						a.CreatedAt.UTC().Format(time.RFC3339),
+						strings.Join(a.SuggestedScope.Paths, ", "))
+				}
+			}
 			return nil
 		},
 	}

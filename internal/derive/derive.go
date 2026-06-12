@@ -21,6 +21,11 @@ type DerivedState struct {
 	IndependentConfirms int
 	Contradictions      int
 	Reason              string
+
+	// PendingAdjustments holds adjust_scope observations whose suggested scope
+	// broadens the effective scope but is not yet substantiated (prd.md §8.5).
+	// Visible in `tm show` so humans know what broadening requests are queued.
+	PendingAdjustments []model.Observation
 }
 
 // Derive computes the full state. Order matters: effective scope first (it can
@@ -42,6 +47,7 @@ func Derive(m model.Memory, obs []model.Observation, p policy.Policy) DerivedSta
 		IndependentConfirms: indConf,
 		Contradictions:      countKind(obs, model.KindContradict),
 		Reason:              buildReason(status, indConf, obs),
+		PendingAdjustments:  pendingBroadenings(m, obs),
 	}
 }
 

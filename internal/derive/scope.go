@@ -175,6 +175,30 @@ func MatchPathGlob(path, glob string) bool { return pathMatchesGlob(path, glob) 
 // MatchPath reports whether a concrete path matches any glob in scope.
 func MatchPath(path string, s model.Scope) bool { return pathMatchesScope(path, s) }
 
+// pendingBroadenings returns adjust_scope observations whose suggested scope
+// broadens beyond the current effective scope and is not yet substantiated.
+// Mirrors the effectiveScope walk so the two functions stay consistent.
+func pendingBroadenings(m model.Memory, obs []model.Observation) []model.Observation {
+	cur := m.Scope
+	var pending []model.Observation
+	for _, a := range sortedByTime(filterKind(obs, model.KindAdjustScope)) {
+		if a.SuggestedScope == nil {
+			continue
+		}
+		sug := *a.SuggestedScope
+		if scopeSubset(sug, cur) { // narrowing — applied immediately
+			cur = sug
+			continue
+		}
+		if broadeningSubstantiated(a, m, obs) {
+			cur = sug // substantiated broadening — applied
+		} else {
+			pending = append(pending, a)
+		}
+	}
+	return pending
+}
+
 // effectiveScope applies adjust_scope observations in chronological order.
 // Narrowings apply immediately; broadenings apply only once substantiated.
 func effectiveScope(m model.Memory, obs []model.Observation) model.Scope {

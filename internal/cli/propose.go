@@ -2,6 +2,9 @@ package cli
 
 import (
 	"fmt"
+	"sort"
+	"strings"
+	"unicode"
 
 	"github.com/spf13/cobra"
 
@@ -50,6 +53,8 @@ func newProposeCmd(g *globalOpts) *cobra.Command {
 				m.CodeContext = &model.CodeContext{Branch: ctxBranch, Paths: ctxPaths}
 			}
 
+			warnSimilar(cmd, e, title)
+
 			id, err := e.led.AppendMemory(m)
 			if err != nil {
 				return err
@@ -87,4 +92,61 @@ func validType(t model.MemoryType) bool {
 		return true
 	}
 	return false
+}
+
+// warnSimilar searches the FTS index for memories similar to title and prints a
+// warning to stderr when matches exist, prompting the user to confirm instead of
+// creating a duplicate (prd.md §15 spam mitigation).
+func warnSimilar(cmd *cobra.Command, e *env, title string) {
+	q := ftsQuery(title)
+	if q == "" {
+		return
+	}
+	ids, err := e.idx.SearchIDs(q)
+	if err != nil || len(ids) == 0 {
+		return
+	}
+	const maxWarn = 3
+	w := cmd.ErrOrStderr()
+	fmt.Fprintln(w, "Note: similar memories already exist — consider confirming one instead of creating a duplicate:")
+	shown := 0
+	for _, id := range ids {
+		if shown >= maxWarn {
+			break
+		}
+		m, ok, err := e.led.Memory(id)
+		if err != nil || !ok {
+			continue
+		}
+		fmt.Fprintf(w, "  %s  %s  (`tm observe %s confirm`)\n", id, m.Title, id)
+		shown++
+	}
+}
+
+// ftsQuery builds a SQLite FTS5 query from s. It extracts alphanumeric tokens
+// ≥5 chars, selects the 3 longest (most distinctive), and joins them with
+// implicit AND so only memories sharing those key terms are flagged. Short or
+// common words are excluded to avoid over-broad matches.
+func ftsQuery(s string) string {
+	var words []string
+	for _, field := range strings.Fields(s) {
+		var b strings.Builder
+		for _, r := range field {
+			if unicode.IsLetter(r) || unicode.IsDigit(r) {
+				b.WriteRune(r)
+			}
+		}
+		if b.Len() >= 5 {
+			words = append(words, b.String())
+		}
+	}
+	if len(words) == 0 {
+		return ""
+	}
+	sort.Slice(words, func(i, j int) bool { return len(words[i]) > len(words[j]) })
+	const maxTerms = 3
+	if len(words) > maxTerms {
+		words = words[:maxTerms]
+	}
+	return strings.Join(words, " ")
 }
