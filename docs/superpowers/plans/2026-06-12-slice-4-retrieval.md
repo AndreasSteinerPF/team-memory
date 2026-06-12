@@ -1408,6 +1408,15 @@ func TestEndToEndScopeAndFTSRetrieval(t *testing.T) {
 	if err != nil {
 		t.Fatalf("append fts: %v", err)
 	}
+	// Activate it too (medium tier needs one independent confirm), so it is
+	// retrievable as an FTS-only hit rather than filtered out as provisional.
+	if _, err := l.AppendObservation(model.Observation{
+		Target: ftsID, Kind: model.KindConfirm,
+		Summary: "saw duplicate webhook deliveries again",
+		Actor:   model.Actor{Kind: model.ActorAgent, Name: "b", SessionID: "s2"},
+	}); err != nil {
+		t.Fatalf("confirm fts: %v", err)
+	}
 
 	idx := openIndex(t, l)
 	e := retrieve.New(idx, nil, policy.Default())
