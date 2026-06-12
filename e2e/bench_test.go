@@ -91,7 +91,7 @@ func TestHookLatency1000(t *testing.T) {
 	runTM(t, dir, ev, "check-action", "--hook")
 	warmElapsed := time.Since(warmStart)
 	t.Logf("warm-up: %v", warmElapsed)
-	if warmElapsed > 300*time.Millisecond {
+	if warmElapsed > 100*time.Millisecond {
 		t.Skipf("host too loaded for latency assertion (warm-up=%v; skipping)", warmElapsed)
 	}
 

@@ -112,9 +112,18 @@ func maybeTriggerFetch(e *env) {
 		}
 	}
 
-	// Write the new timestamp before starting the subprocess so concurrent
-	// hook invocations don't pile up fetch processes.
+	// Write the stamp before checking the remote so concurrent invocations
+	// don't pile up processes, and so the interval is respected even when
+	// no remote is configured.
 	_ = os.WriteFile(stampFile, []byte(time.Now().UTC().Format(time.RFC3339)+"\n"), 0o644)
+
+	// Only start the subprocess when an origin remote is configured.
+	// This avoids creating git lock files in repos without a remote (e.g.
+	// tests), which would race with temporary-directory cleanup.
+	check := exec.Command("git", "-C", e.repoDir, "remote", "get-url", "origin")
+	if check.Run() != nil {
+		return
+	}
 
 	ref := "refs/heads/" + e.branch
 	cmd := exec.Command("git", "-C", e.repoDir, "fetch", "--quiet", "--no-tags",
