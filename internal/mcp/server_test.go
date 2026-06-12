@@ -391,3 +391,105 @@ func TestCheckActionTool(t *testing.T) {
 		t.Fatalf("expected no relevant memories for unrelated path, got:\n%s", text)
 	}
 }
+
+// TestFullPipeline exercises the complete PRD §13 lifecycle through MCP tools:
+// propose → confirm → activate → check_action → search → status
+func TestFullPipeline(t *testing.T) {
+	ctx := context.Background()
+	_, d, cleanup := testEnv(t)
+	defer cleanup()
+
+	session := startServer(t, ctx, d)
+
+	// Step 1: Propose a high-risk failed_attempt scoped to billing/migrations/**
+	// (session "s1"). Default policy escalates failed_attempt + billing/migrations/**
+	// to high risk → status should be provisional.
+	res := callTool(t, ctx, session, "tm_propose", map[string]any{
+		"type":    "failed_attempt",
+		"title":   "billing migrations crash on downgrade",
+		"summary": "migrating down drops the invoice_state column unexpectedly",
+		"scope":   []string{"billing/migrations/**"},
+		"session": "s1",
+		"actor":   "test",
+	})
+	proposeText := resultText(res)
+	if !strings.Contains(proposeText, "status: provisional") {
+		t.Fatalf("high-risk failed_attempt should be provisional, got:\n%s", proposeText)
+	}
+	if !strings.Contains(proposeText, "risk: high") {
+		t.Fatalf("billing/migrations/** should escalate to high risk, got:\n%s", proposeText)
+	}
+
+	// Extract the memory ID from the first line of the propose response.
+	memID := strings.TrimSpace(strings.SplitN(proposeText, "\n", 2)[0])
+	if memID == "" {
+		t.Fatalf("could not extract memory ID from propose response:\n%s", proposeText)
+	}
+
+	// Step 2: Confirm with an independent session (s2) → status should become active.
+	res = callTool(t, ctx, session, "tm_observe", map[string]any{
+		"memory_id": memID,
+		"kind":      "confirm",
+		"summary":   "reproduced on revenue-2026 branch — downgrade fails the same way",
+		"session":   "s2",
+		"actor":     "test",
+	})
+	observeText := resultText(res)
+	if !strings.Contains(observeText, "status: active") {
+		t.Fatalf("independent confirm should activate the memory, got:\n%s", observeText)
+	}
+
+	// Step 3: check_action with a matching path must contain the memory title.
+	if err := d.Index.Update(); err != nil {
+		t.Fatalf("idx.Update after confirm: %v", err)
+	}
+	res = callTool(t, ctx, session, "tm_check_action", map[string]any{
+		"paths":       []string{"billing/migrations/0042_add_invoice_state.sql"},
+		"description": "apply billing migration",
+	})
+	checkText := resultText(res)
+	if !strings.Contains(checkText, "billing migrations crash on downgrade") {
+		t.Fatalf("check_action should surface the active memory title, got:\n%s", checkText)
+	}
+
+	// Step 4: search by a keyword from the title must contain the memory ID.
+	res = callTool(t, ctx, session, "tm_search", map[string]any{
+		"query": "downgrade",
+	})
+	searchText := resultText(res)
+	if !strings.Contains(searchText, memID) {
+		t.Fatalf("search should return memory %s, got:\n%s", memID, searchText)
+	}
+
+	// Step 5: status must report "1 active" and "0 provisional".
+	res = callTool(t, ctx, session, "tm_status", map[string]any{})
+	statusText := resultText(res)
+	if !strings.Contains(statusText, "1 active") {
+		t.Fatalf("expected '1 active' in status, got:\n%s", statusText)
+	}
+	if !strings.Contains(statusText, "0 provisional") {
+		t.Fatalf("expected '0 provisional' in status, got:\n%s", statusText)
+	}
+
+	// Step 6: Ledger audit — exactly 1 memory and 1 observation.
+	mems, err := d.Ledger.Memories()
+	if err != nil {
+		t.Fatalf("Ledger.Memories: %v", err)
+	}
+	if len(mems) != 1 {
+		t.Fatalf("expected exactly 1 memory in ledger, got %d", len(mems))
+	}
+	obs, err := d.Ledger.Observations()
+	if err != nil {
+		t.Fatalf("Ledger.Observations: %v", err)
+	}
+	if len(obs) != 1 {
+		t.Fatalf("expected exactly 1 observation in ledger, got %d", len(obs))
+	}
+	if obs[0].Target != memID {
+		t.Fatalf("observation target %q does not match memory ID %q", obs[0].Target, memID)
+	}
+	if obs[0].Kind != model.KindConfirm {
+		t.Fatalf("expected confirm observation, got %v", obs[0].Kind)
+	}
+}
