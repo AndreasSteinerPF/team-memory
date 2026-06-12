@@ -128,6 +128,107 @@ func TestReindexIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestUpdateMatchesReplayAfterNewRecords(t *testing.T) {
+	l := newLedger(t)
+
+	// A medium-risk memory with no confirms yet: still provisional.
+	id, err := l.AppendMemory(model.Memory{
+		Type:  model.TypeFailedAttempt,
+		Title: "retry storm on webhook",
+		Scope: model.Scope{Paths: []string{"billing/webhook.go"}},
+		Actor: model.Actor{Kind: model.ActorAgent, Name: "a", SessionID: "s1"},
+	})
+	if err != nil {
+		t.Fatalf("append memory: %v", err)
+	}
+
+	idx := openIndex(t, dbPath(t), l) // initial full replay
+
+	before, err := idx.All()
+	if err != nil {
+		t.Fatalf("all before: %v", err)
+	}
+	if before[0].Status != model.StatusProvisional {
+		t.Fatalf("status before confirm = %q, want provisional", before[0].Status)
+	}
+
+	// An independent confirm from a different session should activate it.
+	if _, err := l.AppendObservation(model.Observation{
+		Target:  id,
+		Kind:    model.KindConfirm,
+		Summary: "hit the same retry storm",
+		Actor:   model.Actor{Kind: model.ActorAgent, Name: "b", SessionID: "s2"},
+	}); err != nil {
+		t.Fatalf("append observation: %v", err)
+	}
+	// A brand-new, unrelated memory added in the same window.
+	if _, err := l.AppendMemory(model.Memory{
+		Type:  model.TypeDecision,
+		Title: "use UTC everywhere",
+		Scope: model.Scope{Paths: []string{"src/**"}},
+		Actor: model.Actor{Kind: model.ActorAgent, Name: "c", SessionID: "s3"},
+	}); err != nil {
+		t.Fatalf("append decision: %v", err)
+	}
+
+	if err := idx.Update(); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+
+	// The incrementally-updated index must equal a fresh full replay.
+	full := openIndex(t, dbPath(t), l)
+	gotInc, err := idx.All()
+	if err != nil {
+		t.Fatalf("all inc: %v", err)
+	}
+	gotFull, err := full.All()
+	if err != nil {
+		t.Fatalf("all full: %v", err)
+	}
+	if !reflect.DeepEqual(gotInc, gotFull) {
+		t.Fatalf("incremental != replay:\n inc=%+v\nfull=%+v", gotInc, gotFull)
+	}
+
+	// And the confirm must actually have changed the affected memory's state.
+	var updated index.IndexedMemory
+	for _, m := range gotInc {
+		if m.ID == id {
+			updated = m
+		}
+	}
+	if updated.Status == model.StatusProvisional {
+		t.Fatalf("memory %s still provisional after independent confirm", id)
+	}
+}
+
+func TestUpdateIsNoOpWhenLedgerUnchanged(t *testing.T) {
+	l := newLedger(t)
+	if _, err := l.AppendMemory(model.Memory{
+		Type:  model.TypeDecision,
+		Title: "x",
+		Scope: model.Scope{Paths: []string{"src/**"}},
+		Actor: model.Actor{Kind: model.ActorAgent, Name: "a", SessionID: "s"},
+	}); err != nil {
+		t.Fatalf("append: %v", err)
+	}
+	idx := openIndex(t, dbPath(t), l)
+
+	before, err := idx.All()
+	if err != nil {
+		t.Fatalf("all before: %v", err)
+	}
+	if err := idx.Update(); err != nil { // no new records
+		t.Fatalf("update: %v", err)
+	}
+	after, err := idx.All()
+	if err != nil {
+		t.Fatalf("all after: %v", err)
+	}
+	if !reflect.DeepEqual(before, after) {
+		t.Fatalf("no-op update changed rows:\nbefore=%+v\nafter=%+v", before, after)
+	}
+}
+
 func TestSearchIDsFindsByText(t *testing.T) {
 	l := newLedger(t)
 	hit, err := l.AppendMemory(model.Memory{
