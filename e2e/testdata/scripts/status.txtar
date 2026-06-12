@@ -1,0 +1,7 @@
+exec tm init
+exec tm propose decision --title 'active note' --scope 'docs/**' --session s1
+exec tm propose failed_attempt --title 'provisional attempt' --scope 'billing/**' --session s1
+
+exec tm status
+stdout 'Memories: 1 active, 1 provisional, 0 contested, 0 stale, 0 rejected'
+stdout 'Ledger branch "teammemory" at'
