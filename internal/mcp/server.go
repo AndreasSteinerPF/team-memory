@@ -50,6 +50,7 @@ func New(d Deps) *Server {
 
 func (s *Server) registerTools(srv *sdkmcp.Server) {
 	s.addStatusTool(srv)
+	s.addSearchTool(srv)
 }
 
 // Run serves the MCP protocol over stdio (blocks until ctx is cancelled or EOF).
@@ -149,6 +150,48 @@ Use this to understand the health and size of the ledger before planning work.`,
 			tip = tip[:12]
 		}
 		fmt.Fprintf(&b, "\nLedger branch %q at %s\n", "teammemory", tip)
+		return textResult(b.String()), nil, nil
+	})
+}
+
+// --- tm_search ---
+
+type searchArgs struct {
+	Query string `json:"query" jsonschema:"Lexical search query over memory titles, summaries, and guidance."`
+}
+
+func (s *Server) addSearchTool(srv *sdkmcp.Server) {
+	sdkmcp.AddTool(srv, &sdkmcp.Tool{
+		Name: "tm_search",
+		Description: `Lexical search over TeamMemory titles, summaries, and guidance. Returns matching memories with their IDs, status, and titles.
+
+Use for ad-hoc queries when you know what to look for by keyword. For edit-time context (before touching a specific file), prefer tm_check_action with target paths — it applies scope matching and ranking.`,
+	}, func(ctx context.Context, req *sdkmcp.CallToolRequest, args searchArgs) (*sdkmcp.CallToolResult, any, error) {
+		q := retrieve.FTSQuery(args.Query)
+		if q == "" {
+			return textResult("No results.\n"), nil, nil
+		}
+		ids, err := s.deps.Index.SearchIDs(q)
+		if err != nil {
+			return nil, nil, err
+		}
+		if len(ids) == 0 {
+			return textResult("No results.\n"), nil, nil
+		}
+		rows, err := s.deps.Index.All()
+		if err != nil {
+			return nil, nil, err
+		}
+		byID := make(map[string]index.IndexedMemory, len(rows))
+		for _, m := range rows {
+			byID[m.ID] = m
+		}
+		var b strings.Builder
+		for _, id := range ids {
+			if m, ok := byID[id]; ok {
+				fmt.Fprintf(&b, "%s  [%s]  %s\n", m.ID, m.Status, m.Title)
+			}
+		}
 		return textResult(b.String()), nil, nil
 	})
 }

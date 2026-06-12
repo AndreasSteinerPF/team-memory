@@ -13,6 +13,7 @@ import (
 	"github.com/AndreasSteinerPF/team-memory/internal/git"
 	"github.com/AndreasSteinerPF/team-memory/internal/index"
 	"github.com/AndreasSteinerPF/team-memory/internal/ledger"
+	"github.com/AndreasSteinerPF/team-memory/internal/model"
 	"github.com/AndreasSteinerPF/team-memory/internal/policy"
 	"github.com/AndreasSteinerPF/team-memory/internal/retrieve"
 )
@@ -156,4 +157,41 @@ func seedFile(t *testing.T, dir, rel, content string) {
 	}
 	gitExecTest(t, dir, "add", ".")
 	gitExecTest(t, dir, "commit", "-q", "-m", "seed")
+}
+
+func TestSearchTool(t *testing.T) {
+	ctx := context.Background()
+	_, d, cleanup := testEnv(t)
+	defer cleanup()
+
+	// Propose a memory via the ledger directly (not the tool — that's Task 4).
+	m := model.Memory{
+		Type:    model.TypeDecision,
+		Title:   "rollback policy decision",
+		Summary: "always include a rollback path",
+		Scope:   model.Scope{Paths: []string{"docs/**"}},
+		Actor:   model.Actor{Kind: model.ActorAgent, Name: "test", SessionID: "s1"},
+	}
+	id, err := d.Ledger.AppendMemory(m)
+	if err != nil {
+		t.Fatalf("AppendMemory: %v", err)
+	}
+	if err := d.Index.Update(); err != nil {
+		t.Fatalf("idx.Update: %v", err)
+	}
+
+	session := startServer(t, ctx, d)
+
+	// Matching query returns the memory.
+	res := callTool(t, ctx, session, "tm_search", map[string]any{"query": "rollback"})
+	text := resultText(res)
+	if !strings.Contains(text, id) || !strings.Contains(text, "rollback policy decision") {
+		t.Fatalf("search did not return expected memory:\n%s", text)
+	}
+
+	// Non-matching query returns no results.
+	res = callTool(t, ctx, session, "tm_search", map[string]any{"query": "completely unrelated xyz"})
+	if !strings.Contains(resultText(res), "No results") {
+		t.Fatalf("expected no results for non-matching query, got:\n%s", resultText(res))
+	}
 }
