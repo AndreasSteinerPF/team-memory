@@ -1,0 +1,11 @@
+# build output
+/tm
+/tm.exe
+/dist/
+
+# go
+*.test
+*.out
+
+# local memory index (created by the tool at runtime, never committed)
+.git/tm/
