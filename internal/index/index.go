@@ -20,7 +20,7 @@ import (
 // schemaVersion is bumped whenever the table layout or derivation semantics
 // change in a way that invalidates an existing index. A stored value other than
 // this triggers an automatic rebuild on Open.
-const schemaVersion = "1"
+const schemaVersion = "2" // v2 adds the anchors column (Slice 4 drift)
 
 const (
 	metaSchemaVersion = "schema_version"
@@ -129,7 +129,8 @@ func (idx *Index) createSchema() error {
   independent_confirms INTEGER NOT NULL DEFAULT 0,
   contradictions       INTEGER NOT NULL DEFAULT 0,
   reason               TEXT NOT NULL DEFAULT '',
-  created_at           TEXT NOT NULL
+  created_at           TEXT NOT NULL,
+  anchors              TEXT NOT NULL DEFAULT '[]'
 )`,
 		`CREATE VIRTUAL TABLE memories_fts USING fts5(id UNINDEXED, title, summary, guidance)`,
 	}

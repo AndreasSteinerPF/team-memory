@@ -407,6 +407,35 @@ func TestAutoRebuildOnCorruptFile(t *testing.T) {
 	}
 }
 
+func TestReindexStoresAnchors(t *testing.T) {
+	l := newLedger(t)
+	mem := model.Memory{
+		Type:  model.TypeFailedAttempt,
+		Title: "billing migrations need downgrade tests",
+		Scope: model.Scope{Paths: []string{"billing/migrations/**"}},
+		Anchors: []model.Anchor{
+			{Path: "billing/migrations/2026_add_invoice_state.sql", Commit: "abc123"},
+		},
+		Actor: model.Actor{Kind: model.ActorAgent, Name: "a", SessionID: "s1"},
+	}
+	id, err := l.AppendMemory(mem)
+	if err != nil {
+		t.Fatalf("append memory: %v", err)
+	}
+
+	idx := openIndex(t, dbPath(t), l)
+	all, err := idx.All()
+	if err != nil {
+		t.Fatalf("all: %v", err)
+	}
+	if len(all) != 1 || all[0].ID != id {
+		t.Fatalf("got %d rows, want 1 with id %s", len(all), id)
+	}
+	if !reflect.DeepEqual(all[0].Anchors, mem.Anchors) {
+		t.Fatalf("anchors = %+v, want %+v", all[0].Anchors, mem.Anchors)
+	}
+}
+
 func TestAutoRebuildOnSchemaVersionMismatch(t *testing.T) {
 	l := newLedger(t)
 	id, err := l.AppendMemory(model.Memory{
@@ -461,7 +490,7 @@ func TestAutoRebuildOnSchemaVersionMismatch(t *testing.T) {
 	if err := verify.QueryRow(`SELECT value FROM meta WHERE key = 'schema_version'`).Scan(&v); err != nil {
 		t.Fatalf("read version: %v", err)
 	}
-	if v != "1" {
-		t.Fatalf("schema_version = %q after rebuild, want \"1\"", v)
+	if v != "2" {
+		t.Fatalf("schema_version = %q after rebuild, want \"2\"", v)
 	}
 }

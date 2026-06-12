@@ -176,11 +176,19 @@ func upsertTx(tx *sql.Tx, m model.Memory, st derive.DerivedState) error {
 	if err != nil {
 		return err
 	}
+	anchors := m.Anchors
+	if anchors == nil {
+		anchors = []model.Anchor{}
+	}
+	anchorsJSON, err := json.Marshal(anchors)
+	if err != nil {
+		return err
+	}
 	if _, err := tx.Exec(`
 INSERT INTO memories (id, type, origin, title, summary, guidance, status, risk,
   confidence, enforcement, effective_scope, independent_confirms, contradictions,
-  reason, created_at)
-VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+  reason, created_at, anchors)
+VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 ON CONFLICT(id) DO UPDATE SET
   type=excluded.type, origin=excluded.origin, title=excluded.title,
   summary=excluded.summary, guidance=excluded.guidance, status=excluded.status,
@@ -188,11 +196,11 @@ ON CONFLICT(id) DO UPDATE SET
   enforcement=excluded.enforcement, effective_scope=excluded.effective_scope,
   independent_confirms=excluded.independent_confirms,
   contradictions=excluded.contradictions, reason=excluded.reason,
-  created_at=excluded.created_at`,
+  created_at=excluded.created_at, anchors=excluded.anchors`,
 		m.ID, string(m.Type), string(m.Origin), m.Title, m.Summary, m.Guidance,
 		string(st.Status), string(st.Risk), string(st.Confidence), string(st.Enforcement),
 		string(scopeJSON), st.IndependentConfirms, st.Contradictions, st.Reason,
-		m.CreatedAt.UTC().Format(time.RFC3339Nano),
+		m.CreatedAt.UTC().Format(time.RFC3339Nano), string(anchorsJSON),
 	); err != nil {
 		return err
 	}

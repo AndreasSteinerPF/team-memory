@@ -25,6 +25,7 @@ type IndexedMemory struct {
 	Contradictions      int
 	Reason              string
 	CreatedAt           time.Time
+	Anchors             []model.Anchor
 }
 
 // All returns every materialized memory ordered by ID (deterministic, for
@@ -32,7 +33,8 @@ type IndexedMemory struct {
 func (idx *Index) All() ([]IndexedMemory, error) {
 	rows, err := idx.db.Query(`
 SELECT id, type, origin, title, summary, guidance, status, risk, confidence,
-  enforcement, effective_scope, independent_confirms, contradictions, reason, created_at
+  enforcement, effective_scope, independent_confirms, contradictions, reason,
+  created_at, anchors
 FROM memories ORDER BY id`)
 	if err != nil {
 		return nil, err
@@ -42,10 +44,10 @@ FROM memories ORDER BY id`)
 	var out []IndexedMemory
 	for rows.Next() {
 		var im IndexedMemory
-		var typ, origin, status, risk, conf, enf, scopeJSON, createdAt string
+		var typ, origin, status, risk, conf, enf, scopeJSON, createdAt, anchorsJSON string
 		if err := rows.Scan(&im.ID, &typ, &origin, &im.Title, &im.Summary, &im.Guidance,
 			&status, &risk, &conf, &enf, &scopeJSON, &im.IndependentConfirms,
-			&im.Contradictions, &im.Reason, &createdAt); err != nil {
+			&im.Contradictions, &im.Reason, &createdAt, &anchorsJSON); err != nil {
 			return nil, err
 		}
 		im.Type = model.MemoryType(typ)
@@ -55,6 +57,9 @@ FROM memories ORDER BY id`)
 		im.Confidence = model.Confidence(conf)
 		im.Enforcement = model.Enforcement(enf)
 		if err := json.Unmarshal([]byte(scopeJSON), &im.EffectiveScope); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal([]byte(anchorsJSON), &im.Anchors); err != nil {
 			return nil, err
 		}
 		t, err := time.Parse(time.RFC3339Nano, createdAt)
