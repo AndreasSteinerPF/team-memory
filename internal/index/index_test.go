@@ -1,6 +1,8 @@
 package index_test
 
 import (
+	"fmt"
+	"math/rand"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -257,5 +259,109 @@ func TestSearchIDsFindsByText(t *testing.T) {
 	}
 	if len(ids) != 1 || ids[0] != hit {
 		t.Fatalf("search ids = %v, want [%s]", ids, hit)
+	}
+}
+
+func randomMemory(rng *rand.Rand) model.Memory {
+	types := []model.MemoryType{
+		model.TypeFailedAttempt, model.TypeConstraint, model.TypeFragileArea,
+		model.TypeStaleDoc, model.TypeDecision,
+	}
+	scopes := [][]string{
+		{"billing/migrations/**"}, {"auth/login.go"}, {"src/**"},
+		{"docs/readme.md"}, {".github/workflows/ci.yml"},
+	}
+	m := model.Memory{
+		Type:     types[rng.Intn(len(types))],
+		Title:    fmt.Sprintf("memory about widget %d", rng.Intn(10000)),
+		Summary:  "summary of an observed situation",
+		Guidance: "do the thing carefully and test it",
+		Scope:    model.Scope{Paths: scopes[rng.Intn(len(scopes))]},
+		Actor: model.Actor{
+			Kind: model.ActorAgent, Name: "agent",
+			SessionID: fmt.Sprintf("s%d", rng.Intn(100)),
+		},
+	}
+	if m.Type == model.TypeConstraint && rng.Intn(2) == 0 {
+		m.Origin = model.OriginExternal
+	}
+	return m
+}
+
+func randomObservation(rng *rand.Rand, target string) model.Observation {
+	kinds := []model.ObservationKind{
+		model.KindConfirm, model.KindContradict, model.KindAdjustScope,
+		model.KindMarkStale, model.KindApprove, model.KindReject,
+	}
+	k := kinds[rng.Intn(len(kinds))]
+	o := model.Observation{
+		Target:  target,
+		Kind:    k,
+		Summary: "observed something relevant",
+		Actor: model.Actor{
+			Kind: model.ActorAgent, Name: "observer",
+			SessionID: fmt.Sprintf("o%d", rng.Intn(100)),
+		},
+	}
+	switch k {
+	case model.KindApprove:
+		o.Actor.Kind = model.ActorHuman
+		o.SetEnforcement = model.EnforcementWarning
+	case model.KindReject:
+		o.Actor.Kind = model.ActorHuman
+	case model.KindAdjustScope:
+		o.SuggestedScope = &model.Scope{Paths: []string{"newscope/**"}}
+	}
+	return o
+}
+
+func TestPropertyIndexEqualsReplay(t *testing.T) {
+	for _, seed := range []int64{1, 42, 99} {
+		seed := seed
+		t.Run(fmt.Sprintf("seed-%d", seed), func(t *testing.T) {
+			l := newLedger(t)
+			rng := rand.New(rand.NewSource(seed))
+
+			inc := openIndex(t, filepath.Join(t.TempDir(), "inc.db"), l)
+
+			var memIDs []string
+			const ops = 30
+			for i := 0; i < ops; i++ {
+				if len(memIDs) == 0 || rng.Intn(3) == 0 {
+					id, err := l.AppendMemory(randomMemory(rng))
+					if err != nil {
+						t.Fatalf("append memory: %v", err)
+					}
+					memIDs = append(memIDs, id)
+				} else {
+					target := memIDs[rng.Intn(len(memIDs))]
+					if _, err := l.AppendObservation(randomObservation(rng, target)); err != nil {
+						t.Fatalf("append observation: %v", err)
+					}
+				}
+				if rng.Intn(4) == 0 { // sometimes sync the index mid-stream
+					if err := inc.Update(); err != nil {
+						t.Fatalf("update: %v", err)
+					}
+				}
+			}
+			if err := inc.Update(); err != nil {
+				t.Fatalf("final update: %v", err)
+			}
+
+			full := openIndex(t, filepath.Join(t.TempDir(), "full.db"), l) // full replay
+
+			gotInc, err := inc.All()
+			if err != nil {
+				t.Fatalf("all inc: %v", err)
+			}
+			gotFull, err := full.All()
+			if err != nil {
+				t.Fatalf("all full: %v", err)
+			}
+			if !reflect.DeepEqual(gotInc, gotFull) {
+				t.Fatalf("index != replay (seed %d):\n inc=%+v\nfull=%+v", seed, gotInc, gotFull)
+			}
+		})
 	}
 }
