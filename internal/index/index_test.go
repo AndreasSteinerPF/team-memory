@@ -1,8 +1,10 @@
 package index_test
 
 import (
+	"database/sql"
 	"fmt"
 	"math/rand"
+	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -363,5 +365,103 @@ func TestPropertyIndexEqualsReplay(t *testing.T) {
 				t.Fatalf("index != replay (seed %d):\n inc=%+v\nfull=%+v", seed, gotInc, gotFull)
 			}
 		})
+	}
+}
+
+func TestAutoRebuildOnCorruptFile(t *testing.T) {
+	l := newLedger(t)
+	id, err := l.AppendMemory(model.Memory{
+		Type:  model.TypeDecision,
+		Title: "keep me",
+		Scope: model.Scope{Paths: []string{"src/**"}},
+		Actor: model.Actor{Kind: model.ActorAgent, Name: "a", SessionID: "s"},
+	})
+	if err != nil {
+		t.Fatalf("append: %v", err)
+	}
+	path := dbPath(t)
+
+	first, err := index.Open(path, l)
+	if err != nil {
+		t.Fatalf("open #1: %v", err)
+	}
+	first.Close()
+
+	// Corrupt the database file.
+	if err := os.WriteFile(path, []byte("this is not a sqlite database"), 0o644); err != nil {
+		t.Fatalf("corrupt: %v", err)
+	}
+
+	rebuilt, err := index.Open(path, l) // must detect corruption and rebuild
+	if err != nil {
+		t.Fatalf("open #2 (rebuild): %v", err)
+	}
+	defer rebuilt.Close()
+
+	all, err := rebuilt.All()
+	if err != nil {
+		t.Fatalf("all: %v", err)
+	}
+	if len(all) != 1 || all[0].ID != id {
+		t.Fatalf("rebuilt index = %+v, want one row with id %s", all, id)
+	}
+}
+
+func TestAutoRebuildOnSchemaVersionMismatch(t *testing.T) {
+	l := newLedger(t)
+	id, err := l.AppendMemory(model.Memory{
+		Type:  model.TypeDecision,
+		Title: "keep me too",
+		Scope: model.Scope{Paths: []string{"src/**"}},
+		Actor: model.Actor{Kind: model.ActorAgent, Name: "a", SessionID: "s"},
+	})
+	if err != nil {
+		t.Fatalf("append: %v", err)
+	}
+	path := dbPath(t)
+
+	first, err := index.Open(path, l)
+	if err != nil {
+		t.Fatalf("open #1: %v", err)
+	}
+	first.Close()
+
+	// Tamper with the stored schema version.
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatalf("raw open: %v", err)
+	}
+	if _, err := db.Exec(`UPDATE meta SET value = '999' WHERE key = 'schema_version'`); err != nil {
+		db.Close()
+		t.Fatalf("tamper: %v", err)
+	}
+	db.Close()
+
+	rebuilt, err := index.Open(path, l) // version mismatch ⇒ rebuild
+	if err != nil {
+		t.Fatalf("open #2 (rebuild): %v", err)
+	}
+	defer rebuilt.Close()
+
+	all, err := rebuilt.All()
+	if err != nil {
+		t.Fatalf("all: %v", err)
+	}
+	if len(all) != 1 || all[0].ID != id {
+		t.Fatalf("rebuilt index = %+v, want one row with id %s", all, id)
+	}
+
+	// The rebuilt index must carry the current schema version again.
+	verify, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatalf("verify open: %v", err)
+	}
+	defer verify.Close()
+	var v string
+	if err := verify.QueryRow(`SELECT value FROM meta WHERE key = 'schema_version'`).Scan(&v); err != nil {
+		t.Fatalf("read version: %v", err)
+	}
+	if v != "1" {
+		t.Fatalf("schema_version = %q after rebuild, want \"1\"", v)
 	}
 }
