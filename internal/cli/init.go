@@ -63,12 +63,12 @@ func newInitCmd(g *globalOpts) *cobra.Command {
 // .claude/settings.json when .claude/ is present.
 func printSetup(w io.Writer, repoDir, remote string) {
 	installed, err := installClaudeCodeHook(repoDir)
-	if err == nil {
-		if installed {
-			fmt.Fprintln(w, "Installed PreToolUse hook in .claude/settings.json.")
-		} else if _, serr := os.Stat(filepath.Join(repoDir, ".claude")); serr == nil {
-			fmt.Fprintln(w, "Claude Code hook already present in .claude/settings.json.")
-		}
+	if err != nil {
+		fmt.Fprintf(w, "Warning: could not install Claude Code hook: %v\n", err)
+	} else if installed {
+		fmt.Fprintln(w, "Installed PreToolUse hook in .claude/settings.json.")
+	} else if _, serr := os.Stat(filepath.Join(repoDir, ".claude")); serr == nil {
+		fmt.Fprintln(w, "Claude Code hook already present in .claude/settings.json.")
 	}
 	fmt.Fprintln(w, "Next steps:")
 	fmt.Fprintln(w, "  • MCP (Claude Code / Cursor / Codex): add to your .mcp.json —")

@@ -125,14 +125,32 @@ func TestInstallClaudeCodeHookMergesExisting(t *testing.T) {
 	if settings["model"] != "sonnet" {
 		t.Fatalf("expected model=sonnet, got %v", settings["model"])
 	}
-	if n, _ := settings["someOtherKey"].(json.Number); n != "42" {
-		// json.Unmarshal into map[string]any uses float64 for numbers
-		if f, ok := settings["someOtherKey"].(float64); !ok || f != 42 {
-			t.Fatalf("expected someOtherKey=42, got %v", settings["someOtherKey"])
-		}
+	if v, _ := settings["someOtherKey"].(float64); v != 42 {
+		t.Fatalf("expected someOtherKey=42, got %v", settings["someOtherKey"])
 	}
 
 	if !hasHookEntry(settings) {
 		t.Fatal("expected hook entry to be present after merge")
+	}
+}
+
+func TestInstallClaudeCodeHookMalformedSettings(t *testing.T) {
+	dir := t.TempDir()
+	claudeDir := filepath.Join(dir, ".claude")
+	if err := os.Mkdir(claudeDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	settingsPath := filepath.Join(claudeDir, "settings.json")
+	if err := os.WriteFile(settingsPath, []byte("{not valid json}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	installed, err := installClaudeCodeHook(dir)
+	if err == nil {
+		t.Fatal("expected an error for malformed settings.json, got nil")
+	}
+	if installed {
+		t.Fatal("expected installed=false when settings.json is malformed")
 	}
 }

@@ -5,3 +5,7 @@ stdout 'Installed PreToolUse hook'
 
 exec cat .claude/settings.json
 stdout 'tm check-action --hook'
+
+# Running tm init a second time should report the hook is already present.
+exec tm init
+stdout 'already'

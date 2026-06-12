@@ -2,6 +2,8 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 )
@@ -15,7 +17,7 @@ const hookMatcher = "Edit|Write|MultiEdit"
 // present.
 func installClaudeCodeHook(repoDir string) (bool, error) {
 	claudeDir := filepath.Join(repoDir, ".claude")
-	if _, err := os.Stat(claudeDir); os.IsNotExist(err) {
+	if _, err := os.Stat(claudeDir); errors.Is(err, fs.ErrNotExist) {
 		return false, nil
 	}
 	settingsPath := filepath.Join(claudeDir, "settings.json")
