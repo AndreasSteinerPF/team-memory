@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	_ "modernc.org/sqlite"
 )
 
 // seedIndex opens the SQLite index at dbPath and inserts n synthetic rows
