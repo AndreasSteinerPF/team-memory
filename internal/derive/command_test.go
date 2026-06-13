@@ -29,10 +29,29 @@ func TestMatchCommandPattern(t *testing.T) {
 		{"pytest", "pytest", true},                                             // no-star exact match
 		{"pytest", "pytest -q", false},                                         // no-star: exact token count
 		{"pytest *", "FOO=bar pytest -q", true},                                // env prefix stripped first
+		{"*", "anything here", false},                                           // bare "*" pattern matches nothing
+		{"", "pytest", false},                                                   // empty pattern matches nothing
+		{"pytest", "FOO=bar", false},                                            // env-only command -> empty token list
 	}
 	for _, c := range cases {
 		if got := MatchCommandPattern(c.pattern, c.command); got != c.want {
 			t.Errorf("MatchCommandPattern(%q, %q) = %v, want %v", c.pattern, c.command, got, c.want)
+		}
+	}
+}
+
+func TestIsEnvAssignment(t *testing.T) {
+	cases := map[string]bool{
+		"FOO=bar": true,
+		"_F1=x":   true,
+		"=val":    false, // no name
+		"1FOO=x":  false, // must not start with a digit
+		"FO-O=x":  false, // invalid char in name
+		"pytest":  false, // no '='
+	}
+	for tok, want := range cases {
+		if got := isEnvAssignment(tok); got != want {
+			t.Errorf("isEnvAssignment(%q) = %v, want %v", tok, got, want)
 		}
 	}
 }
