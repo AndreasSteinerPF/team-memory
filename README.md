@@ -5,7 +5,7 @@
 
 **Agents propose. Agents observe. Teams remember.**
 
-TeamMemory is a Git-backed collaborative memory ledger for coding agents. Agents propose repo-scoped memories during normal work; other agents confirm, contradict, or refine them when they encounter related code; validated memories reach future agents deterministically through an edit-time hook — not just a voluntary tool call.
+TeamMemory is a Git-backed collaborative memory ledger for coding agents. Agents propose repo-scoped memories during normal work; other agents confirm, contradict, or refine them when they encounter related code; validated memories reach future agents deterministically through a hook at edit *and command* time — not just a voluntary tool call.
 
 It is not a general memory system and not an agent framework. It is a focused system for preserving **future-action-relevant project judgment**: failed attempts, hidden constraints, fragile areas, stale docs, and undocumented decisions that should change what an agent does next.
 
@@ -28,7 +28,8 @@ The result is a memory layer that gets *more* trustworthy over time instead of n
 ## What you can do with it
 
 - **Stop repeating known-bad approaches.** When an agent burns a session on an approach that fails, it records a `failed_attempt` with evidence. The next agent that opens the same area is told before it tries again.
-- **Enforce hard constraints at edit time.** Promote a validated memory to a `requirement` and the `PreToolUse` hook *blocks* edits to matching paths until the agent acknowledges it — turning tribal knowledge into a guardrail no agent can skip.
+- **Enforce hard constraints at edit *and command* time.** Promote a validated memory to a `requirement` and the `PreToolUse` hook *blocks* edits to matching paths — or Bash commands matching its command patterns — until the agent acknowledges it, turning tribal knowledge into a guardrail no agent can skip.
+- **Catch command-time failures, not just edits.** Scope a memory to a command pattern (e.g. `pytest *`, `terraform apply *`) and the hook surfaces — or blocks — it the moment an agent is about to run that command, not only when it edits a file.
 - **Flag fragile areas and stale docs** so agents treat risky files carefully and stop trusting documents an ADR already replaced.
 - **Let memory validate itself across the team.** A memory proposed on one branch, in one session, by one agent gets independently confirmed by another — and auto-activates only when that evidence threshold is met. No single agent can unilaterally create a binding rule.
 - **Keep humans in control of the high-impact calls.** Agents can propose and confirm freely; only a human can escalate a memory to a hard `requirement` or kill it.
@@ -106,7 +107,7 @@ cd your-repo
 tm init
 ```
 
-This creates an orphan branch `teammemory` and a local SQLite index under `.git/tm/`. If `.claude/` exists, it also installs two Claude Code hooks in `.claude/settings.json`: the `PreToolUse` edit-time check and a `SessionStart` briefing (`tm brief`).
+This creates an orphan branch `teammemory` and a local SQLite index under `.git/tm/`. If `.claude/` exists, it also installs two Claude Code hooks in `.claude/settings.json`: the `PreToolUse` check (on edits *and Bash commands*) and a `SessionStart` briefing (`tm brief`).
 
 ### 2. Propose a memory
 
@@ -115,6 +116,16 @@ tm propose failed_attempt \
   --title "Billing migrations require downgrade-path tests" \
   --guidance "Run downgrade tests before modifying billing migrations." \
   --scope "billing/migrations/**" \
+  --session "$CLAUDE_SESSION_ID"
+```
+
+Memories can be scoped to **commands** as well as paths. Use `--scope-command` (repeatable) for a lesson that bites when a command runs, not when a file is edited:
+
+```bash
+tm propose constraint \
+  --title "pytest needs DATABASE_URL set" \
+  --guidance "Export DATABASE_URL before running the test suite." \
+  --scope-command "pytest *" \
   --session "$CLAUDE_SESSION_ID"
 ```
 
@@ -130,6 +141,12 @@ reason: awaiting independent confirmation
 
 ```bash
 tm check-action --path billing/migrations/new_migration.sql
+```
+
+Or check a command before running it:
+
+```bash
+tm check-action --command "pytest -q tests/"
 ```
 
 ### 4. Export to your context files
@@ -149,7 +166,7 @@ propose → provisional
   + independent confirmation (different session, different branch)
     → active (warning enforcement)
   + human approve --enforcement requirement
-    → active (requirement enforcement) — hook blocks edits until acked
+    → active (requirement enforcement) — hook blocks matching edits and commands until acked
   + observe contradict (from any session)
     → contested (confidence reduced)
   + observe mark_stale
@@ -158,7 +175,7 @@ propose → provisional
 
 - **Status:** `provisional` → `active` → `contested` / `stale` / `rejected`.
 - **Enforcement:** `hint` → `recommendation` → `warning` → `requirement`. Only a human can set `requirement`.
-- **Risk** (`low` / `medium` / `high` / `critical`) is computed deterministically from `policy.yaml` — never from agent self-assessment. High-risk paths (e.g. `**/migrations/**`) escalate automatically.
+- **Risk** (`low` / `medium` / `high` / `critical`) is computed deterministically from `policy.yaml` — never from agent self-assessment. High-risk paths (e.g. `**/migrations/**`) escalate automatically, as do broad command scopes (a bare-binary pattern like `pytest *`).
 
 Status, risk, confidence, and enforcement are always *derived* from the ledger and policy. They are never stored as mutable fields an agent could set directly.
 
@@ -198,7 +215,7 @@ tm status        ledger overview, items needing human attention, sync state
 tm doctor        diagnose setup: ledger branch, index, hooks, MCP, remote
 ```
 
-Run any command with `--help` for its full flag set. `tm propose` and `tm observe` also accept `--actor`, `--session`, `--ctx-branch`, and `--ctx-path` to attribute records and record code context.
+Run any command with `--help` for its full flag set. Memories are scoped with `--scope` (path globs) and/or `--scope-command` (command patterns such as `pytest *`); `tm check-action` takes `--path` and/or `--command`. `tm propose` and `tm observe` also accept `--actor`, `--session`, `--ctx-branch`, `--ctx-path`, and `--ctx-command` to attribute records and record code context.
 
 ---
 
@@ -213,7 +230,7 @@ Run any command with `--help` for its full flag set. `tm propose` and `tm observ
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Edit|Write|MultiEdit",
+        "matcher": "Edit|Write|MultiEdit|Bash",
         "hooks": [{ "type": "command", "command": "tm check-action --hook" }]
       }
     ]
@@ -223,9 +240,10 @@ Run any command with `--help` for its full flag set. `tm propose` and `tm observ
 
 The hook:
 
-- Reads the tool input path and the current session ID from stdin.
+- Reads the tool input (the file path for edits, the command for Bash) and the current session ID from stdin.
 - Queries the local index — no network, no subprocess beyond the binary.
-- Returns `deny` for unacknowledged `requirement` memories, `additionalContext` for warnings.
+- Returns `deny` for matching unacknowledged `requirement` memories, `additionalContext` for warnings.
+- Matches Bash commands against memory command patterns (token-aware, leading-subcommand; flags aren't matched). Command matching is best-effort across shell composition (pipes, `&&`).
 - Completes in under 100 ms on a 1,000-memory ledger.
 
 ### MCP server
@@ -252,7 +270,7 @@ MCP tools: `tm_propose`, `tm_observe`, `tm_check_action`, `tm_search`, `tm_statu
 
 Every agent reads the same ledger; what differs is the delivery guarantee:
 
-| Agent | Edit-time enforcement | Session briefing | Voluntary verbs (MCP) | Static fallback |
+| Agent | Hook enforcement (edit + command) | Session briefing | Voluntary verbs (MCP) | Static fallback |
 |---|:---:|:---:|:---:|:---:|
 | Claude Code | ✅ (`PreToolUse` hook) | ✅ | ✅ | ✅ |
 | Codex CLI | — | ✅ | ✅ | ✅ |
@@ -262,7 +280,7 @@ Every agent reads the same ledger; what differs is the delivery guarantee:
 | Gemini CLI | — | ✅ | ✅ | ✅ |
 | Other MCP / hook-less | — | — | ✅ | ✅ (only path) |
 
-Only Claude Code enforces `requirement` memories at edit time (the `PreToolUse` hook blocks the edit until acked). Every other agent gets the session-start briefing and the voluntary verbs over MCP — same knowledge, but `check_action` is a voluntary call rather than a guaranteed one.
+Only Claude Code enforces `requirement` memories deterministically (the `PreToolUse` hook blocks a matching edit or Bash command until acked). Every other agent gets the session-start briefing and the voluntary verbs over MCP — same knowledge, but `check_action` is a voluntary call rather than a guaranteed one.
 
 The MCP server works with any MCP-compatible agent. For agents without MCP, `tm export` generates instruction blocks that are clearly marked and never the source of truth — the ledger is.
 
@@ -363,7 +381,7 @@ activation:
 - **Index:** a local SQLite database under `.git/tm/` materializes derived state and supports full-text search. Rebuilt automatically; throwaway.
 - **Derived state:** status, risk, confidence, and enforcement are computed deterministically from the ledger and policy — never stored, never guessable.
 - **Sync:** union-merge of the orphan branch. Concurrent proposals never conflict because each record is an append-only ULID file.
-- **Hook:** the `PreToolUse` hook reads the index (no network, no ledger-branch checkout) and completes in under 100 ms.
+- **Hook:** the `PreToolUse` hook (on edits and Bash commands) reads the index (no network, no ledger-branch checkout) and completes in under 100 ms.
 
 ---
 
