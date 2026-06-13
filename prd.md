@@ -454,7 +454,7 @@ Symbol matching, error-signature matching, and semantic ranking are roadmap.
 
 1. `tm doctor` (validate branch, index, hook installation).
 2. Static HTML timeline report.
-3. Homebrew/Scoop packaging (curl install script is the baseline).
+3. Homebrew/Scoop packaging.
 
 ### 12.3 Explicitly Out of Scope for MVP
 
@@ -551,7 +551,7 @@ First 90 days: 500 stars; 5 external contributors; documented setups for 2+ codi
 * YAML: `gopkg.in/yaml.v3`.
 * MCP: official `modelcontextprotocol/go-sdk`.
 * ULIDs: `oklog/ulid/v2`.
-* Distribution: GitHub releases + curl install script; `go install`; Homebrew/Scoop later.
+* Distribution: GitHub Releases via GoReleaser (cross-compiled archives + checksums on tag push) and `go install` — both live as of v0.0.1; curl install script and Homebrew/Scoop later.
 
 ## 17. Roadmap
 
