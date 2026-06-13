@@ -20,7 +20,7 @@ import (
 // schemaVersion is bumped whenever the table layout or derivation semantics
 // change in a way that invalidates an existing index. A stored value other than
 // this triggers an automatic rebuild on Open.
-const schemaVersion = "2" // v2 adds the anchors column (Slice 4 drift)
+const schemaVersion = "3" // v3 adds the effective_commands column (command scopes)
 
 const (
 	metaSchemaVersion = "schema_version"
@@ -126,6 +126,7 @@ func (idx *Index) createSchema() error {
   confidence           TEXT NOT NULL,
   enforcement          TEXT NOT NULL,
   effective_scope      TEXT NOT NULL DEFAULT '[]',
+  effective_commands   TEXT NOT NULL DEFAULT '[]',
   independent_confirms INTEGER NOT NULL DEFAULT 0,
   contradictions       INTEGER NOT NULL DEFAULT 0,
   reason               TEXT NOT NULL DEFAULT '',

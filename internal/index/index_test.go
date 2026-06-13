@@ -436,6 +436,36 @@ func TestReindexStoresAnchors(t *testing.T) {
 	}
 }
 
+func TestIndexStoresEffectiveCommands(t *testing.T) {
+	l := newLedger(t)
+	m := model.Memory{
+		Type:  model.TypeConstraint,
+		Title: "assistant jira create needs project",
+		Scope: model.Scope{Commands: []string{"assistant jira create *"}},
+		Actor: model.Actor{Kind: model.ActorAgent, Name: "x", SessionID: "s1"},
+	}
+	id, err := l.AppendMemory(m)
+	if err != nil {
+		t.Fatalf("append: %v", err)
+	}
+
+	idx := openIndex(t, dbPath(t), l)
+	rows, err := idx.All()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("rows = %d, want 1", len(rows))
+	}
+	if rows[0].ID != id {
+		t.Fatalf("ID = %s, want %s", rows[0].ID, id)
+	}
+	got := rows[0].EffectiveCommands
+	if len(got) != 1 || got[0] != "assistant jira create *" {
+		t.Fatalf("EffectiveCommands = %v, want [assistant jira create *]", got)
+	}
+}
+
 func TestAutoRebuildOnSchemaVersionMismatch(t *testing.T) {
 	l := newLedger(t)
 	id, err := l.AppendMemory(model.Memory{
@@ -490,7 +520,7 @@ func TestAutoRebuildOnSchemaVersionMismatch(t *testing.T) {
 	if err := verify.QueryRow(`SELECT value FROM meta WHERE key = 'schema_version'`).Scan(&v); err != nil {
 		t.Fatalf("read version: %v", err)
 	}
-	if v != "2" {
-		t.Fatalf("schema_version = %q after rebuild, want \"2\"", v)
+	if v != "3" {
+		t.Fatalf("schema_version = %q after rebuild, want \"3\"", v)
 	}
 }

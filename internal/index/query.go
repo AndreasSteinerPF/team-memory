@@ -21,6 +21,7 @@ type IndexedMemory struct {
 	Confidence          model.Confidence
 	Enforcement         model.Enforcement
 	EffectiveScope      []string
+	EffectiveCommands   []string
 	IndependentConfirms int
 	Contradictions      int
 	Reason              string
@@ -33,7 +34,7 @@ type IndexedMemory struct {
 func (idx *Index) All() ([]IndexedMemory, error) {
 	rows, err := idx.db.Query(`
 SELECT id, type, origin, title, summary, guidance, status, risk, confidence,
-  enforcement, effective_scope, independent_confirms, contradictions, reason,
+  enforcement, effective_scope, effective_commands, independent_confirms, contradictions, reason,
   created_at, anchors
 FROM memories ORDER BY id`)
 	if err != nil {
@@ -44,9 +45,9 @@ FROM memories ORDER BY id`)
 	var out []IndexedMemory
 	for rows.Next() {
 		var im IndexedMemory
-		var typ, origin, status, risk, conf, enf, scopeJSON, createdAt, anchorsJSON string
+		var typ, origin, status, risk, conf, enf, scopeJSON, cmdJSON, createdAt, anchorsJSON string
 		if err := rows.Scan(&im.ID, &typ, &origin, &im.Title, &im.Summary, &im.Guidance,
-			&status, &risk, &conf, &enf, &scopeJSON, &im.IndependentConfirms,
+			&status, &risk, &conf, &enf, &scopeJSON, &cmdJSON, &im.IndependentConfirms,
 			&im.Contradictions, &im.Reason, &createdAt, &anchorsJSON); err != nil {
 			return nil, err
 		}
@@ -57,6 +58,9 @@ FROM memories ORDER BY id`)
 		im.Confidence = model.Confidence(conf)
 		im.Enforcement = model.Enforcement(enf)
 		if err := json.Unmarshal([]byte(scopeJSON), &im.EffectiveScope); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal([]byte(cmdJSON), &im.EffectiveCommands); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal([]byte(anchorsJSON), &im.Anchors); err != nil {
