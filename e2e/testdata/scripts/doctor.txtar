@@ -1,0 +1,10 @@
+# tm doctor on an uninitialized ledger fails the ledger-branch check and exits non-zero.
+! exec tm doctor
+stdout 'Ledger branch'
+stdout 'tm init'
+
+# After init, all core checks pass: exit 0 and zero failures reported.
+exec tm init
+exec tm doctor
+stdout '0 failure'
+stdout 'Local index'
