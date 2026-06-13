@@ -71,7 +71,11 @@ func isActive(obs []model.Observation, risk model.Risk, indConf int, p policy.Po
 	case "immediate":
 		return true
 	case "independent_confirm":
-		return indConf >= 1 || existsHumanApprove(obs)
+		threshold := p.Activation.Tiers[risk].MinIndependentConfirms
+		if threshold < 1 {
+			threshold = 1 // omitted/0 ⇒ 1 (back-compat for medium/high)
+		}
+		return indConf >= threshold || existsHumanApprove(obs)
 	default: // "never" or unknown
 		return existsHumanApprove(obs)
 	}

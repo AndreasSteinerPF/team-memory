@@ -81,16 +81,27 @@ func TestLowRiskActivatesImmediately(t *testing.T) {
 	}
 }
 
-func TestCriticalNeedsHumanApprove(t *testing.T) {
+func TestCriticalAutoActivatesOnTwoConfirms(t *testing.T) {
 	p := policy.Default()
 	m := model.Memory{Type: model.TypeConstraint, Actor: model.Actor{SessionID: "s1"}, CreatedAt: ts(0)}
-	confirm := model.Observation{Kind: model.KindConfirm, Actor: model.Actor{SessionID: "s2"}, CreatedAt: ts(1)}
-	st, _ := computeStatus(m, []model.Observation{confirm}, model.RiskCritical, p)
+
+	// One independent confirm is not enough for critical (bar is 2).
+	c1 := model.Observation{Kind: model.KindConfirm, Actor: model.Actor{SessionID: "s2"}, CreatedAt: ts(1)}
+	st, _ := computeStatus(m, []model.Observation{c1}, model.RiskCritical, p)
 	if st != model.StatusProvisional {
-		t.Errorf("critical with only a confirm → %q, want provisional", st)
+		t.Errorf("critical with one confirm → %q, want provisional", st)
 	}
+
+	// A second independent confirm activates it.
+	c2 := model.Observation{Kind: model.KindConfirm, Actor: model.Actor{SessionID: "s3"}, CreatedAt: ts(2)}
+	st, _ = computeStatus(m, []model.Observation{c1, c2}, model.RiskCritical, p)
+	if st != model.StatusActive {
+		t.Errorf("critical with two independent confirms → %q, want active", st)
+	}
+
+	// A human approve still activates instantly, regardless of confirm count.
 	approve := model.Observation{Kind: model.KindApprove, Actor: model.Actor{Kind: model.ActorHuman}, CreatedAt: ts(2)}
-	st, _ = computeStatus(m, []model.Observation{confirm, approve}, model.RiskCritical, p)
+	st, _ = computeStatus(m, []model.Observation{approve}, model.RiskCritical, p)
 	if st != model.StatusActive {
 		t.Errorf("critical with human approve → %q, want active", st)
 	}
