@@ -125,6 +125,37 @@ func TestEffectiveScopeNarrowsCommands(t *testing.T) {
 	}
 }
 
+func TestEffectiveScopeBroadensCommandsWithConfirmEvidence(t *testing.T) {
+	m := model.Memory{
+		Scope:     model.Scope{Commands: []string{"assistant jira create *"}},
+		Actor:     model.Actor{SessionID: "s1"},
+		CreatedAt: time.Date(2026, 6, 15, 10, 0, 0, 0, time.UTC),
+	}
+	adj := model.Observation{
+		Kind:           model.KindAdjustScope,
+		SuggestedScope: &model.Scope{Commands: []string{"assistant *"}},
+		Actor:          model.Actor{SessionID: "s2"},
+		CreatedAt:      time.Date(2026, 6, 15, 10, 1, 0, 0, time.UTC),
+	}
+
+	// Unsubstantiated broadening does not apply.
+	if got := effectiveScope(m, []model.Observation{adj}); len(got.Commands) != 1 || got.Commands[0] != "assistant jira create *" {
+		t.Errorf("unsubstantiated command broadening should NOT apply, got %v", got.Commands)
+	}
+
+	// A later independent confirm whose command matches the broader scope but NOT
+	// the prior scope substantiates the broadening.
+	confirm := model.Observation{
+		Kind:        model.KindConfirm,
+		Actor:       model.Actor{SessionID: "s3"},
+		CodeContext: &model.CodeContext{Commands: []string{"assistant billing list"}},
+		CreatedAt:   time.Date(2026, 6, 15, 10, 2, 0, 0, time.UTC),
+	}
+	if got := effectiveScope(m, []model.Observation{adj, confirm}); len(got.Commands) != 1 || got.Commands[0] != "assistant *" {
+		t.Errorf("substantiated command broadening should apply, got %v", got.Commands)
+	}
+}
+
 func TestEffectiveScopeBroadeningNeedsSubstantiation(t *testing.T) {
 	m := model.Memory{
 		Scope:     model.Scope{Paths: []string{"billing/migrations/**"}},
