@@ -207,6 +207,7 @@ risk = escalate(base_risk[memory.type], memory.effective_scope, policy)
 1. Base risk from the type table in `policy.yaml`. A `constraint` with `origin: external` takes base risk `high`.
 2. Escalators (applied to the highest-matching level):
    * scope breadth: a scope is broad if any of its globs can match paths in more than one top-level directory (e.g. `**`, `*/**`); broad scope escalates one level;
+   * command breadth: a command scope is broad if any of its command patterns has one or fewer fixed leading tokens (a bare-binary pattern such as `assistant *` or `assistant`, as opposed to a subcommand-qualified one like `assistant jira create *`); broad command scope escalates one level. There are no sensitive-command escalators in v1.
    * sensitive paths: if the scope intersects any configured sensitive-path glob, risk is raised to at least that glob's level.
 
 Default `policy.yaml`:
@@ -314,6 +315,8 @@ guidance: >
 scope:
   paths:
     - "billing/migrations/**"
+  commands:               # optional: command patterns this memory applies to
+    - "alembic upgrade *"
 evidence:
   - type: test_failure
     description: rollback failure log
