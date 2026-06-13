@@ -329,6 +329,8 @@ anchors:
 code_context:           # optional: where the memory was proposed
   branch: feature/invoice-state
   commit: abc123def
+  commands:             # optional: commands the proposing agent was running
+    - "alembic upgrade heads"
 actor:
   kind: agent            # agent | human
   name: claude-code
@@ -356,6 +358,8 @@ code_context:
   commit: def456abc
   paths:                 # optional: files the observing agent was working on
     - "billing/migrations/2026_add_invoice_state.sql"
+  commands:              # optional: commands the observing agent ran
+    - "alembic upgrade heads"
 actor:
   kind: agent
   name: codex
