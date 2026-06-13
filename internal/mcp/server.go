@@ -294,7 +294,7 @@ func (s *Server) addObserveTool(srv *sdkmcp.Server) {
 
 - confirm: you independently encountered the same issue — include evidence (test result, log, reproduction). Independent confirmations activate provisional memories.
 - contradict: you found evidence the memory is wrong — include evidence. Contradictions immediately move the memory to contested and lower its confidence.
-- adjust_scope: the lesson is right but the scope is too broad or too narrow — provide the corrected scope in the scope field.
+- adjust_scope: the lesson is right but the scope is too broad or too narrow — provide the corrected paths in the scope field and/or command patterns in the commands field.
 - mark_stale: the code or situation this memory describes no longer exists.
 
 Always include evidence when observing. Observations without evidence are less useful.`,
