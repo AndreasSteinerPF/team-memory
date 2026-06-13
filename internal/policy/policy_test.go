@@ -25,14 +25,27 @@ func TestDefaultPolicyMatchesPRD(t *testing.T) {
 	if p.Activation.Tiers[model.RiskLow].Auto != "immediate" {
 		t.Errorf("low tier auto = %q, want immediate", p.Activation.Tiers[model.RiskLow].Auto)
 	}
-	if p.Activation.Tiers[model.RiskCritical].Auto != "never" {
-		t.Errorf("critical tier auto = %q, want never", p.Activation.Tiers[model.RiskCritical].Auto)
+	if p.Activation.Tiers[model.RiskCritical].Auto != "independent_confirm" {
+		t.Errorf("critical tier auto = %q, want independent_confirm", p.Activation.Tiers[model.RiskCritical].Auto)
 	}
 	if p.Activation.Tiers[model.RiskHigh].MaxAutoEnforcement != model.EnforcementWarning {
 		t.Errorf("high tier max enforcement = %q, want warning", p.Activation.Tiers[model.RiskHigh].MaxAutoEnforcement)
 	}
 	if len(p.Escalators.SensitivePaths) == 0 {
 		t.Error("expected default sensitive paths")
+	}
+}
+
+func TestDefaultCriticalTierAutoActivates(t *testing.T) {
+	tier := Default().Activation.Tiers[model.RiskCritical]
+	if tier.Auto != "independent_confirm" {
+		t.Errorf("critical auto = %q, want independent_confirm", tier.Auto)
+	}
+	if tier.MinIndependentConfirms != 2 {
+		t.Errorf("critical min_independent_confirms = %d, want 2", tier.MinIndependentConfirms)
+	}
+	if tier.MaxAutoEnforcement != model.EnforcementWarning {
+		t.Errorf("critical max_auto_enforcement = %q, want warning", tier.MaxAutoEnforcement)
 	}
 }
 

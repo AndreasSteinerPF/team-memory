@@ -33,8 +33,9 @@ type Activation struct {
 }
 
 type Tier struct {
-	Auto               string            `yaml:"auto"` // immediate | independent_confirm | never
-	MaxAutoEnforcement model.Enforcement `yaml:"max_auto_enforcement,omitempty"`
+	Auto                   string            `yaml:"auto"` // immediate | independent_confirm | never
+	MinIndependentConfirms int               `yaml:"min_independent_confirms,omitempty"`
+	MaxAutoEnforcement     model.Enforcement `yaml:"max_auto_enforcement,omitempty"`
 }
 
 // RequirementEnforcement mirrors prd.md §8.1. v1 derivation hard-codes
@@ -79,7 +80,7 @@ func Default() Policy {
 				model.RiskLow:      {Auto: "immediate", MaxAutoEnforcement: model.EnforcementRecommendation},
 				model.RiskMedium:   {Auto: "independent_confirm", MaxAutoEnforcement: model.EnforcementWarning},
 				model.RiskHigh:     {Auto: "independent_confirm", MaxAutoEnforcement: model.EnforcementWarning},
-				model.RiskCritical: {Auto: "never"},
+				model.RiskCritical: {Auto: "independent_confirm", MinIndependentConfirms: 2, MaxAutoEnforcement: model.EnforcementWarning},
 			},
 		},
 		RequirementEnforcement: RequirementEnforcement{HumanRequired: true},
