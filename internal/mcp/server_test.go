@@ -422,6 +422,75 @@ func TestProposeAcceptsCommandScope(t *testing.T) {
 	}
 }
 
+func TestCheckActionMatchesCommand(t *testing.T) {
+	ctx := context.Background()
+	_, d, cleanup := testEnv(t)
+	defer cleanup()
+
+	session := startServer(t, ctx, d)
+
+	// Propose an active command-scoped memory. Use type "decision" (low risk → active immediately).
+	callTool(t, ctx, session, "tm_propose", map[string]any{
+		"type":     "decision",
+		"title":    "always run seed before assistant import",
+		"commands": []string{"assistant import *"},
+		"session":  "s1",
+	})
+	if err := d.Index.Update(); err != nil {
+		t.Fatalf("idx.Update: %v", err)
+	}
+	out := callTool(t, ctx, session, "tm_check_action", map[string]any{
+		"command": "assistant import customers.csv",
+	})
+	text := resultText(out)
+	if !strings.Contains(text, "always run seed before assistant import") {
+		t.Fatalf("check_action output did not surface the command memory:\n%s", text)
+	}
+}
+
+func TestAdjustScopeAcceptsCommands(t *testing.T) {
+	ctx := context.Background()
+	_, d, cleanup := testEnv(t)
+	defer cleanup()
+
+	session := startServer(t, ctx, d)
+
+	// Propose a command-scoped memory (constraint; not immediately active — doesn't matter for this test).
+	res := callTool(t, ctx, session, "tm_propose", map[string]any{
+		"type":     "constraint",
+		"title":    "assistant needs auth",
+		"commands": []string{"assistant *"},
+		"session":  "s1",
+	})
+	text := resultText(res)
+	id := strings.TrimSpace(strings.SplitN(text, "\n", 2)[0])
+	if id == "" {
+		t.Fatalf("could not extract memory ID from propose response:\n%s", text)
+	}
+
+	callTool(t, ctx, session, "tm_observe", map[string]any{
+		"memory_id": id,
+		"kind":      "adjust_scope",
+		"commands":  []string{"assistant jira create *"},
+		"session":   "s2",
+	})
+
+	obs, err := d.Ledger.Observations()
+	if err != nil {
+		t.Fatalf("Observations: %v", err)
+	}
+	found := false
+	for _, o := range obs {
+		if o.Kind == model.KindAdjustScope && o.SuggestedScope != nil &&
+			len(o.SuggestedScope.Commands) == 1 && o.SuggestedScope.Commands[0] == "assistant jira create *" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("adjust_scope observation did not carry suggested command scope")
+	}
+}
+
 // TestFullPipeline exercises the complete PRD §13 lifecycle through MCP tools:
 // propose → confirm → activate → check_action → search → status
 func TestFullPipeline(t *testing.T) {

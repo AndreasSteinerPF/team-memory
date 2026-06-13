@@ -281,7 +281,8 @@ type observeArgs struct {
 	Kind     string   `json:"kind" jsonschema:"Observation kind: confirm|contradict|adjust_scope|mark_stale"`
 	Summary  string   `json:"summary,omitempty" jsonschema:"What you observed, with enough detail to be useful evidence."`
 	Evidence []string `json:"evidence,omitempty" jsonschema:"Evidence as type:ref pairs (e.g. test_failure:logs/rollback.log). Include evidence whenever possible."`
-	Scope    []string `json:"scope,omitempty" jsonschema:"Suggested scope globs for adjust_scope (required if kind=adjust_scope)."`
+	Scope    []string `json:"scope,omitempty" jsonschema:"Suggested scope globs for adjust_scope (required if kind=adjust_scope and no commands)."`
+	Commands []string `json:"commands,omitempty" jsonschema:"Suggested command patterns for adjust_scope (use instead of or alongside scope when correcting a command-scoped memory)."`
 	Session  string   `json:"session,omitempty" jsonschema:"Your session ID for independence tracking. Use $CLAUDE_SESSION_ID."`
 	Actor    string   `json:"actor,omitempty" jsonschema:"Name of the observing agent."`
 }
@@ -309,10 +310,10 @@ Always include evidence when observing. Observations without evidence are less u
 				}},
 			}, nil, nil
 		}
-		if kind == model.KindAdjustScope && len(args.Scope) == 0 {
+		if kind == model.KindAdjustScope && len(args.Scope) == 0 && len(args.Commands) == 0 {
 			return &sdkmcp.CallToolResult{
 				IsError: true,
-				Content: []sdkmcp.Content{&sdkmcp.TextContent{Text: "adjust_scope requires scope field"}},
+				Content: []sdkmcp.Content{&sdkmcp.TextContent{Text: "adjust_scope requires scope or commands"}},
 			}, nil, nil
 		}
 
@@ -343,7 +344,7 @@ Always include evidence when observing. Observations without evidence are less u
 			o.Evidence = append(o.Evidence, parseEvidence(ev))
 		}
 		if kind == model.KindAdjustScope {
-			o.SuggestedScope = &model.Scope{Paths: args.Scope}
+			o.SuggestedScope = &model.Scope{Paths: args.Scope, Commands: args.Commands}
 		}
 
 		if _, err := s.deps.Ledger.AppendObservation(o); err != nil {
@@ -377,6 +378,7 @@ Always include evidence when observing. Observations without evidence are less u
 type checkActionArgs struct {
 	Description     string   `json:"description,omitempty" jsonschema:"Free-text description of what you are about to do, for FTS matching against memory titles and summaries."`
 	Paths           []string `json:"paths,omitempty" jsonschema:"Target file paths of the action (matched against memory scopes). Provide this for edit-time checks."`
+	Command         string   `json:"command,omitempty" jsonschema:"The command you are about to run, matched against memory command scopes (scope.commands). Provide this for command-time checks."`
 	ProvisionalMode string   `json:"provisional_mode,omitempty" jsonschema:"Override provisional surfacing: never|related|always. Default: use policy (related)."`
 }
 
@@ -397,6 +399,7 @@ The PreToolUse hook handles edit-time delivery automatically in Claude Code; use
 	}, func(ctx context.Context, req *sdkmcp.CallToolRequest, args checkActionArgs) (*sdkmcp.CallToolResult, any, error) {
 		results, err := s.deps.Engine.Retrieve(retrieve.Query{
 			Paths:           args.Paths,
+			Command:         args.Command,
 			Description:     args.Description,
 			ProvisionalMode: args.ProvisionalMode,
 		})
