@@ -14,7 +14,7 @@ import (
 
 func newProposeCmd(g *globalOpts) *cobra.Command {
 	var title, summary, guidance, origin, actor, session, ctxBranch string
-	var scope, evidence, anchors, ctxPaths []string
+	var scope, scopeCommands, evidence, anchors, ctxPaths []string
 	cmd := &cobra.Command{
 		Use:   "propose <type>",
 		Short: "Create a memory (type: failed_attempt|constraint|fragile_area|stale_doc|decision)",
@@ -36,7 +36,7 @@ func newProposeCmd(g *globalOpts) *cobra.Command {
 				Title:    title,
 				Summary:  summary,
 				Guidance: guidance,
-				Scope:    model.Scope{Paths: scope},
+				Scope:    model.Scope{Paths: scope, Commands: scopeCommands},
 				Actor:    agentActor(actor, session),
 			}
 			for _, ev := range evidence {
@@ -76,6 +76,7 @@ func newProposeCmd(g *globalOpts) *cobra.Command {
 	cmd.Flags().StringVar(&summary, "summary", "", "what happened")
 	cmd.Flags().StringVar(&guidance, "guidance", "", "what a future agent should do")
 	cmd.Flags().StringArrayVar(&scope, "scope", nil, "path glob this memory applies to (repeatable)")
+	cmd.Flags().StringArrayVar(&scopeCommands, "scope-command", nil, "command pattern this memory applies to (repeatable)")
 	cmd.Flags().StringArrayVar(&evidence, "evidence", nil, "evidence as type:ref (repeatable)")
 	cmd.Flags().StringArrayVar(&anchors, "anchor", nil, "anchor as path@ref, e.g. file@HEAD (repeatable)")
 	cmd.Flags().StringVar(&origin, "origin", "", "constraint origin: team|external")

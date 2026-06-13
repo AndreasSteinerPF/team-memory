@@ -372,10 +372,14 @@ created_at: "2026-06-15T11:20:00Z"
 
 The plugin installs three things:
 
-**PreToolUse hook** on `Edit|Write|MultiEdit`: runs `tm check-action --hook --path <target>` against the local SQLite index. Budget: under 100ms end-to-end (no network; background fetch is detached).
+**PreToolUse hook** on `Edit|Write|MultiEdit|Bash`: runs `tm check-action --hook` against the local SQLite index. Budget: under 100ms end-to-end (no network; background fetch is detached).
+
+For edit tools (`Edit|Write|MultiEdit`), the hook reads `tool_input.file_path` and matches memories by path scope. For `Bash` tool calls, the hook reads `tool_input.command` and matches memories by `scope.commands`. An unacknowledged active `requirement` memory whose command pattern matches the Bash command **denies the command** (same block-and-ack flow as edits).
+
+v1 limits: command matching uses leading-subcommand matching only (flags are not matched). Shell composition (pipes, `&&`, subshells) is best-effort.
 
 * Matching `hint` / `recommendation` / `warning` memories → injected as additional context on the tool call.
-* Matching unacknowledged `requirement` memories → the hook **denies the edit**, returning the guidance and required checks as feedback:
+* Matching unacknowledged `requirement` memories → the hook **denies the edit or command**, returning the guidance and required checks as feedback:
 
 > "Requirement (mem 01J8X4…): Billing migrations require downgrade-path tests. Run the downgrade-path tests, then run `tm ack 01J8X4…` and retry the edit."
 

@@ -19,7 +19,7 @@ type hookSpec struct {
 // claudeHookSpecs is everything `tm init` installs (prd.md §10.1): the
 // edit-time check hook and the session-start briefing.
 var claudeHookSpecs = []hookSpec{
-	{event: "PreToolUse", matcher: "Edit|Write|MultiEdit", command: "tm check-action --hook"},
+	{event: "PreToolUse", matcher: "Edit|Write|MultiEdit|Bash", command: "tm check-action --hook"},
 	{event: "SessionStart", matcher: "", command: "tm brief"},
 }
 

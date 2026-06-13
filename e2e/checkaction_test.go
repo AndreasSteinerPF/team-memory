@@ -29,6 +29,72 @@ func hookEvent(t *testing.T, session, repoDir, relPath string) string {
 	return string(data)
 }
 
+// bashHookEvent builds a PreToolUse stdin payload for a Bash tool call.
+func bashHookEvent(t *testing.T, session, command string) string {
+	t.Helper()
+	type ti struct {
+		Command string `json:"command"`
+	}
+	type ev struct {
+		SessionID string `json:"session_id"`
+		ToolName  string `json:"tool_name"`
+		ToolInput ti     `json:"tool_input"`
+	}
+	data, err := json.Marshal(ev{
+		SessionID: session,
+		ToolName:  "Bash",
+		ToolInput: ti{Command: command},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
+}
+
+func TestCheckActionHookBashBlocksOnCommandRequirement(t *testing.T) {
+	dir := newGitRepo(t)
+	runTM(t, dir, "", "init")
+
+	out, _, _ := runTM(t, dir, "", "propose", "failed_attempt",
+		"--title", "run pytest before merging",
+		"--guidance", "always run pytest before merging",
+		"--scope-command", "pytest *",
+		"--session", "s1")
+	id := parseID(t, out)
+	// Make it a requirement via human approval.
+	runTM(t, dir, "", "approve", id, "--enforcement", "requirement", "--confidence", "high")
+
+	ev := bashHookEvent(t, "s3", "pytest -q")
+
+	// Unacknowledged => the hook denies the Bash call.
+	out, _, code := runTM(t, dir, ev, "check-action", "--hook")
+	if code != 0 {
+		t.Fatalf("hook should exit 0 even when denying; got %d / %s", code, out)
+	}
+	var dec struct {
+		HookSpecificOutput struct {
+			PermissionDecision       string `json:"permissionDecision"`
+			PermissionDecisionReason string `json:"permissionDecisionReason"`
+		} `json:"hookSpecificOutput"`
+	}
+	if err := json.Unmarshal([]byte(out), &dec); err != nil {
+		t.Fatalf("hook output not JSON: %v\n%s", err, out)
+	}
+	if dec.HookSpecificOutput.PermissionDecision != "deny" {
+		t.Fatalf("want deny, got %q (%s)", dec.HookSpecificOutput.PermissionDecision, out)
+	}
+	if !strings.Contains(dec.HookSpecificOutput.PermissionDecisionReason, id) {
+		t.Fatalf("deny reason should name the memory id:\n%s", out)
+	}
+
+	// Ack for the same session, then the hook allows (no deny).
+	runTM(t, dir, "", "ack", id, "--session", "s3")
+	out, _, _ = runTM(t, dir, ev, "check-action", "--hook")
+	if strings.Contains(out, `"deny"`) {
+		t.Fatalf("acked requirement should not be denied:\n%s", out)
+	}
+}
+
 func TestCheckActionHumanMode(t *testing.T) {
 	dir := newGitRepo(t)
 	runTM(t, dir, "", "init")

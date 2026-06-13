@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -226,6 +227,20 @@ func TestInstallClaudeCodeHooksPartialUpgrade(t *testing.T) {
 	if n := countHookEntries(settings, claudeHookSpecs[1]); n != 1 {
 		t.Fatalf("SessionStart entries = %d, want 1 (the missing hook must be added)", n)
 	}
+}
+
+// TestPreToolUseMatcherIncludesBash verifies that the PreToolUse hook matcher
+// includes "Bash" so the hook fires on Bash tool calls (prd.md §10.1).
+func TestPreToolUseMatcherIncludesBash(t *testing.T) {
+	for _, h := range claudeHookSpecs {
+		if h.event == "PreToolUse" {
+			if !strings.Contains(h.matcher, "Bash") {
+				t.Fatalf("PreToolUse matcher %q must include Bash", h.matcher)
+			}
+			return
+		}
+	}
+	t.Fatal("no PreToolUse hook found")
 }
 
 // TestSessionStartHookHasNoMatcherKey pins the no-matcher property directly on

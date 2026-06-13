@@ -18,7 +18,7 @@ import (
 
 func newCheckActionCmd(g *globalOpts) *cobra.Command {
 	var paths []string
-	var desc, provMode string
+	var command, desc, provMode string
 	var hook bool
 	cmd := &cobra.Command{
 		Use:   "check-action",
@@ -37,7 +37,7 @@ func newCheckActionCmd(g *globalOpts) *cobra.Command {
 				return runHook(cmd, e)
 			}
 			res, err := e.engine().Retrieve(retrieve.Query{
-				Paths: paths, Description: desc, ProvisionalMode: provMode,
+				Paths: paths, Command: command, Description: desc, ProvisionalMode: provMode,
 			})
 			if err != nil {
 				return err
@@ -47,6 +47,7 @@ func newCheckActionCmd(g *globalOpts) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringArrayVar(&paths, "path", nil, "action target path (repeatable)")
+	cmd.Flags().StringVar(&command, "command", "", "the command being run (matched against scope.commands)")
 	cmd.Flags().StringVar(&desc, "description", "", "free-text action description (FTS)")
 	cmd.Flags().StringVar(&provMode, "provisional-mode", "", "never | related | always (default: policy)")
 	cmd.Flags().BoolVar(&hook, "hook", false, "read a Claude Code PreToolUse event on stdin and emit a hook decision")
@@ -139,6 +140,7 @@ type hookInput struct {
 	ToolName  string `json:"tool_name"`
 	ToolInput struct {
 		FilePath string `json:"file_path"`
+		Command  string `json:"command"`
 	} `json:"tool_input"`
 }
 
@@ -158,17 +160,23 @@ func runHook(cmd *cobra.Command, e *env) error {
 	if err := json.NewDecoder(cmd.InOrStdin()).Decode(&in); err != nil {
 		return fmt.Errorf("hook: decode stdin: %w", err)
 	}
-	if in.ToolInput.FilePath == "" {
+	var q retrieve.Query
+	switch {
+	case in.ToolInput.FilePath != "":
+		rel := in.ToolInput.FilePath
+		if abs, err := filepath.Abs(rel); err == nil {
+			if r, err := filepath.Rel(e.repoDir, abs); err == nil {
+				rel = filepath.ToSlash(r)
+			}
+		}
+		q.Paths = []string{rel}
+	case in.ToolInput.Command != "":
+		q.Command = in.ToolInput.Command
+	default:
 		return nil // nothing to check
 	}
-	rel := in.ToolInput.FilePath
-	if abs, err := filepath.Abs(rel); err == nil {
-		if r, err := filepath.Rel(e.repoDir, abs); err == nil {
-			rel = filepath.ToSlash(r)
-		}
-	}
 
-	res, err := e.engine().Retrieve(retrieve.Query{Paths: []string{rel}})
+	res, err := e.engine().Retrieve(q)
 	if err != nil {
 		return err
 	}
