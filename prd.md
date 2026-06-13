@@ -86,6 +86,7 @@ Non-examples:
 * "This function validates invoices." (derivable from the code)
 * "This test failed once because of a typo." (not durable)
 * "This task is currently in progress." (session state)
+* "Pass `--foo` on macOS but `--bar` on Linux." (system/OS-specific, not team judgment — would be wrong for part of the team)
 
 ### 5.2 Memory Types
 
@@ -394,7 +395,7 @@ v1 limits: command matching uses leading-subcommand matching only (flags are not
 ### 10.3 MCP Tools
 
 1. `tm_check_action` — input: action description, paths, optional `command` (matched against memory `scope.commands`), optional provisional mode. Output: active memories, strongly-related provisional memories (capped, caution-framed), drift annotations, requested observations. For pre-task planning; the hook covers edit time.
-2. `tm_propose` — create a memory. Tool description constrains usage to durable, future-action-relevant project judgment and enumerates memory-worthy events (non-obvious failure, hidden constraint, stale doc, fragile area, undocumented decision) and non-events (session state, trivia, code facts derivable from the repo). Accepts path globs via `scope` and command patterns via `commands` (e.g. `pytest *`).
+2. `tm_propose` — create a memory. Tool description constrains usage to durable, future-action-relevant project judgment and enumerates memory-worthy events (non-obvious failure, hidden constraint, stale doc, fragile area, undocumented decision) and non-events (session state, trivia, code facts derivable from the repo, system/OS-specific facts). Accepts path globs via `scope` and command patterns via `commands` (e.g. `pytest *`).
 3. `tm_observe` — add `confirm` / `contradict` / `adjust_scope` / `mark_stale` with evidence. Tool description: observe when your work bears on a memory you were shown — confirmation with evidence, contradiction with evidence, scope correction, or staleness. `adjust_scope` accepts `scope` (path globs), `commands` (command patterns), or both.
 4. `tm_search` — lexical search over the ledger.
 5. `tm_status` — counts of active/provisional/contested/stale, pending human items, sync state.

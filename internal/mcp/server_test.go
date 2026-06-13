@@ -491,6 +491,15 @@ func TestAdjustScopeAcceptsCommands(t *testing.T) {
 	}
 }
 
+func TestProposeDescriptionWarnsAgainstSystemSpecific(t *testing.T) {
+	desc := proposeToolDescription
+	for _, want := range []string{"OS", "machine"} {
+		if !strings.Contains(desc, want) {
+			t.Errorf("tm_propose description must caution against system/OS-specific memories (missing %q)", want)
+		}
+	}
+}
+
 // TestFullPipeline exercises the complete PRD §13 lifecycle through MCP tools:
 // propose → confirm → activate → check_action → search → status
 func TestFullPipeline(t *testing.T) {
