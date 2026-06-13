@@ -22,6 +22,24 @@ type goldenCase struct {
 	} `yaml:"expected"`
 }
 
+func TestCommandBreadthEscalatesRisk(t *testing.T) {
+	pol := policy.Default()
+	broad := model.Memory{
+		Type:  model.TypeConstraint, // base medium
+		Title: "assistant needs auth token",
+		Scope: model.Scope{Commands: []string{"assistant *"}},
+	}
+	narrow := broad
+	narrow.Scope = model.Scope{Commands: []string{"assistant jira create *"}}
+
+	if got := Derive(broad, nil, pol).Risk; got != model.RiskHigh {
+		t.Errorf("broad command risk = %s, want high (medium + broad bump)", got)
+	}
+	if got := Derive(narrow, nil, pol).Risk; got != model.RiskMedium {
+		t.Errorf("narrow command risk = %s, want medium (no bump)", got)
+	}
+}
+
 func TestDeriveGolden(t *testing.T) {
 	files, err := filepath.Glob("testdata/*.yaml")
 	if err != nil {

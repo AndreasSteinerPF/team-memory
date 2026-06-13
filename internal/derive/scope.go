@@ -41,7 +41,7 @@ func scopeIsBroad(s model.Scope) bool {
 			return true
 		}
 	}
-	return false
+	return commandScopeIsBroad(s)
 }
 
 // literalSegments returns the non-wildcard segments of a glob, in order.

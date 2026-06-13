@@ -1,6 +1,10 @@
 package derive
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/AndreasSteinerPF/team-memory/internal/model"
+)
 
 // isEnvAssignment reports whether tok is a leading shell env assignment
 // (NAME=value), which precedes the real command, e.g. FOO=bar in "FOO=bar cmd".
@@ -74,4 +78,23 @@ func matchCommandPattern(pattern, command string) bool {
 // layers, mirroring MatchPathGlob.
 func MatchCommandPattern(pattern, command string) bool {
 	return matchCommandPattern(pattern, command)
+}
+
+// commandPatternIsBroad: a bare-binary pattern (one fixed leading token, e.g.
+// "assistant *" or "assistant") is broad — it matches every invocation of the
+// binary. Subcommand-qualified patterns (>=2 fixed tokens) are not broad.
+// (prd.md §8.1: command breadth = few fixed leading tokens.)
+func commandPatternIsBroad(pattern string) bool {
+	fixed, _ := commandPatternFixed(pattern)
+	return len(fixed) <= 1
+}
+
+// commandScopeIsBroad reports whether any command pattern in the scope is broad.
+func commandScopeIsBroad(s model.Scope) bool {
+	for _, c := range s.Commands {
+		if commandPatternIsBroad(c) {
+			return true
+		}
+	}
+	return false
 }

@@ -40,6 +40,20 @@ func TestMatchCommandPattern(t *testing.T) {
 	}
 }
 
+func TestCommandPatternIsBroad(t *testing.T) {
+	cases := map[string]bool{
+		"assistant *":             true,  // bare-binary: one fixed token
+		"assistant":               true,  // bare-binary, no wildcard
+		"assistant jira *":        false, // two fixed tokens
+		"assistant jira create *": false,
+	}
+	for pattern, want := range cases {
+		if got := commandPatternIsBroad(pattern); got != want {
+			t.Errorf("commandPatternIsBroad(%q) = %v, want %v", pattern, got, want)
+		}
+	}
+}
+
 func TestIsEnvAssignment(t *testing.T) {
 	cases := map[string]bool{
 		"FOO=bar": true,
