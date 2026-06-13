@@ -3,10 +3,16 @@ package cli
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/AndreasSteinerPF/team-memory/internal/git"
+	"github.com/AndreasSteinerPF/team-memory/internal/index"
+	"github.com/AndreasSteinerPF/team-memory/internal/ledger"
+	"github.com/AndreasSteinerPF/team-memory/internal/policy"
 )
 
 type severity int
@@ -115,5 +121,79 @@ func checkMCP(repoDir string) checkResult {
 		return r
 	}
 	r.sev, r.detail, r.hint = sevWarn, "teammemory not in .mcp.json", snippet
+	return r
+}
+
+func checkLedger(led *ledger.Ledger) checkResult {
+	r := checkResult{name: "Ledger branch"}
+	if led.Exists() {
+		r.sev, r.detail = sevOK, "initialized"
+		return r
+	}
+	r.sev, r.detail, r.hint = sevFail, "not initialized", "run `tm init`"
+	return r
+}
+
+func checkIndex(led *ledger.Ledger, gitDir string) checkResult {
+	r := checkResult{name: "Local index"}
+	idx, err := index.Open(index.PathFor(gitDir), led)
+	if err != nil {
+		r.sev, r.detail = sevFail, fmt.Sprintf("cannot open: %v", err)
+		r.hint = "delete .git/tm/index.db and retry"
+		return r
+	}
+	defer idx.Close()
+	if err := idx.Update(); err != nil {
+		r.sev, r.detail = sevFail, fmt.Sprintf("rebuild failed: %v", err)
+		r.hint = "delete .git/tm/index.db and retry"
+		return r
+	}
+	rows, err := idx.All()
+	if err != nil {
+		r.sev, r.detail = sevFail, fmt.Sprintf("query failed: %v", err)
+		return r
+	}
+	r.sev, r.detail = sevOK, fmt.Sprintf("healthy (%d memories)", len(rows))
+	return r
+}
+
+func checkPolicy(led *ledger.Ledger) checkResult {
+	r := checkResult{name: "policy.yaml"}
+	data, err := led.Policy()
+	if err != nil {
+		r.sev, r.detail = sevWarn, "absent; using built-in defaults"
+		return r
+	}
+	if _, err := policy.Load(data); err != nil {
+		r.sev, r.detail = sevFail, fmt.Sprintf("invalid: %v", err)
+		r.hint = "fix policy.yaml on the ledger branch"
+		return r
+	}
+	r.sev, r.detail = sevOK, "valid"
+	return r
+}
+
+// checkRemote mirrors env.ledgerRemote + env.remoteAvailable (env.go) without an
+// open env: resolve tm.remote (else origin), then treat a value containing a
+// path/URL separator as usable and a bare name as usable only if it resolves.
+func checkRemote(repoDir string) checkResult {
+	r := checkResult{name: "Ledger remote"}
+	gr := git.Runner{Dir: repoDir}
+	remote := "origin"
+	if out, err := gr.Run("config", "--get", "tm.remote"); err == nil {
+		if v := strings.TrimSpace(out); v != "" {
+			remote = v
+		}
+	}
+	available := strings.ContainsAny(remote, "/:\\")
+	if !available {
+		_, err := gr.Run("remote", "get-url", remote)
+		available = err == nil
+	}
+	if available {
+		r.sev, r.detail = sevOK, remote
+		return r
+	}
+	r.sev, r.detail = sevWarn, "none configured; sync/push disabled (fine for solo use)"
 	return r
 }
