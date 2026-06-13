@@ -346,11 +346,13 @@ activation:
     high:                                 # one independent confirm activates it
       auto: independent_confirm
       max_auto_enforcement: warning
-    critical:                             # never auto-activates; needs a human
-      auto: never
+    critical:                             # two independent confirms activate it
+      auto: independent_confirm
+      min_independent_confirms: 2
+      max_auto_enforcement: warning
 ```
 
-`critical` tiers never auto-activate, and no tier can reach `requirement` without `tm approve` — agents alone can never create a binding rule.
+`critical` memories need two independent confirmations to auto-activate — more evidence than any other tier — and no tier can reach `requirement` without `tm approve`, so agents alone can never create a binding rule.
 
 ---
 

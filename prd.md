@@ -234,7 +234,7 @@ activation:
     low:      { auto: immediate,           max_auto_enforcement: recommendation }
     medium:   { auto: independent_confirm, max_auto_enforcement: warning }
     high:     { auto: independent_confirm, max_auto_enforcement: warning }
-    critical: { auto: never }              # human approve only
+    critical: { auto: independent_confirm, min_independent_confirms: 2, max_auto_enforcement: warning }  # 2 confirms; requirement still human-only
 
 requirement_enforcement:
   human_required: true
@@ -260,7 +260,7 @@ Evaluated in precedence order:
 4. **active** — per the risk tier:
    * `low`: active immediately on creation;
    * `medium` / `high`: active once ≥1 *independent* `confirm` exists, or a human `approve` exists;
-   * `critical`: active only with a human `approve`.
+   * `critical`: active once ≥2 *independent* `confirm`s exist, or a human `approve` exists.
 5. **provisional** — otherwise.
 
 **Independence (default):** an observation is independent if its `actor.session_id` is present and differs from the memory's `actor.session_id`. The stricter `different_session_and_branch` mode additionally requires the observation's `code_context.branch` to differ from the memory's `code_context.branch`; if either branch is absent, this mode degrades to session-only.
@@ -572,7 +572,7 @@ First 90 days: 500 stars; 5 external contributors; documented setups for 2+ codi
 3. Storage is **append-only records (memories + observations) with ULID filenames**; concurrent sync is conflict-free by construction.
 4. **All state is derived**: status, confidence, risk, enforcement, and effective scope are a pure function of records + policy, cached in local SQLite, never stored or synced.
 5. **Risk is policy-derived**, never agent-assessed.
-6. **Tiered activation:** low risk activates immediately; medium/high need one independent confirmation; critical needs a human; `requirement` enforcement always needs a human.
+6. **Tiered activation:** low risk activates immediately; medium/high need one independent confirmation; critical needs two independent confirmations; `requirement` enforcement always needs a human.
 7. Five memory types: `failed_attempt`, `constraint`, `fragile_area`, `stale_doc`, `decision`.
 8. Six observation kinds: `confirm`, `contradict`, `adjust_scope`, `mark_stale` (agents); `approve`, `reject` (humans).
 9. **Hook-first integration:** Claude Code PreToolUse hook makes `check_action` deterministic and makes `requirement` enforcement real (block + ack); MCP covers voluntary verbs and other agents.
