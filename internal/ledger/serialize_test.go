@@ -41,6 +41,36 @@ func TestMemoryRoundTrip(t *testing.T) {
 	}
 }
 
+func TestScopeCommandsRoundTrip(t *testing.T) {
+	want := model.Memory{
+		ID:    "01J8X4QZ7M9FKE2V3R5T8WYBCD",
+		Type:  model.TypeFailedAttempt,
+		Title: "Commands round-trip",
+		Scope: model.Scope{
+			Paths:    []string{"tests/**"},
+			Commands: []string{"pytest *", "make test"},
+		},
+		Actor:     model.Actor{Kind: model.ActorAgent, Name: "claude-code", SessionID: "s1"},
+		CreatedAt: time.Date(2026, 6, 15, 10, 0, 0, 0, time.UTC),
+	}
+
+	data, err := marshalMemory(want)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	got, err := unmarshalMemory(data)
+	if err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	if len(got.Scope.Commands) != 2 || got.Scope.Commands[0] != "pytest *" || got.Scope.Commands[1] != "make test" {
+		t.Fatalf("scope.commands mismatch: got %+v want %+v", got.Scope.Commands, want.Scope.Commands)
+	}
+	if len(got.Scope.Paths) != 1 || got.Scope.Paths[0] != "tests/**" {
+		t.Fatalf("scope.paths mismatch: got %+v want %+v", got.Scope.Paths, want.Scope.Paths)
+	}
+}
+
 func TestObservationRoundTrip(t *testing.T) {
 	want := model.Observation{
 		ID:        "01J8X5A2P4HND7QW9XK1MZRTGE",

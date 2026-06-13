@@ -75,9 +75,10 @@ const (
 	StatusRejected    Status = "rejected"
 )
 
-// Scope is a set of path globs the memory applies to.
+// Scope is a set of path globs and command patterns the memory applies to.
 type Scope struct {
-	Paths []string `yaml:"paths"`
+	Paths    []string `yaml:"paths"`
+	Commands []string `yaml:"commands,omitempty"`
 }
 
 // Actor identifies who created a record.
@@ -90,9 +91,10 @@ type Actor struct {
 // CodeContext records where work happened. On a memory it is where the memory
 // was proposed; on an observation it is where the observing agent was working.
 type CodeContext struct {
-	Branch string   `yaml:"branch,omitempty"`
-	Commit string   `yaml:"commit,omitempty"`
-	Paths  []string `yaml:"paths,omitempty"`
+	Branch   string   `yaml:"branch,omitempty"`
+	Commit   string   `yaml:"commit,omitempty"`
+	Paths    []string `yaml:"paths,omitempty"`
+	Commands []string `yaml:"commands,omitempty"`
 }
 
 // Evidence is a pointer to something that substantiates a record.
