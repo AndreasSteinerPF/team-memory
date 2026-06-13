@@ -12,72 +12,141 @@ type SyncResult struct {
 	Action string
 }
 
+// maxSyncAttempts bounds the fetch→reconcile→push retry loop. TeamMemory is
+// designed for conflict-free concurrent writers, so a push that loses a race is
+// expected and recoverable; a small fixed bound stops a pathological
+// constant-contention scenario from looping forever.
+const maxSyncAttempts = 4
+
 // Sync reconciles the ledger branch with remote: it fetches the remote tip,
 // resolves divergence by a tree-level union merge (records never collide, so no
 // textual merge is ever needed — prd.md §7.2/§7.4), and pushes the result.
 //
-// Sync assumes serial use per clone; if the remote advances between our fetch
-// and our push the push is rejected and the error is returned (re-run Sync).
-// Automatic retry is out of scope for this slice.
+// If the remote ref advances or is created between our fetch and our push — a
+// background push from propose/observe, or another clone syncing concurrently —
+// the push is rejected; Sync re-fetches, re-reconciles, and re-pushes, up to
+// maxSyncAttempts (prd.md §7.4). A union-merge performed on any attempt is
+// always reported as "merged", even if a later attempt only had to fast-forward
+// the merge commit onto the remote.
 func (l *Ledger) Sync(remote string) (SyncResult, error) {
 	if !l.Exists() {
 		return SyncResult{}, fmt.Errorf("ledger: branch %q does not exist", l.branch)
 	}
-	local, err := l.git.Run("rev-parse", l.ref())
-	if err != nil {
-		return SyncResult{}, err
-	}
 
-	// Fetch the remote branch into FETCH_HEAD. If the remote has no such branch
-	// yet, fetch fails — treat that as "remote is empty" and just push.
-	if _, err := l.git.Run("fetch", remote, l.branch); err != nil {
-		if perr := l.push(remote); perr != nil {
-			return SyncResult{}, perr
-		}
-		return SyncResult{Action: "created-remote"}, nil
-	}
-	remoteTip, err := l.git.Run("rev-parse", "FETCH_HEAD")
-	if err != nil {
-		return SyncResult{}, err
-	}
-
-	switch {
-	case remoteTip == local:
-		return SyncResult{Action: "up-to-date"}, nil
-
-	case l.isAncestor(local, remoteTip):
-		// Behind: fast-forward local to the remote tip.
-		if _, err := l.git.Run("update-ref", l.ref(), remoteTip); err != nil {
-			return SyncResult{}, err
-		}
-		return SyncResult{Action: "fast-forward"}, nil
-
-	case l.isAncestor(remoteTip, local):
-		// Ahead: push our commits.
-		if err := l.push(remote); err != nil {
-			return SyncResult{}, err
-		}
-		return SyncResult{Action: "pushed"}, nil
-
-	default:
-		// Diverged: union-merge then push.
-		merged, err := l.unionMerge(local, remoteTip)
+	merged := false
+	var lastErr error
+	for attempt := 0; attempt < maxSyncAttempts; attempt++ {
+		local, err := l.git.Run("rev-parse", l.ref())
 		if err != nil {
 			return SyncResult{}, err
 		}
-		if _, err := l.git.Run("update-ref", l.ref(), merged); err != nil {
+
+		// Fetch the remote branch into FETCH_HEAD. If the remote has no such
+		// branch yet, fetch fails — treat that as "remote is empty" and push.
+		if _, ferr := l.git.Run("fetch", remote, l.branch); ferr != nil {
+			if perr := l.doPush(remote); perr != nil {
+				if isRetryablePushError(perr) {
+					lastErr = perr
+					continue
+				}
+				return SyncResult{}, perr
+			}
+			return l.result("created-remote", merged), nil
+		}
+		remoteTip, err := l.git.Run("rev-parse", "FETCH_HEAD")
+		if err != nil {
 			return SyncResult{}, err
 		}
-		if err := l.push(remote); err != nil {
-			return SyncResult{}, err
+
+		switch {
+		case remoteTip == local:
+			return l.result("up-to-date", merged), nil
+
+		case l.isAncestor(local, remoteTip):
+			// Behind: fast-forward local to the remote tip.
+			if _, err := l.git.Run("update-ref", l.ref(), remoteTip); err != nil {
+				return SyncResult{}, err
+			}
+			return l.result("fast-forward", merged), nil
+
+		case l.isAncestor(remoteTip, local):
+			// Ahead: push our commits.
+			if perr := l.doPush(remote); perr != nil {
+				if isRetryablePushError(perr) {
+					lastErr = perr
+					continue
+				}
+				return SyncResult{}, perr
+			}
+			return l.result("pushed", merged), nil
+
+		default:
+			// Diverged: union-merge then push.
+			m, err := l.unionMerge(local, remoteTip)
+			if err != nil {
+				return SyncResult{}, err
+			}
+			if _, err := l.git.Run("update-ref", l.ref(), m); err != nil {
+				return SyncResult{}, err
+			}
+			merged = true
+			if perr := l.doPush(remote); perr != nil {
+				if isRetryablePushError(perr) {
+					lastErr = perr
+					continue
+				}
+				return SyncResult{}, perr
+			}
+			return l.result("merged", merged), nil
 		}
-		return SyncResult{Action: "merged"}, nil
 	}
+	return SyncResult{}, fmt.Errorf("sync: push lost a concurrent-update race %d times: %w", maxSyncAttempts, lastErr)
+}
+
+// result builds a SyncResult, preferring the "merged" label whenever a union
+// merge happened during the Sync call (see Sync's doc comment).
+func (l *Ledger) result(action string, merged bool) SyncResult {
+	if merged {
+		action = "merged"
+	}
+	return SyncResult{Action: action}
+}
+
+// doPush performs the real push unless a test has installed a pushFn seam.
+func (l *Ledger) doPush(remote string) error {
+	if l.pushFn != nil {
+		return l.pushFn(remote)
+	}
+	return l.push(remote)
 }
 
 func (l *Ledger) push(remote string) error {
 	_, err := l.git.Run("push", remote, l.ref()+":"+l.ref())
 	return err
+}
+
+// isRetryablePushError reports whether a failed push is a lost concurrent-update
+// race — another writer advanced or created the same ref between our fetch and
+// our push. These are transient: re-fetching and re-reconciling resolves them.
+// Genuine errors (auth, missing remote, network) are not retryable and surface
+// immediately.
+func isRetryablePushError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	for _, sig := range []string{
+		"cannot lock ref",          // concurrent ref-lock contention
+		"reference already exists", // concurrent create race (the CI flake)
+		"failed to push some refs", // generic push-rejection suffix
+		"fetch first",              // remote advanced; re-fetch resolves it
+		"non-fast-forward",         // ditto
+	} {
+		if strings.Contains(msg, sig) {
+			return true
+		}
+	}
+	return false
 }
 
 // isAncestor reports whether commit a is an ancestor of commit b.

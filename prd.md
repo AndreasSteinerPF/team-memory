@@ -192,6 +192,7 @@ Session-local state (requirement acknowledgments, last-fetch timestamp) lives in
 * `tm sync` = fetch + union-merge + push of the `teammemory` branch only.
 * **Opportunistic background fetch:** `check_action` triggers a non-blocking background fetch when the last fetch is older than `sync.auto_fetch_after` (default 5 minutes). Fresh memories flow between agents without anyone running `tm sync` manually. The hook never waits on the network.
 * Push happens on `propose`/`observe` (best-effort, async) and on explicit `tm sync`. Offline operation queues locally and pushes on next sync.
+* **Concurrent-push resilience:** if the remote ref is advanced or created between a sync's fetch and its push — by the async background push, or by another clone — the push is rejected; `tm sync` re-fetches, re-reconciles (union-merge as needed), and re-pushes, up to a small bounded number of attempts. Since records are append-only ULID files, every attempt converges.
 
 ## 8. Derived State Specification
 

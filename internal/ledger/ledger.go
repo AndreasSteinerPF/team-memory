@@ -24,6 +24,11 @@ type Ledger struct {
 	git    git.Runner
 	branch string
 	gitDir string // cached absolute .git dir; populated by Open, never changes
+
+	// pushFn, when non-nil, replaces the real git push. It exists solely so tests
+	// can deterministically simulate a lost push race (see sync_retry_test.go);
+	// it is nil on every production path.
+	pushFn func(remote string) error
 }
 
 // Open returns a ledger handle for branch within the git repository at repoDir.
