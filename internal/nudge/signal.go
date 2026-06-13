@@ -151,20 +151,18 @@ func detectIntervened(j *Journal) []Signal {
 func pathsEditedAround(j *Journal) map[string]struct{} {
 	found := map[string]struct{}{}
 	for _, p := range j.PromptTurns {
-		var before, after bool
-		var path string
+		before := map[string]struct{}{}
 		for _, e := range j.Edits {
 			if e.Turn < p {
-				path, before = e.Path, true
+				before[e.Path] = struct{}{}
 			}
 		}
 		for _, e := range j.Edits {
-			if e.Turn > p && e.Path == path {
-				after = true
+			if e.Turn > p {
+				if _, ok := before[e.Path]; ok {
+					found[e.Path] = struct{}{}
+				}
 			}
-		}
-		if before && after && path != "" {
-			found[path] = struct{}{}
 		}
 	}
 	return found

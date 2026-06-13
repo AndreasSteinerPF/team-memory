@@ -94,3 +94,21 @@ func TestDetectUserIntervened(t *testing.T) {
 		t.Errorf("expected intervened signal for auth/login.go, got %+v", s)
 	}
 }
+
+func TestDetectUserIntervenedMultiplePathsBeforePrompt(t *testing.T) {
+	cfg := nudge.Config{ChurnThreshold: 3}
+	// Two files edited before the prompt; only auth/login.go is re-edited after.
+	j := &nudge.Journal{Session: "s"}
+	j.Turn = 1
+	j.RecordEdit("auth/login.go")
+	j.Turn = 2
+	j.RecordEdit("billing/charge.go")
+	j.Turn = 3
+	j.RecordPrompt()
+	j.Turn = 4
+	j.RecordEdit("auth/login.go")
+	s := has(nudge.Detect(j, cfg), nudge.SigIntervened)
+	if s == nil || s.Path != "auth/login.go" {
+		t.Errorf("expected intervened signal for auth/login.go even though billing/charge.go was the last edit before the prompt, got %+v", s)
+	}
+}
