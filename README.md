@@ -303,15 +303,21 @@ command = ["tm", "brief"]
 
 ## Sync (team use)
 
+**Sync is automatic — you rarely run `tm sync` by hand.** Memories flow in both directions in the background:
+
+- **Outgoing:** `tm propose` and `tm observe` push the ledger branch in the background (detached, best-effort). If you're offline or the push is rejected, the record stays local and reconciles later — the command never blocks or fails on the network.
+- **Incoming:** `tm check-action` (including the `PreToolUse` hook) triggers a non-blocking background fetch when the last fetch is older than `sync.auto_fetch_after` (default 5 minutes). Teammates' memories arrive as you work, without anyone running a command.
+
+`tm sync` is the manual **reconciliation fallback** — run it when you were offline and want to flush queued records, when the remote diverged (a background push was rejected), or when you want an immediate refresh instead of waiting for the next opportunistic fetch:
+
 ```bash
-# After teammates push new memories:
 tm sync
 
 # With a separate remote for the ledger branch:
 tm sync --remote git@github.com:org/repo-memory.git
 ```
 
-`tm init --remote <name-or-url>` stores a separate ledger remote as `git config tm.remote`; `tm sync`, background fetch, and background push all honor it. `propose` and `observe` push the ledger branch in the background, best-effort; `tm sync` reconciles whenever you were offline or the remote diverged.
+`tm init --remote <name-or-url>` stores a separate ledger remote as `git config tm.remote`; `tm sync`, background fetch, and background push all honor it.
 
 Sync uses **union-merge**: because each record is an append-only ULID-named file, concurrent proposals from different clones never conflict.
 
