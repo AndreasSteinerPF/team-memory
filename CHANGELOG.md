@@ -6,6 +6,19 @@
 All notable changes to TeamMemory are documented here. The format is based on
 [Keep a Changelog], and this project adheres to [Semantic Versioning].
 
+## [0.1.1] - 2026-06-13
+
+### Changed
+
+- **Critical-risk memories now auto-activate.** A `critical` memory activates
+  once it has **2 independent confirmations** (a stricter bar than the single
+  confirm `high` needs), instead of requiring a human `approve`. Auto-enforcement
+  is capped at `warning`; `requirement` remains reachable only via human
+  `approve`, so agents still cannot create a binding rule (`prd.md §8`).
+- Adds an optional per-tier `min_independent_confirms` knob to `policy.yaml`
+  (`activation.tiers`); omitted tiers default to 1, so low/medium/high are
+  unchanged.
+
 ## [0.1.0] - 2026-06-13
 
 First usable release — the complete MVP (`prd.md §12.1`). Suitable for
@@ -45,4 +58,5 @@ dogfooding on real repositories.
 - **Acceptance tests** — flagship lifecycle demo, trap-repo retrieval benchmark,
   two-clone concurrent-sync convergence, and hook latency budget.
 
+[0.1.1]: https://github.com/AndreasSteinerPF/team-memory/releases/tag/v0.1.1
 [0.1.0]: https://github.com/AndreasSteinerPF/team-memory/releases/tag/v0.1.0
