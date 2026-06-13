@@ -72,6 +72,39 @@ activation:
 	}
 }
 
+func TestDefaultNudgeConfig(t *testing.T) {
+	p := Default()
+	if !p.Nudge.Enabled {
+		t.Errorf("Nudge.Enabled default = false, want true")
+	}
+	if p.Nudge.MaxPerSession != 3 {
+		t.Errorf("Nudge.MaxPerSession = %d, want 3", p.Nudge.MaxPerSession)
+	}
+	if p.Nudge.CooldownTurns != 3 {
+		t.Errorf("Nudge.CooldownTurns = %d, want 3", p.Nudge.CooldownTurns)
+	}
+	if p.Nudge.SelfReviewEvery != 8 {
+		t.Errorf("Nudge.SelfReviewEvery = %d, want 8", p.Nudge.SelfReviewEvery)
+	}
+	if p.Nudge.ChurnThreshold != 3 {
+		t.Errorf("Nudge.ChurnThreshold = %d, want 3", p.Nudge.ChurnThreshold)
+	}
+}
+
+func TestNudgeConfigRoundTripsThroughYAML(t *testing.T) {
+	data, err := DefaultYAML()
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := Load(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Nudge != Default().Nudge {
+		t.Errorf("Nudge round-trip = %+v, want %+v", p.Nudge, Default().Nudge)
+	}
+}
+
 func TestRequirementEnforcementDefaultAndRoundTrip(t *testing.T) {
 	p := Default()
 	if !p.RequirementEnforcement.HumanRequired {

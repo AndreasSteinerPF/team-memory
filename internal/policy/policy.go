@@ -15,6 +15,7 @@ type Policy struct {
 	RequirementEnforcement RequirementEnforcement          `yaml:"requirement_enforcement"`
 	Retrieval              Retrieval                       `yaml:"retrieval"`
 	Sync                   Sync                            `yaml:"sync"`
+	Nudge                  Nudge                           `yaml:"nudge"`
 }
 
 type Escalators struct {
@@ -56,6 +57,15 @@ type Sync struct {
 	AutoFetchAfter string `yaml:"auto_fetch_after"` // duration string, e.g. "5m"
 }
 
+// Nudge configures the near-moment proposing/observing nudge engine (spec §4, §7).
+type Nudge struct {
+	Enabled         bool `yaml:"enabled"`
+	MaxPerSession   int  `yaml:"max_per_session"`
+	CooldownTurns   int  `yaml:"cooldown_turns"`
+	SelfReviewEvery int  `yaml:"self_review_every"`
+	ChurnThreshold  int  `yaml:"churn_threshold"`
+}
+
 // Default returns the built-in policy from prd.md §8.1.
 func Default() Policy {
 	return Policy{
@@ -86,6 +96,13 @@ func Default() Policy {
 		RequirementEnforcement: RequirementEnforcement{HumanRequired: true},
 		Retrieval:              Retrieval{MaxResults: 5, MaxProvisional: 2, ProvisionalMode: "related"},
 		Sync:                   Sync{AutoFetchAfter: "5m"},
+		Nudge: Nudge{
+			Enabled:         true,
+			MaxPerSession:   3,
+			CooldownTurns:   3,
+			SelfReviewEvery: 8,
+			ChurnThreshold:  3,
+		},
 	}
 }
 
