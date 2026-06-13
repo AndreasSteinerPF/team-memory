@@ -34,25 +34,37 @@ func newExportCmd(g *globalOpts) *cobra.Command {
 				}
 			}
 
-			var data []byte
 			switch format {
 			case "json":
-				data, err = export.JSON(active)
+				data, err := export.JSON(active)
 				if err != nil {
 					return err
 				}
 				data = append(data, '\n')
+				// JSON is a wholly generated data file, not embeddable — overwrite.
+				if outPath != "" {
+					return os.WriteFile(outPath, data, 0o644)
+				}
+				_, err = cmd.OutOrStdout().Write(data)
+				return err
+
 			case "agents", "claude", "cursor":
-				data = []byte(export.Markdown(active, "Project memory (TeamMemory)", export.Instructions(format)))
+				block := export.Markdown(active, "Project memory (TeamMemory)", export.Instructions(format))
+				if outPath != "" {
+					// Splice the generated block into any existing file, preserving
+					// hand-authored content outside the markers (prd.md §10.4).
+					existing, err := os.ReadFile(outPath)
+					if err != nil && !os.IsNotExist(err) {
+						return err
+					}
+					return os.WriteFile(outPath, export.Splice(existing, block), 0o644)
+				}
+				_, err = cmd.OutOrStdout().Write([]byte(block))
+				return err
+
 			default:
 				return fmt.Errorf("unknown --format %q (want agents|claude|cursor|json)", format)
 			}
-
-			if outPath != "" {
-				return os.WriteFile(outPath, data, 0o644)
-			}
-			_, err = cmd.OutOrStdout().Write(data)
-			return err
 		},
 	}
 	cmd.Flags().StringVar(&format, "format", "agents", "agents | claude | cursor | json")

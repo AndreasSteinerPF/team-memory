@@ -60,6 +60,36 @@ func Markdown(rows []index.IndexedMemory, title, instructions string) string {
 	return b.String()
 }
 
+// Splice merges block (a generated projection from Markdown, including its
+// BEGIN/END markers) into existing file content. If a previously generated
+// block is present, only the region between the markers is replaced — any
+// hand-authored content outside them is preserved. Otherwise block is appended.
+// This is what lets `tm export --out FILE` refresh memories in a file that also
+// holds human-written content without clobbering it (prd.md §10.4).
+func Splice(existing []byte, block string) []byte {
+	normalized := strings.TrimRight(block, "\n") + "\n"
+	s := string(existing)
+
+	if begin := strings.Index(s, beginMarker); begin >= 0 {
+		if rel := strings.Index(s[begin:], endMarker); rel >= 0 {
+			lineEnd := begin + rel + len(endMarker)
+			if lineEnd < len(s) && s[lineEnd] == '\n' {
+				lineEnd++ // consume the marker's own trailing newline
+			}
+			return []byte(s[:begin] + normalized + s[lineEnd:])
+		}
+	}
+
+	if len(s) == 0 {
+		return []byte(normalized)
+	}
+	sep := "\n" // blank line between existing content and the appended block
+	if !strings.HasSuffix(s, "\n") {
+		sep = "\n\n"
+	}
+	return []byte(s + sep + normalized)
+}
+
 // JSON renders rows as indented JSON.
 func JSON(rows []index.IndexedMemory) ([]byte, error) {
 	return json.MarshalIndent(rows, "", "  ")

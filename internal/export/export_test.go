@@ -60,6 +60,57 @@ func TestMarkdownIncludesInstructions(t *testing.T) {
 	}
 }
 
+func TestSpliceAppendsWhenNoBlockPresent(t *testing.T) {
+	existing := []byte("# Contributor guide\n\nHand-authored notes that must survive.\n")
+	block := Markdown(sampleRows(), "Project memory (TeamMemory)", "")
+	got := string(Splice(existing, block))
+
+	if !strings.Contains(got, "Hand-authored notes that must survive.") {
+		t.Fatalf("splice dropped hand-authored content:\n%s", got)
+	}
+	if !strings.Contains(got, beginMarker) || !strings.Contains(got, "downgrade tests required") {
+		t.Fatalf("splice did not append the generated block:\n%s", got)
+	}
+	// The hand-authored content must come before the generated block.
+	if strings.Index(got, "Hand-authored") > strings.Index(got, beginMarker) {
+		t.Fatalf("appended block must follow existing content:\n%s", got)
+	}
+}
+
+func TestSpliceReplacesExistingBlockInPlace(t *testing.T) {
+	old := Markdown([]index.IndexedMemory{{
+		Title: "stale memory", Enforcement: model.EnforcementWarning, Status: model.StatusActive,
+	}}, "Project memory (TeamMemory)", "")
+	existing := []byte("# Contributor guide\n\nKeep me.\n\n" + old + "\nFooter stays too.\n")
+
+	fresh := Markdown(sampleRows(), "Project memory (TeamMemory)", "")
+	got := string(Splice(existing, fresh))
+
+	if strings.Contains(got, "stale memory") {
+		t.Fatalf("splice left the old generated content behind:\n%s", got)
+	}
+	if !strings.Contains(got, "downgrade tests required") {
+		t.Fatalf("splice did not insert the fresh block:\n%s", got)
+	}
+	for _, keep := range []string{"Keep me.", "Footer stays too."} {
+		if !strings.Contains(got, keep) {
+			t.Fatalf("splice dropped surrounding content %q:\n%s", keep, got)
+		}
+	}
+	// Exactly one managed block — no duplication.
+	if n := strings.Count(got, beginMarker); n != 1 {
+		t.Fatalf("expected exactly one generated block, got %d:\n%s", n, got)
+	}
+}
+
+func TestSpliceIntoEmptyFileIsJustTheBlock(t *testing.T) {
+	block := Markdown(sampleRows(), "Project memory (TeamMemory)", "")
+	got := string(Splice(nil, block))
+	if got != strings.TrimRight(block, "\n")+"\n" {
+		t.Fatalf("empty-file splice should equal the block:\n%s", got)
+	}
+}
+
 func TestJSONRoundTrips(t *testing.T) {
 	data, err := JSON(sampleRows())
 	if err != nil {
