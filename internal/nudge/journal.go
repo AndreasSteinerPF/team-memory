@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -92,4 +93,74 @@ func (s *Store) Save(j *Journal) error {
 		return err
 	}
 	return os.WriteFile(s.path(j.Session), data, 0o644)
+}
+
+// RecordEdit logs an edit to path at the current turn.
+func (j *Journal) RecordEdit(path string) {
+	j.Edits = append(j.Edits, EditRecord{Path: path, Turn: j.Turn})
+}
+
+// EditCount returns how many edits to path this session.
+func (j *Journal) EditCount(path string) int {
+	n := 0
+	for _, e := range j.Edits {
+		if e.Path == path {
+			n++
+		}
+	}
+	return n
+}
+
+// RecordCommand logs a command outcome. A recognized revert/reset command also
+// records a revert event at the current turn.
+func (j *Journal) RecordCommand(command string, failed bool) {
+	sig := Signature(command)
+	j.Commands = append(j.Commands, CmdOutcome{Signature: sig, Failed: failed, Turn: j.Turn})
+	if isRevert(command) {
+		j.Reverts = append(j.Reverts, j.Turn)
+	}
+}
+
+// RecordSurfaced logs that a memory was shown to this session for a path.
+func (j *Journal) RecordSurfaced(memoryID, path string, drift bool) {
+	for _, s := range j.Surfaced {
+		if s.MemoryID == memoryID {
+			return // already recorded
+		}
+	}
+	j.Surfaced = append(j.Surfaced, Surfaced{MemoryID: memoryID, Path: path, Drift: drift})
+}
+
+// RecordPrompt logs that a user prompt landed at the current turn.
+func (j *Journal) RecordPrompt() {
+	j.PromptTurns = append(j.PromptTurns, j.Turn)
+}
+
+// Signature normalizes a command to its argv head (binary + subcommand), e.g.
+// "go test ./..." → "go test", "pytest -q" → "pytest". Leading env assignments
+// (FOO=bar) are skipped.
+func Signature(command string) string {
+	fields := strings.Fields(command)
+	var head []string
+	for _, f := range fields {
+		if len(head) == 0 && strings.Contains(f, "=") && !strings.HasPrefix(f, "-") {
+			continue // skip leading env assignment
+		}
+		if strings.HasPrefix(f, "-") {
+			break
+		}
+		head = append(head, f)
+		if len(head) == 2 {
+			break
+		}
+	}
+	return strings.Join(head, " ")
+}
+
+func isRevert(command string) bool {
+	c := strings.ToLower(command)
+	return strings.Contains(c, "git revert") ||
+		strings.Contains(c, "git reset --hard") ||
+		strings.Contains(c, "git checkout -- ") ||
+		strings.Contains(c, "git restore")
 }

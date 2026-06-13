@@ -42,3 +42,28 @@ func TestStoreSaveLoadRoundTrip(t *testing.T) {
 		t.Errorf("round-trip mismatch: %+v", got)
 	}
 }
+
+func TestRecordEditCounts(t *testing.T) {
+	j := &nudge.Journal{Session: "s", Turn: 1}
+	j.RecordEdit("x.go")
+	j.RecordEdit("x.go")
+	if n := j.EditCount("x.go"); n != 2 {
+		t.Errorf("EditCount = %d, want 2", n)
+	}
+}
+
+func TestRecordCommandSignature(t *testing.T) {
+	j := &nudge.Journal{Session: "s", Turn: 1}
+	j.RecordCommand("go test ./...", true)
+	if len(j.Commands) != 1 || j.Commands[0].Signature != "go test" || !j.Commands[0].Failed {
+		t.Errorf("command not recorded: %+v", j.Commands)
+	}
+}
+
+func TestRecordCommandDetectsRevert(t *testing.T) {
+	j := &nudge.Journal{Session: "s", Turn: 5}
+	j.RecordCommand("git reset --hard HEAD~1", false)
+	if len(j.Reverts) != 1 || j.Reverts[0] != 5 {
+		t.Errorf("revert not recorded: %+v", j.Reverts)
+	}
+}
