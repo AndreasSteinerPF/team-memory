@@ -98,3 +98,44 @@ func commandScopeIsBroad(s model.Scope) bool {
 	}
 	return false
 }
+
+// commandContains reports whether the outer command pattern contains the inner
+// one (inner ⊆ outer). True when outer's fixed tokens are a prefix of inner's
+// fixed tokens AND outer is open enough to cover inner: a trailing-"*" outer
+// covers any longer/equal pattern sharing its prefix; a no-star outer covers
+// only an identical pattern. Mirrors globContains for command patterns.
+func commandContains(outer, inner string) bool {
+	of, ostar := commandPatternFixed(outer)
+	inf, istar := commandPatternFixed(inner)
+	if !ostar {
+		// outer matches an exact token sequence; inner ⊆ outer only if identical.
+		if istar || len(inf) != len(of) {
+			return false
+		}
+		for i := range of {
+			if inf[i] != of[i] {
+				return false
+			}
+		}
+		return true
+	}
+	if len(of) > len(inf) {
+		return false
+	}
+	for i := range of {
+		if inf[i] != of[i] {
+			return false
+		}
+	}
+	return len(inf) > len(of) || istar
+}
+
+// commandMatchesScope reports whether command matches any command pattern in s.
+func commandMatchesScope(command string, s model.Scope) bool {
+	for _, p := range s.Commands {
+		if matchCommandPattern(p, command) {
+			return true
+		}
+	}
+	return false
+}

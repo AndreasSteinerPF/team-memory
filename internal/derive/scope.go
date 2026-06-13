@@ -117,17 +117,27 @@ func globContains(outer, inner string) bool {
 	return true
 }
 
-// scopeSubset: every glob in inner is contained by some glob in outer.
+// anyContains reports whether any element in outers contains inner.
+func anyContains(outers []string, inner string, contains func(outer, inner string) bool) bool {
+	for _, o := range outers {
+		if contains(o, inner) {
+			return true
+		}
+	}
+	return false
+}
+
+// scopeSubset: every path glob in inner is contained by some path glob in outer,
+// AND every command pattern in inner is contained by some command pattern in
+// outer. A dimension with no inner entries is trivially a subset.
 func scopeSubset(inner, outer model.Scope) bool {
 	for _, ig := range inner.Paths {
-		ok := false
-		for _, og := range outer.Paths {
-			if globContains(og, ig) {
-				ok = true
-				break
-			}
+		if !anyContains(outer.Paths, ig, globContains) {
+			return false
 		}
-		if !ok {
+	}
+	for _, ic := range inner.Commands {
+		if !anyContains(outer.Commands, ic, commandContains) {
 			return false
 		}
 	}
@@ -243,6 +253,14 @@ func broadeningSubstantiated(a model.Observation, m model.Memory, obs []model.Ob
 				matchSug = true
 			}
 			if pathMatchesScope(p, prior) {
+				matchPrior = true
+			}
+		}
+		for _, c := range o.CodeContext.Commands {
+			if commandMatchesScope(c, sug) {
+				matchSug = true
+			}
+			if commandMatchesScope(c, prior) {
 				matchPrior = true
 			}
 		}

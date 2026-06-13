@@ -86,6 +86,45 @@ func TestEffectiveScopeNarrowsImmediately(t *testing.T) {
 	}
 }
 
+func TestCommandContains(t *testing.T) {
+	cases := []struct {
+		outer, inner string
+		want         bool
+	}{
+		{"assistant *", "assistant jira create *", true},  // broader contains narrower
+		{"assistant jira create *", "assistant *", false}, // narrower does not contain broader
+		{"assistant *", "assistant *", true},              // reflexive
+		{"pytest", "pytest", true},                        // exact no-star reflexive
+		{"assistant jira *", "assistant billing *", false},
+	}
+	for _, c := range cases {
+		if got := commandContains(c.outer, c.inner); got != c.want {
+			t.Errorf("commandContains(%q, %q) = %v, want %v", c.outer, c.inner, got, c.want)
+		}
+	}
+}
+
+func TestEffectiveScopeNarrowsCommands(t *testing.T) {
+	m := model.Memory{
+		ID:        "01M",
+		Type:      model.TypeConstraint,
+		Scope:     model.Scope{Commands: []string{"assistant *"}},
+		Actor:     model.Actor{SessionID: "s1"},
+		CreatedAt: time.Date(2026, 6, 13, 10, 0, 0, 0, time.UTC),
+	}
+	adj := model.Observation{
+		Target:         "01M",
+		Kind:           model.KindAdjustScope,
+		SuggestedScope: &model.Scope{Commands: []string{"assistant jira create *"}},
+		Actor:          model.Actor{SessionID: "s2"},
+		CreatedAt:      time.Date(2026, 6, 13, 11, 0, 0, 0, time.UTC),
+	}
+	got := effectiveScope(m, []model.Observation{adj})
+	if len(got.Commands) != 1 || got.Commands[0] != "assistant jira create *" {
+		t.Fatalf("effective commands = %v, want [assistant jira create *] (narrowing applies immediately)", got.Commands)
+	}
+}
+
 func TestEffectiveScopeBroadeningNeedsSubstantiation(t *testing.T) {
 	m := model.Memory{
 		Scope:     model.Scope{Paths: []string{"billing/migrations/**"}},

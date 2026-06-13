@@ -286,6 +286,7 @@ Evaluated in precedence order:
 * An `adjust_scope` that **narrows** (suggested scope ⊆ current effective scope) applies immediately — narrowing only reduces noise.
 * An `adjust_scope` that **broadens** recomputes risk at the suggested scope and applies only once substantiated: either (a) a human `approve` exists after it, or (b) a later independent `confirm` has a code context matching the suggested scope but not the prior effective scope — evidence the lesson really does apply beyond its original bounds. Until then it is pending and visible in `tm show`.
 * Latest applicable adjustment wins.
+* Effective scope covers command patterns as well as paths; an `adjust_scope` may narrow or broaden them. Command-pattern containment is by token-prefix (`assistant jira create *` ⊆ `assistant *`). A command broadening is substantiated like a path broadening: by a human `approve`, or by a later independent `confirm` whose `code_context.commands` match the broader pattern but not the prior one.
 
 ### 8.6 Anchor Drift (v1, cheap version)
 
