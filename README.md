@@ -249,6 +249,20 @@ MCP tools: `tm_propose`, `tm_observe`, `tm_check_action`, `tm_search`, `tm_statu
 
 ## Other agents
 
+Every agent reads the same ledger; what differs is the delivery guarantee:
+
+| Agent | Edit-time enforcement | Session briefing | Voluntary verbs (MCP) | Static fallback |
+|---|:---:|:---:|:---:|:---:|
+| Claude Code | ✅ (`PreToolUse` hook) | ✅ | ✅ | ✅ |
+| Codex CLI | — | ✅ | ✅ | ✅ |
+| Continue CLI | — | ✅ | ✅ | ✅ |
+| Copilot CLI | — | ✅ | ✅ | ✅ |
+| Cursor | — | ✅ | ✅ | ✅ (`.cursor/rules`) |
+| Gemini CLI | — | ✅ | ✅ | ✅ |
+| Other MCP / hook-less | — | — | ✅ | ✅ (only path) |
+
+Only Claude Code enforces `requirement` memories at edit time (the `PreToolUse` hook blocks the edit until acked). Every other agent gets the session-start briefing and the voluntary verbs over MCP — same knowledge, but `check_action` is a voluntary call rather than a guaranteed one.
+
 The MCP server works with any MCP-compatible agent. For agents without MCP, `tm export` generates instruction blocks that are clearly marked and never the source of truth — the ledger is.
 
 ```bash
