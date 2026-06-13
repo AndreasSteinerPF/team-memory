@@ -82,17 +82,15 @@ func ftsQuery(desc string) string {
 func FTSQuery(s string) string { return ftsQuery(s) }
 
 // commandSpecificity scores a command pattern: base 1 (so any structural match
-// outranks FTS-only at 0), plus 2 per fixed leading token (mirrors
-// globSpecificity). More fixed tokens ⇒ more specific ⇒ ranks higher.
+// outranks FTS-only at 0), plus 2 per fixed leading token. A trailing "*" is the
+// wildcard and is not counted; this matches derive.matchCommandPattern's notion
+// of fixed tokens (only a trailing "*" is special).
 func commandSpecificity(pattern string) int {
 	fields := strings.Fields(pattern)
-	score := 1
-	for _, f := range fields {
-		if f != "*" {
-			score += 2
-		}
+	if n := len(fields); n > 0 && fields[n-1] == "*" {
+		fields = fields[:n-1] // drop the trailing wildcard
 	}
-	return score
+	return 1 + 2*len(fields)
 }
 
 // bestCommandSpecificity returns the highest specificity among command patterns

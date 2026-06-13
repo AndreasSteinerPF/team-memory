@@ -1,7 +1,8 @@
 // Package retrieve implements TeamMemory's precision-first, lexical retrieval
-// (prd.md §11). Given an action (paths + description) it selects candidate
-// memories from the index (scope-glob match or FTS match), filters by status,
-// annotates anchor drift (prd.md §8.6), ranks them, and applies output caps.
+// (prd.md §11). Given an action (paths, command, and description) it selects
+// candidate memories from the index (scope-glob match, command-pattern match,
+// or FTS match), filters by status, annotates anchor drift (prd.md §8.6),
+// ranks them, and applies output caps.
 package retrieve
 
 import (
@@ -49,7 +50,7 @@ type DriftInfo struct {
 type Result struct {
 	Memory      index.IndexedMemory
 	Match       MatchKind
-	Specificity int         // glob specificity of the best scope match; 0 for FTS-only
+	Specificity int         // specificity of the best structural match (scope-glob or command-pattern); 0 for FTS-only
 	Provisional bool        // surfaced as caution rather than trusted guidance
 	Caution     string      // provisional framing; empty for active
 	Request     string      // requested-observation prompt; empty for active
