@@ -381,7 +381,7 @@ v1 limits: command matching uses leading-subcommand matching only (flags are not
 * Matching `hint` / `recommendation` / `warning` memories → injected as additional context on the tool call.
 * Matching unacknowledged `requirement` memories → the hook **denies the edit or command**, returning the guidance and required checks as feedback:
 
-> "Requirement (mem 01J8X4…): Billing migrations require downgrade-path tests. Run the downgrade-path tests, then run `tm ack 01J8X4…` and retry the edit."
+> "Requirement (mem 01J8X4…): Billing migrations require downgrade-path tests. Run the downgrade-path tests, then run `tm ack 01J8X4…` and retry."
 
 **SessionStart hook**: runs `tm brief` at session start; stdout is injected as session context. The briefing carries live ledger counts plus the standing instructions for the voluntary verbs — deterministic delivery of *when to remember*, not just *what is remembered*.
 

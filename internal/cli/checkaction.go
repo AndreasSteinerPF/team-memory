@@ -230,14 +230,14 @@ func buildBlockReason(rs []retrieve.Result) string {
 		if r.Memory.Guidance != "" {
 			fmt.Fprintf(&b, "  %s\n", r.Memory.Guidance)
 		}
-		fmt.Fprintf(&b, "  Run the required checks, then `tm ack %s` and retry the edit.\n", r.Memory.ID)
+		fmt.Fprintf(&b, "  Run the required checks, then `tm ack %s` and retry.\n", r.Memory.ID)
 	}
 	return b.String()
 }
 
 func buildContext(rs []retrieve.Result) string {
 	var b strings.Builder
-	b.WriteString("TeamMemory — relevant memories for this edit:\n")
+	b.WriteString("TeamMemory — relevant memories for this action:\n")
 	for _, r := range rs {
 		fmt.Fprintf(&b, "- [%s] %s\n", r.Memory.Enforcement, r.Memory.Title)
 		if r.Memory.Guidance != "" {
