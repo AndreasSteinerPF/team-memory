@@ -1,33 +1,114 @@
 # TeamMemory
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Go 1.26+](https://img.shields.io/badge/Go-1.26%2B-00ADD8.svg)](go.mod)
+
 **Agents propose. Agents observe. Teams remember.**
 
 TeamMemory is a Git-backed collaborative memory ledger for coding agents. Agents propose repo-scoped memories during normal work; other agents confirm, contradict, or refine them when they encounter related code; validated memories reach future agents deterministically through an edit-time hook — not just a voluntary tool call.
 
-It is not a general memory system, not an agent framework. It is a focused system for preserving **future-action-relevant project judgment**: failed attempts, hidden constraints, fragile areas, stale docs, and undocumented decisions that should influence future agent behavior.
+It is not a general memory system and not an agent framework. It is a focused system for preserving **future-action-relevant project judgment**: failed attempts, hidden constraints, fragile areas, stale docs, and undocumented decisions that should change what an agent does next.
 
 ---
 
-## Quickstart (under 10 minutes)
+## Why TeamMemory
 
-### 1. Install
+Coding agents keep relearning the same lessons. A migration that can't be rolled back, a file that breaks release reconciliation when touched, a doc that an ADR quietly superseded — each agent rediscovers these the hard way, because the knowledge lived in one session and died with it.
+
+Static context files (`CLAUDE.md`, `AGENTS.md`, `.cursor/rules`) help, but they don't evolve through work and nobody updates them. Auto-capture memory tools go the other way: they accumulate everything without validation, which is exactly how memory poisoning happens — one confident-but-wrong note misleads every agent that reads it.
+
+TeamMemory takes a different position:
+
+> Team memory should **evolve through normal work and earn trust through evidence**. Agents propose a memory when they discover reusable judgment. Future agents encounter it, then confirm or contradict it with evidence during their own work. Memories strengthen or weaken accordingly — and validated ones reach agents deterministically, at the moment they edit a relevant file.
+
+The result is a memory layer that gets *more* trustworthy over time instead of noisier, and that lands its strongest signals at the exact point an agent is about to make a mistake.
+
+---
+
+## What you can do with it
+
+- **Stop repeating known-bad approaches.** When an agent burns a session on an approach that fails, it records a `failed_attempt` with evidence. The next agent that opens the same area is told before it tries again.
+- **Enforce hard constraints at edit time.** Promote a validated memory to a `requirement` and the `PreToolUse` hook *blocks* edits to matching paths until the agent acknowledges it — turning tribal knowledge into a guardrail no agent can skip.
+- **Flag fragile areas and stale docs** so agents treat risky files carefully and stop trusting documents an ADR already replaced.
+- **Let memory validate itself across the team.** A memory proposed on one branch, in one session, by one agent gets independently confirmed by another — and auto-activates only when that evidence threshold is met. No single agent can unilaterally create a binding rule.
+- **Keep humans in control of the high-impact calls.** Agents can propose and confirm freely; only a human can escalate a memory to a hard `requirement` or kill it.
+- **Audit every change as plain Git.** The entire ledger is an append-only orphan branch — `git log teammemory` shows who proposed what, who confirmed it, and when it became binding.
+- **Serve every agent from one ledger.** Claude Code, Codex, Cursor, Continue, Copilot, and Gemini CLI all read the same memories via hooks, MCP, or generated context files.
+
+---
+
+## See it work
+
+The flagship demo walks the full lifecycle — a provisional memory becoming an enforced requirement through ordinary agent work, across two branches and three sessions. Run the whole thing in one command:
+
+```bash
+bash demo/run.sh
+```
+
+What it does, step by step (illustrative — `demo/run.sh` runs the real thing end to end):
+
+```bash
+# Agent A, on feature/invoice-state, burns a session on a rollback that fails.
+# It records the lesson with evidence.
+tm propose failed_attempt \
+  --title   "Billing migrations require downgrade-path tests" \
+  --summary "Rollback failed when invoice_state migration lacked a downgrade path." \
+  --guidance "Before modifying billing migrations, check rollback behavior and add downgrade-path tests." \
+  --scope   "billing/migrations/**" \
+  --evidence "test_failure:logs/rollback_failure.log" \
+  --anchor  "billing/migrations/2026_add_invoice_state.sql@HEAD" \
+  --session session_a
+# → provisional   risk: high   confidence: low   enforcement: hint
+
+ID=01J8X4QZ7M9FKE2V3R5T8WYBCD   # from the output
+
+# Agent B, on a different branch and session, hits the same wall and confirms.
+# Independent confirmation auto-activates the memory.
+tm observe $ID confirm \
+  --summary "Same rollback failure reproduced on revenue-reporting branch." \
+  --session session_b
+# → status: active   confidence: medium   enforcement: warning
+
+# A human escalates it to a hard requirement.
+tm approve $ID --enforcement requirement --confidence high
+
+# Agent C tries to edit a billing migration. The PreToolUse hook BLOCKS the edit.
+# Agent C runs the downgrade tests, acknowledges the requirement, and retries — now it proceeds.
+tm ack $ID --session session_c --note "downgrade tests pass"
+```
+
+Every step is auditable as ordinary Git history:
+
+```bash
+git log teammemory -- memories/ observations/
+```
+
+---
+
+## Install
+
+Requires **Go 1.26+** (or skip the toolchain and grab a prebuilt binary below).
 
 ```bash
 go install github.com/AndreasSteinerPF/team-memory/cmd/tm@latest
 ```
 
-Or download a binary from [Releases](https://github.com/AndreasSteinerPF/team-memory/releases).
+Or download a prebuilt binary from [Releases](https://github.com/AndreasSteinerPF/team-memory/releases).
 
-### 2. Initialize in your repo
+---
+
+## Quickstart (under 10 minutes)
+
+### 1. Initialize in your repo
 
 ```bash
 cd your-repo
 tm init
 ```
 
-This creates an orphan branch `teammemory` and a local SQLite index under `.git/tm/`. If `.claude/` exists, it also installs two Claude Code hooks in `.claude/settings.json` automatically: the `PreToolUse` edit-time check and a `SessionStart` briefing (`tm brief`).
+This creates an orphan branch `teammemory` and a local SQLite index under `.git/tm/`. If `.claude/` exists, it also installs two Claude Code hooks in `.claude/settings.json`: the `PreToolUse` edit-time check and a `SessionStart` briefing (`tm brief`).
 
-### 3. Propose a memory
+### 2. Propose a memory
 
 ```bash
 tm propose failed_attempt \
@@ -45,62 +126,23 @@ status: provisional   risk: high   confidence: low   enforcement: hint
 reason: awaiting independent confirmation
 ```
 
-### 4. Check a path before editing
+### 3. Check a path before editing
 
 ```bash
 tm check-action --path billing/migrations/new_migration.sql
 ```
 
-### 5. Export to AGENTS.md / CLAUDE.md
+### 4. Export to your context files
 
 ```bash
 tm export --format agents --out AGENTS.md
 tm export --format claude --out CLAUDE.md
-tm export --format json
+tm export --format json            # prints JSON to stdout
 ```
 
 ---
 
-## The Flagship Demo
-
-**Ambient memory validation across branches** — shows a provisional memory becoming a requirement block through normal agent work. Or run the whole lifecycle in one command: `bash demo/run.sh`.
-
-```bash
-# Agent A (session s1) proposes after a rollback failure.
-tm propose failed_attempt \
-  --title "Billing migrations require downgrade-path tests" \
-  --scope "billing/migrations/**" \
-  --summary "Rollback failed when invoice_state migration lacked downgrade path." \
-  --evidence "test_failure:logs/rollback_failure.log" \
-  --anchor "billing/migrations/2026_add_invoice_state.sql@HEAD" \
-  --session s1
-
-ID=01J8X4QZ7M9FKE2V3R5T8WYBCD   # from output
-
-# Agent B (session s2) independently confirms — auto-activates the memory.
-tm observe $ID confirm \
-  --summary "Same rollback failure reproduced on revenue-reporting branch." \
-  --session s2
-# → status: active, confidence: medium, enforcement: warning
-
-# Human escalates to a hard requirement.
-tm approve $ID --enforcement requirement --confidence high
-
-# Agent C (session s3) attempts to edit a billing migration.
-# The PreToolUse hook fires and blocks the edit until C acks the requirement.
-tm ack $ID --session s3
-# Now the edit proceeds.
-```
-
-Every step of the ledger is auditable:
-
-```bash
-git log teammemory -- memories/ observations/
-```
-
----
-
-## Memory Lifecycle
+## Memory lifecycle
 
 ```
 propose → provisional
@@ -114,14 +156,32 @@ propose → provisional
     → stale
 ```
 
-Risk (`low` / `medium` / `high`) is computed deterministically from `policy.yaml` — never from agent self-assessment. High-risk paths (e.g. `**/migrations/**`) automatically escalate.
+- **Status:** `provisional` → `active` → `contested` / `stale` / `rejected`.
+- **Enforcement:** `hint` → `recommendation` → `warning` → `requirement`. Only a human can set `requirement`.
+- **Risk** (`low` / `medium` / `high` / `critical`) is computed deterministically from `policy.yaml` — never from agent self-assessment. High-risk paths (e.g. `**/migrations/**`) escalate automatically.
+
+Status, risk, confidence, and enforcement are always *derived* from the ledger and policy. They are never stored as mutable fields an agent could set directly.
+
+---
+
+## Memory types
+
+Five typed envelopes, each with a free-form summary and guidance:
+
+| Type | When to use it |
+|---|---|
+| `failed_attempt` | An approach that was tried and failed, with evidence. |
+| `constraint` | A rule on how work must be done here. `--origin team` (internal convention) or `--origin external` (third-party/API contract). |
+| `fragile_area` | A path where changes frequently break non-obvious things. |
+| `stale_doc` | A document that is outdated or misleading — ideally pointing to what supersedes it. |
+| `decision` | A decision that changes future work and isn't written down anywhere else. |
 
 ---
 
 ## Commands
 
 ```
-tm init          create orphan branch, default policy, local index; install Claude Code hook
+tm init          create orphan branch, default policy, local index; install Claude Code hooks
 tm sync          fetch + union-merge + push the teammemory branch
 tm check-action  query memory for an action (--hook mode for the PreToolUse hook)
 tm brief         session-start briefing for agent hooks (live counts + instructions)
@@ -137,15 +197,15 @@ tm export        generate AGENTS.md / CLAUDE.md / .cursor/rules blocks or JSON
 tm status        ledger overview, items needing human attention, sync state
 ```
 
+Run any command with `--help` for its full flag set. `tm propose` and `tm observe` also accept `--actor`, `--session`, `--ctx-branch`, and `--ctx-path` to attribute records and record code context.
+
 ---
 
-## Claude Code Integration
+## Claude Code integration
 
-### Hook (edit-time enforcement)
+### Edit-time hook
 
-`tm init` installs the hook automatically when `.claude/` is present. To install manually:
-
-Add to `.claude/settings.json`:
+`tm init` installs the hook automatically when `.claude/` is present. To install manually, add to `.claude/settings.json`:
 
 ```json
 {
@@ -161,10 +221,11 @@ Add to `.claude/settings.json`:
 ```
 
 The hook:
-- Reads the tool input path and the current session ID from stdin
-- Queries the local index (no network, no subprocess beyond the binary)
-- Returns `deny` for unacknowledged `requirement` memories, `additionalContext` for warnings
-- Completes in under 100ms on a 1,000-memory ledger
+
+- Reads the tool input path and the current session ID from stdin.
+- Queries the local index — no network, no subprocess beyond the binary.
+- Returns `deny` for unacknowledged `requirement` memories, `additionalContext` for warnings.
+- Completes in under 100 ms on a 1,000-memory ledger.
 
 ### MCP server
 
@@ -180,13 +241,22 @@ Add to `.mcp.json`:
 
 MCP tools: `tm_propose`, `tm_observe`, `tm_check_action`, `tm_search`, `tm_status`.
 
+### Session-start briefing
+
+`tm brief` emits a short briefing — live ledger counts plus standing instructions for `tm_propose` / `tm_observe` / `tm_check_action` — designed to be injected into agent context at session start. `tm init` installs it automatically for Claude Code as a `SessionStart` hook. In a repo without an initialized ledger it prints nothing and exits 0, so the hook is always safe to install.
+
 ---
 
-## Session-start briefing
+## Other agents
 
-`tm brief` emits a short briefing — live ledger counts plus standing instructions for `tm_propose` / `tm_observe` / `tm_check_action` — designed to be injected into agent context at session start. `tm init` installs it automatically for Claude Code (as a `SessionStart` hook, alongside the `PreToolUse` check). In a repo without an initialized ledger it prints nothing and exits 0, so the hook is always safe to install.
+The MCP server works with any MCP-compatible agent. For agents without MCP, `tm export` generates instruction blocks that are clearly marked and never the source of truth — the ledger is.
 
-All major agent CLIs now support session-start hooks with context injection (snippets abridged — consult each tool's hooks reference):
+```bash
+# Add to your context file once; re-run when memories change.
+tm export --format agents --out AGENTS.md
+```
+
+`tm brief` supports per-tool output formats for session-start hooks (snippets abridged — consult each tool's hooks reference):
 
 **Codex CLI** (`.codex/config.toml`; requires a trusted workspace):
 
@@ -217,19 +287,6 @@ command = ["tm", "brief"]
 
 ---
 
-## Other Agents (Cursor, Codex, Continue)
-
-The MCP server works with any MCP-compatible agent. For agents without MCP, `tm export` generates instruction blocks:
-
-```bash
-# Add to your context file once; re-run when memories change.
-tm export --format agents --out AGENTS.md
-```
-
-The generated block is clearly marked and never the source of truth — the ledger is.
-
----
-
 ## Sync (team use)
 
 ```bash
@@ -240,40 +297,63 @@ tm sync
 tm sync --remote git@github.com:org/repo-memory.git
 ```
 
-`tm init --remote <name-or-url>` stores a separate ledger remote as `git config tm.remote` (PRD §7.1); `tm sync`, background fetch, and background push all honor it. `propose`/`observe` push the ledger branch in the background best-effort; `tm sync` reconciles whenever you were offline or the remote diverged.
+`tm init --remote <name-or-url>` stores a separate ledger remote as `git config tm.remote`; `tm sync`, background fetch, and background push all honor it. `propose` and `observe` push the ledger branch in the background, best-effort; `tm sync` reconciles whenever you were offline or the remote diverged.
 
-Sync uses union-merge: concurrent proposals from different clones never conflict.
+Sync uses **union-merge**: because each record is an append-only ULID-named file, concurrent proposals from different clones never conflict.
 
 ---
 
 ## Policy
 
-`tm init` writes `policy.yaml` to the ledger branch. Edit it to tune risk escalation:
+`tm init` writes `policy.yaml` to the ledger branch. Two knobs do most of the work: `escalators.sensitive_paths` (which paths get a minimum risk floor) and `activation.tiers` (how much independent confirmation each risk tier needs before it auto-activates, and how far enforcement can rise without a human). Excerpt of the defaults:
 
 ```yaml
-sensitive_path_patterns:
-  - "**/migrations/**"
-  - "**/secrets/**"
-auto_activate:
-  min_independent_confirms: 1
-  risk_tiers:
-    high:
-      min_confirms: 1
-    medium:
-      min_confirms: 2
-    low:
-      min_confirms: 3
+escalators:
+  broad_scope_bump: true
+  sensitive_paths:
+    - glob: '**/migrations/**'
+      min_risk: high
+    - glob: '**/auth/**'
+      min_risk: critical
+    - glob: .github/workflows/**
+      min_risk: critical
+activation:
+  independence: different_session
+  tiers:
+    low:                                  # auto-activates immediately
+      auto: immediate
+      max_auto_enforcement: recommendation
+    high:                                 # one independent confirm activates it
+      auto: independent_confirm
+      max_auto_enforcement: warning
+    critical:                             # never auto-activates; needs a human
+      auto: never
 ```
+
+`critical` tiers never auto-activate, and no tier can reach `requirement` without `tm approve` — agents alone can never create a binding rule.
 
 ---
 
-## How It Works
+## How it works
 
 - **Ledger:** an orphan Git branch `teammemory` stores YAML memory and observation records as ULID-named files. No code-branch pollution.
-- **Index:** a local SQLite database under `.git/tm/` materializes derived state and supports FTS. Rebuilt automatically; throwaway.
+- **Index:** a local SQLite database under `.git/tm/` materializes derived state and supports full-text search. Rebuilt automatically; throwaway.
 - **Derived state:** status, risk, confidence, and enforcement are computed deterministically from the ledger and policy — never stored, never guessable.
 - **Sync:** union-merge of the orphan branch. Concurrent proposals never conflict because each record is an append-only ULID file.
-- **Hook:** the PreToolUse hook reads the index (no network, no ledger branch checkout) and completes in <100ms.
+- **Hook:** the `PreToolUse` hook reads the index (no network, no ledger-branch checkout) and completes in under 100 ms.
+
+---
+
+## How it compares
+
+| Class | Examples | What they do | TeamMemory's difference |
+|---|---|---|---|
+| Auto-capture memory | claude-mem, Mem0/OpenMemory, Cipher | Observe sessions, compress, accumulate | Evidence-validated lifecycle: memories earn trust through independent confirmation; contradictions weaken them |
+| Hosted team memory | Cloudflare Agent Memory, Supermemory | Shared memory via a hosted API | Git-native and local-first: the ledger lives in your repo, auditable via `git log`, no SaaS dependency |
+| Platform-native memory | Claude managed memory, Cursor memories | Per-platform memory stores | Cross-agent and team-scoped: one ledger serves Claude Code, Codex, Cursor, Continue |
+| Static context files | `CLAUDE.md`, `AGENTS.md`, `.cursor/rules` | Hand-maintained instructions | Evolves through work; context files become generated projections |
+
+In short: **evidence-validated, Git-native, governed team memory with a deterministic enforcement point.**
 
 ---
 
@@ -287,4 +367,4 @@ auto_activate:
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).
