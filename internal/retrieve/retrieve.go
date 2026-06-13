@@ -23,13 +23,15 @@ const (
 type MatchKind string
 
 const (
-	MatchScope MatchKind = "scope" // an effective-scope glob matched an action path
-	MatchFTS   MatchKind = "fts"   // the description matched title/summary/guidance
+	MatchScope   MatchKind = "scope"   // an effective-scope glob matched an action path
+	MatchCommand MatchKind = "command" // an effective-command pattern matched the action's command
+	MatchFTS     MatchKind = "fts"     // the description matched title/summary/guidance
 )
 
 // Query describes the action being checked.
 type Query struct {
 	Paths           []string // target paths of the action (e.g. the file being edited)
+	Command         string   // the Bash command being run; matched against scope.commands
 	Description     string   // free-text action/plan description, searched via FTS
 	ProvisionalMode string   // "" uses policy; one of "never" | "related" | "always"
 }
@@ -122,14 +124,19 @@ func (e *Engine) Retrieve(q Query) ([]Result, error) {
 			continue // excluded from retrieval (prd.md §8.2)
 		}
 		spec, scopeMatch := bestSpecificity(m.EffectiveScope, q.Paths)
+		cmdSpec, cmdMatch := bestCommandSpecificity(m.EffectiveCommands, q.Command)
 		fr, isFTS := ftsRank[m.ID]
-		if !scopeMatch && !isFTS {
+		structural := scopeMatch || cmdMatch
+		if !structural && !isFTS {
 			continue
 		}
 		c := candidate{mem: m, specificity: spec, ftsRank: -1}
-		if scopeMatch {
-			c.match = MatchScope
-		} else {
+		switch {
+		case scopeMatch && (!cmdMatch || spec >= cmdSpec):
+			c.match, c.specificity = MatchScope, spec
+		case cmdMatch:
+			c.match, c.specificity = MatchCommand, cmdSpec
+		default:
 			c.match = MatchFTS
 		}
 		if isFTS {
@@ -142,8 +149,8 @@ func (e *Engine) Retrieve(q Query) ([]Result, error) {
 			if mode == "never" {
 				continue
 			}
-			if mode == "related" && !scopeMatch {
-				continue // provisional appears only on scope match, not FTS-only
+			if mode == "related" && !structural {
+				continue // provisional appears only on a structural match, not FTS-only
 			}
 			c.provisional = true
 			prov = append(prov, c)

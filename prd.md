@@ -430,9 +430,12 @@ tm doctor        # validate setup: ledger branch, index, hooks, MCP, remote
 
 V1 is precision-first, lexical only. No embeddings.
 
-1. **Candidate set:** memories whose effective scope globs match the action's paths; plus FTS matches of the action description against title/summary/guidance (for path-less queries like planning checks).
-2. **Ranking:** glob specificity of the match > status (active first) > enforcement > confidence > recency > anchor freshness (drifted memories rank lower).
-3. **Provisional inclusion** (`provisional_mode`, default `related`): provisional and contested memories appear only on scope-glob match (not FTS-only), capped at `max_provisional` (default 2), always caution-framed, always with a requested-observation prompt.
+1. **Candidate set:** memories enter as candidates through three channels:
+   - **Scope channel:** effective scope globs match one or more of the action's paths.
+   - **Command channel:** effective command patterns match the action's command. Matching is token-aware: leading subcommand tokens must match literally, a trailing `*` matches the rest of the command; flags are not matched. Example: `pytest *` matches `pytest -q tests/`; `assistant jira create *` matches `assistant jira create FOO-1` but not `assistant jira delete FOO-1`.
+   - **FTS channel:** the action description matches title/summary/guidance (for path-less and command-less queries like planning checks).
+2. **Ranking:** specificity of the best structural match (scope or command) > status (active first) > enforcement > confidence > recency > anchor freshness (drifted memories rank lower). Command-match specificity is computed like glob specificity: base 1, plus 2 per fixed (non-wildcard) token; more fixed tokens ⇒ higher specificity ⇒ ranks higher.
+3. **Provisional inclusion** (`provisional_mode`, default `related`): provisional and contested memories appear on any structural match (scope-glob or command-pattern), but not on FTS-only matches. Capped at `max_provisional` (default 2), always caution-framed, always with a requested-observation prompt.
 4. **Output cap:** `max_results` (default 5) total. Context spam is a top product risk; the cap is a feature.
 
 Symbol matching, error-signature matching, and semantic ranking are roadmap.

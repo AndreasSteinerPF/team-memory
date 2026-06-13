@@ -80,3 +80,34 @@ func ftsQuery(desc string) string {
 // FTSQuery exposes the FTS5 query builder so the CLI's `search` command and the
 // retrieval engine tokenize identically. Returns "" if s has no usable tokens.
 func FTSQuery(s string) string { return ftsQuery(s) }
+
+// commandSpecificity scores a command pattern: base 1 (so any structural match
+// outranks FTS-only at 0), plus 2 per fixed leading token (mirrors
+// globSpecificity). More fixed tokens ⇒ more specific ⇒ ranks higher.
+func commandSpecificity(pattern string) int {
+	fields := strings.Fields(pattern)
+	score := 1
+	for _, f := range fields {
+		if f != "*" {
+			score += 2
+		}
+	}
+	return score
+}
+
+// bestCommandSpecificity returns the highest specificity among command patterns
+// that match the action's command, and whether any matched.
+func bestCommandSpecificity(commands []string, command string) (int, bool) {
+	if command == "" {
+		return 0, false
+	}
+	best, matched := 0, false
+	for _, p := range commands {
+		if derive.MatchCommandPattern(p, command) {
+			if spec := commandSpecificity(p); !matched || spec > best {
+				best, matched = spec, true
+			}
+		}
+	}
+	return best, matched
+}

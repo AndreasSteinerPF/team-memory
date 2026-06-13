@@ -203,6 +203,28 @@ func TestOutputCaps(t *testing.T) {
 	}
 }
 
+func TestRetrieveCommandChannelSurfacesProvisional(t *testing.T) {
+	m := index.IndexedMemory{
+		ID:                "01PROVCMD0000000000000000",
+		Title:             "pytest needs DATABASE_URL",
+		Status:            model.StatusProvisional,
+		Enforcement:       model.EnforcementHint,
+		EffectiveCommands: []string{"pytest *"},
+	}
+	fi := &fakeIndex{rows: []index.IndexedMemory{m}}
+	e := New(fi, nil, policy.Default()) // default provisional_mode = "related"
+	res, err := e.Retrieve(Query{Command: "pytest -q tests/"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res) != 1 || res[0].Memory.ID != m.ID {
+		t.Fatalf("results = %+v, want the provisional command memory surfaced as caution", res)
+	}
+	if !res[0].Provisional || res[0].Caution == "" {
+		t.Error("command match is structural — provisional memory must surface caution-framed")
+	}
+}
+
 func TestDeterministicTiebreakByID(t *testing.T) {
 	// Identical on every ranking key ⇒ stable order by ID.
 	fi := &fakeIndex{rows: []index.IndexedMemory{

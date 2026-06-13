@@ -42,6 +42,20 @@ func TestBestSpecificity(t *testing.T) {
 	}
 }
 
+func TestBestCommandSpecificity(t *testing.T) {
+	spec, ok := bestCommandSpecificity([]string{"assistant jira create *"}, "assistant jira create X")
+	if !ok {
+		t.Fatal("expected a command match")
+	}
+	broad, _ := bestCommandSpecificity([]string{"assistant *"}, "assistant jira create X")
+	if spec <= broad {
+		t.Errorf("specific (%d) should outrank broad (%d)", spec, broad)
+	}
+	if _, ok := bestCommandSpecificity([]string{"assistant jira create *"}, "assistant jira delete X"); ok {
+		t.Error("non-matching command must not match")
+	}
+}
+
 func TestFTSQuery(t *testing.T) {
 	// Punctuation and FTS operators must be neutralized; tokens OR-joined.
 	got := ftsQuery("rollback failure: invoice-state migration!")
