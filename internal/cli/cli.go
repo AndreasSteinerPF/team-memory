@@ -1,5 +1,5 @@
 // Package cli is the entry point for the tm command: a cobra application that
-// exposes TeamMemory's 14 commands (prd.md §10.5) over the internal packages.
+// exposes TeamMemory's 15 commands (prd.md §10.5) over the internal packages.
 package cli
 
 import (
@@ -48,6 +48,7 @@ func newRootCmd() *cobra.Command {
 		newCheckActionCmd(g),
 		newMCPCmd(g),
 		newBriefCmd(g),
+		newDoctorCmd(g),
 		// Subsequent tasks register their commands here.
 	)
 	return root

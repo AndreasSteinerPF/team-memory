@@ -4,10 +4,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/spf13/cobra"
 
 	"github.com/AndreasSteinerPF/team-memory/internal/git"
 	"github.com/AndreasSteinerPF/team-memory/internal/index"
@@ -196,4 +199,71 @@ func checkRemote(repoDir string) checkResult {
 	}
 	r.sev, r.detail = sevWarn, "none configured; sync/push disabled (fine for solo use)"
 	return r
+}
+
+func renderReport(w io.Writer, repoDir, branch string, results []checkResult) {
+	fmt.Fprintf(w, "TeamMemory doctor — %s (branch: %s)\n\n", repoDir, branch)
+	warns, fails := 0, 0
+	for _, r := range results {
+		fmt.Fprintf(w, "  %s %-18s %s\n", r.sev.icon(), r.name, r.detail)
+		if r.hint != "" {
+			fmt.Fprintf(w, "      → %s\n", r.hint)
+		}
+		switch r.sev {
+		case sevWarn:
+			warns++
+		case sevFail:
+			fails++
+		}
+	}
+	fmt.Fprintf(w, "\n%d warning(s), %d failure(s).\n", warns, fails)
+}
+
+func newDoctorCmd(g *globalOpts) *cobra.Command {
+	return &cobra.Command{
+		Use:   "doctor",
+		Short: "Diagnose the TeamMemory setup (ledger, index, hooks, MCP, remote)",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			repoDir, err := filepath.Abs(g.repo)
+			if err != nil {
+				return err
+			}
+			led, err := ledger.Open(repoDir, g.branch)
+			if err != nil {
+				// Not a usable git repo — report as a single failure rather
+				// than a bare error, so the output is consistent.
+				results := []checkResult{{
+					name: "Ledger branch", sev: sevFail,
+					detail: fmt.Sprintf("cannot open repo: %v", err),
+					hint:   "run `tm doctor` inside a git repository",
+				}}
+				renderReport(cmd.OutOrStdout(), repoDir, g.branch, results)
+				return errDoctorFailed
+			}
+
+			var results []checkResult
+			lc := checkLedger(led)
+			results = append(results, lc)
+			if lc.sev == sevFail {
+				results = append(results,
+					checkResult{name: "Local index", sev: sevSkip, detail: "ledger not initialized"},
+					checkResult{name: "policy.yaml", sev: sevSkip, detail: "ledger not initialized"},
+				)
+			} else {
+				gitDir, err := led.GitDir()
+				if err != nil {
+					return err
+				}
+				results = append(results, checkIndex(led, gitDir), checkPolicy(led))
+			}
+			results = append(results, checkHooks(repoDir), checkMCP(repoDir), checkRemote(repoDir))
+
+			renderReport(cmd.OutOrStdout(), repoDir, g.branch, results)
+			if anyFailed(results) {
+				return errDoctorFailed
+			}
+			return nil
+		},
+	}
 }
