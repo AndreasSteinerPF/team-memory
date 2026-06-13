@@ -67,9 +67,14 @@ Plus the existing **`tm brief`** (session-start event / instruction file) for th
 "when to remember" instructions.
 
 **Session journal.** `.git/tm/nudge/<session-id>.json` — local-only, never a ledger record, keyed by
-the harness's session id, TTL-expired exactly like acks (§388). Holds per-path edit counts, last
-failing/passing command signatures, revert events, memories surfaced for this session, nudges already
-fired, advisory injections already delivered, and a turn counter.
+the harness's session id, TTL-expired exactly like acks (§388). Holds per-path edit counts (with the
+turn index of each edit), last failing/passing command signatures, revert events, memories surfaced for
+this session, prompt-submit turn markers, nudges already fired, advisory injections already delivered,
+and a turn counter. **Surfaced memories are written by whichever hook does the surfacing** —
+`tm signal --hook` (post-tool advisory inject, all harnesses) and `tm check-action --hook` (pre-edit
+inject on Claude Code) — so the surfaced-but-unobserved signal (§3) has a reliable source. Prompt-submit
+markers plus the per-edit turn index are what let the user-intervened signal (§3 Tier B) detect "edit P →
+user spoke → edit P again."
 
 **Adapter contract.** Each adapter is one small file implementing: `parse(event JSON) → internal event`
 (tool name, tool input, result/exit-or-failure flag, session id, paths) and `render(decision) → harness
@@ -103,6 +108,12 @@ command typo"). The candidate lesson is attributed to the files edited between t
 | Signal | Detection | Behaviour |
 |---|---|---|
 | **user intervened mid-file** | The agent edited path P, a user prompt landed (prompt-submit event), then P was edited again. | Sharpens the periodic self-review with a pointed question ("the user redirected you while editing `auth/` — a constraint to record?"). Does **not** pre-fill a type. |
+
+> **Why a proxy, not the abort itself.** The cleaner signal — "user *aborted/denied* the edit, then the
+> agent retried differently" — is **not hook-observable on any harness**: no hook fires on a manual
+> permission denial or on an ESC interrupt (verified against Claude Code, Codex, Copilot, Cursor, Gemini
+> docs, 2026-06-14). The prompt-submit-bracketed re-edit above is the achievable proxy. Do not replace it
+> with abort detection without re-verifying that a denial/interrupt hook has since shipped.
 
 **Deliberate non-signals:** a command that only ever fails (no recovery — a broken build, not a lesson
 yet); a path already covered by a memory the agent didn't contradict; raw NL-correction classification
@@ -183,6 +194,24 @@ one hook call both injects relevant memories and records signals.
 
 All five wrap the same engine. Each section: event mapping, packaging, fail→pass sensor, and a
 verification checklist for the unknowns we will **not** trust the docs on.
+
+**Value tiers & build order (highest-value path per harness).** The value ranking is identical
+everywhere — *deterministic retrieval is the headline (§584); the nudge engine is the second increment;
+MCP verbs + the brief are the floor* — so "highest-value path" is really about build order:
+
+- **Tier 0 — floor, ship to all five immediately:** MCP voluntary verbs + the instruction-file brief.
+  Zero hook work; strictly better than nothing on every harness.
+- **Tier 1 — the headline, all five:** requirement **block** (pre-tool) + advisory **inject** (post-tool,
+  pre-edit on CC). This is the deterministic-retrieval win and where most user value lands.
+- **Tier 2 — the nudge engine:** signals + policy + self-review.
+
+Per-harness sequencing within that:
+- **Claude Code** — reference implementation; build the full engine here first.
+- **Codex, Copilot CLI** — near-drop-in ports: event taxonomy mirrors Claude Code and both have plugin
+  systems that bundle hooks + MCP + instructions in one artifact. Do these right after Claude Code.
+- **Cursor, Gemini CLI** — full engine still ports, but Tier 0 + Tier 1 land trivially first; the nudge's
+  fail→pass uses the **failure-flag** variant (no exit code) and packaging is native (Cursor `hooks.json`
+  / Gemini extension). Ship floor + retrieval, then add the nudge with the failure-flag sensor.
 
 ### 6.1 Claude Code (reference implementation)
 
