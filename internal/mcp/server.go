@@ -208,6 +208,7 @@ type proposeArgs struct {
 	Summary  string   `json:"summary,omitempty" jsonschema:"What happened or what was discovered."`
 	Guidance string   `json:"guidance,omitempty" jsonschema:"What a future agent should do when it encounters this situation."`
 	Scope    []string `json:"scope,omitempty" jsonschema:"Path globs this memory applies to (e.g. billing/migrations/**)."`
+	Commands []string `json:"commands,omitempty" jsonschema:"Command patterns this memory applies to (e.g. \"pytest *\", \"assistant jira create *\"). Token-aware, leading-subcommand match; a trailing * matches the rest of the command."`
 	Evidence []string `json:"evidence,omitempty" jsonschema:"Evidence as type:ref pairs (e.g. test_failure:logs/rollback.log)."`
 	Session  string   `json:"session,omitempty" jsonschema:"Session ID of the proposing agent for independence tracking. Use $CLAUDE_SESSION_ID."`
 	Actor    string   `json:"actor,omitempty" jsonschema:"Name of the proposing agent."`
@@ -248,7 +249,7 @@ Memories earn trust through independent confirmation — redundant proposals are
 			Title:    args.Title,
 			Summary:  args.Summary,
 			Guidance: args.Guidance,
-			Scope:    model.Scope{Paths: args.Scope},
+			Scope:    model.Scope{Paths: args.Scope, Commands: args.Commands},
 			Actor:    model.Actor{Kind: model.ActorAgent, Name: actor, SessionID: args.Session},
 		}
 		for _, ev := range args.Evidence {

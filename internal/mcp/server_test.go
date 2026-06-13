@@ -392,6 +392,36 @@ func TestCheckActionTool(t *testing.T) {
 	}
 }
 
+func TestProposeAcceptsCommandScope(t *testing.T) {
+	ctx := context.Background()
+	_, d, cleanup := testEnv(t)
+	defer cleanup()
+
+	session := startServer(t, ctx, d)
+
+	res := callTool(t, ctx, session, "tm_propose", map[string]any{
+		"type":     "constraint",
+		"title":    "pytest needs DATABASE_URL",
+		"commands": []string{"pytest *"},
+		"session":  "s1",
+	})
+	text := resultText(res)
+
+	// Extract the ULID from the first line of output.
+	id := strings.TrimSpace(strings.SplitN(text, "\n", 2)[0])
+	if id == "" {
+		t.Fatalf("could not extract memory ID from propose response:\n%s", text)
+	}
+
+	m, ok, err := d.Ledger.Memory(id)
+	if err != nil || !ok {
+		t.Fatalf("memory %s not found: %v", id, err)
+	}
+	if len(m.Scope.Commands) != 1 || m.Scope.Commands[0] != "pytest *" {
+		t.Fatalf("scope.commands = %v, want [pytest *]", m.Scope.Commands)
+	}
+}
+
 // TestFullPipeline exercises the complete PRD §13 lifecycle through MCP tools:
 // propose → confirm → activate → check_action → search → status
 func TestFullPipeline(t *testing.T) {
