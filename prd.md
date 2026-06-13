@@ -398,7 +398,7 @@ Same MCP server. As of 2026, Codex CLI, Copilot CLI, Cursor, Gemini CLI, and Con
 
 ### 10.5 CLI
 
-Fourteen commands:
+Fifteen commands:
 
 ```text
 tm init          # create orphan branch, default policy.yaml, local index;
@@ -416,6 +416,7 @@ tm show          # full detail: envelope, observations, derived state, pending s
 tm search        # lexical search
 tm export        # generate AGENTS.md / CLAUDE.md / .cursor/rules blocks / JSON
 tm status        # ledger overview, items needing human attention, sync state
+tm doctor        # validate setup: ledger branch, index, hooks, MCP, remote
 ```
 
 `tm approve` and `tm reject` write `approve`/`reject` observation records with `actor.kind: human`.
@@ -452,7 +453,7 @@ Symbol matching, error-signature matching, and semantic ranking are roadmap.
 
 ### 12.2 Nice to Have
 
-1. `tm doctor` (validate branch, index, hook installation).
+1. `tm doctor` (validate branch, index, hook installation). **Shipped** — see §10.5.
 2. Static HTML timeline report.
 3. Homebrew/Scoop packaging.
 

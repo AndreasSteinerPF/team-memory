@@ -195,6 +195,7 @@ tm show          full detail: envelope, observations, derived state
 tm search        lexical search over titles, summaries, guidance
 tm export        generate AGENTS.md / CLAUDE.md / .cursor/rules blocks or JSON
 tm status        ledger overview, items needing human attention, sync state
+tm doctor        diagnose setup: ledger branch, index, hooks, MCP, remote
 ```
 
 Run any command with `--help` for its full flag set. `tm propose` and `tm observe` also accept `--actor`, `--session`, `--ctx-branch`, and `--ctx-path` to attribute records and record code context.
