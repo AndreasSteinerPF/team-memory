@@ -123,7 +123,11 @@ func (cursor) Parse(kind EventKind, r io.Reader) (Event, error) {
 		Kind: kind, SessionID: raw.SessionID,
 		Command: raw.Command, FilePath: raw.FilePath,
 	}
-	if kind == PostTool && raw.Command != "" {
+	// Only shell events carry a command outcome. Guarding on hook_event_name
+	// stops a file-edit event (afterFileEdit) that happens to carry a command
+	// field from being misrecorded as a command outcome.
+	if kind == PostTool && raw.Command != "" &&
+		(raw.HookEventName == "afterShellExecution" || raw.HookEventName == "postToolUseFailure") {
 		ev.HasOutcome = true
 		ev.Failed = raw.HookEventName == "postToolUseFailure"
 	}
@@ -146,7 +150,9 @@ func (cursor) Render(kind EventKind, d Decision, w io.Writer) error {
 }
 ```
 
-> **Why no special double-event dedup is needed.** On a *failing* command Cursor fires both `afterShellExecution` (recorded as success, Failed=false) and `postToolUseFailure` (recorded as a fail, Failed=true). The fail→pass detector only treats `Failed=true` outcomes as the "fail" half, and requires an **edit between** the fail and a later same-signature success — there is no edit between the two synthetic outcomes of a *single* command, so the duplicate never produces a spurious recovery. A genuine recovery (fail → edit → re-run succeeds) still fires correctly. No dedup task required.
+> **Why no special double-event dedup is needed (Cursor only).** On a *failing* command Cursor fires both `afterShellExecution` (recorded Failed=false) and `postToolUseFailure` (recorded Failed=true) — two `signal --hook` invocations, so two journal `CmdOutcome`s at consecutive turns. This is safe because of the **exact** guard in slice 1's `detectFailPass`: it pairs a `Failed=true` outcome with a later same-signature `Failed=false` outcome *only if* `editBetween(j, fail.Turn, pass.Turn)` is true — i.e. some `EditRecord` has `e.Turn` within the `[fail.Turn, pass.Turn]` span. The two synthetic outcomes of a *single* command have no edit recorded between their turns, so no spurious recovery fires, regardless of which of the two events lands first. A genuine recovery (fail → **edit** → re-run succeeds) still satisfies the predicate. If slice 1's `editBetween` were ever weakened to "any edit since the fail," this argument breaks — keep the bounded `[fail.Turn, pass.Turn]` check.
+>
+> This applies to **Cursor only**. Gemini fires a single `AfterTool` per command (`tool_response.error` set or empty), so there is no double event and nothing to reason about — the self-review note generalizing this to "both failure-flag harnesses" is mis-scoped.
 >
 > **VERIFY (spec §10 item 3):** confirm `afterShellExecution`/`postToolUseFailure` payload field names (`command`, `hook_event_name`) and that `additional_context` injects model-visible text on allow. File-edit pre-blocking depends on whether Cursor's `preToolUse` covers edits (Cursor exposes `afterFileEdit` but no documented `beforeFileEdit`); if not, requirement blocking on file edits is shell-only on Cursor — note it in the installer.
 
@@ -399,11 +405,11 @@ memory you were shown, tm_observe to confirm or contradict it (with evidence).
 
 - [ ] **Step 4: Add the `cursor` case to `init`**
 
-In `internal/cli/init.go`, add to the `--harness` switch:
+In `internal/cli/init.go`, add to the `--harness` switch introduced in slice 2. Use the local `repoDir` variable (`init.go:24`), **not** `e.repoDir` — `newInitCmd` builds no `env`:
 
 ```go
 	case "cursor":
-		if err := installCursor(e.repoDir); err != nil {
+		if err := installCursor(repoDir); err != nil {
 			return err
 		}
 ```
@@ -448,6 +454,28 @@ func TestInstallGeminiWritesExtension(t *testing.T) {
 		}
 	}
 }
+
+func TestInstallGeminiPreservesExistingBrief(t *testing.T) {
+	repo := initRepo(t)
+	// Pre-existing GEMINI.md with user content must survive.
+	sentinel := "# My project rules\nAlways run the linter.\n"
+	if err := os.WriteFile(filepath.Join(repo, "GEMINI.md"), []byte(sentinel), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if code := runTMLocal(t, repo, "init", "--harness", "gemini"); code != 0 {
+		t.Fatalf("exit %d", code)
+	}
+	got, err := os.ReadFile(filepath.Join(repo, "GEMINI.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(got), "Always run the linter.") {
+		t.Error("existing GEMINI.md content was clobbered")
+	}
+	if !strings.Contains(string(got), "# TeamMemory") {
+		t.Error("TeamMemory section not appended")
+	}
+}
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -465,10 +493,12 @@ package cli
 import (
 	"os"
 	"path/filepath"
+	"strings"
 )
 
-// installGemini writes Gemini CLI settings (hooks + MCP) and a GEMINI.md note
-// (spec §6.5). Gemini reads hooks and mcpServers from .gemini/settings.json.
+// installGemini writes Gemini CLI settings (hooks + MCP) and ensures a
+// GEMINI.md TeamMemory section (spec §6.5). Gemini reads hooks and mcpServers
+// from .gemini/settings.json.
 func installGemini(repoDir string) error {
 	gdir := filepath.Join(repoDir, ".gemini")
 	if err := os.MkdirAll(gdir, 0o755); err != nil {
@@ -487,23 +517,40 @@ func installGemini(repoDir string) error {
 	if err := os.WriteFile(filepath.Join(gdir, "settings.json"), []byte(settings), 0o644); err != nil {
 		return err
 	}
-	brief := `# TeamMemory
+	section := `
+
+# TeamMemory
 When you discover a non-obvious failure, hidden constraint, fragile area, stale
 doc, or undocumented decision, record it with tm_propose. When your work bears
 on a memory you were shown, tm_observe to confirm or contradict it (with
 evidence).
 `
-	return os.WriteFile(filepath.Join(repoDir, "GEMINI.md"), []byte(brief), 0o644)
+	return ensureSection(filepath.Join(repoDir, "GEMINI.md"), "# TeamMemory", section)
+}
+
+// ensureSection adds body to the file at path, never clobbering existing
+// content: it creates the file (trimmed) if absent, appends body if the file
+// lacks marker, and no-ops if marker is already present.
+func ensureSection(path, marker, body string) error {
+	existing, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return os.WriteFile(path, []byte(strings.TrimLeft(body, "\n")), 0o644)
+	}
+	if err != nil {
+		return err
+	}
+	if strings.Contains(string(existing), marker) {
+		return nil
+	}
+	return os.WriteFile(path, append(existing, []byte(body)...), 0o644)
 }
 ```
-
-> If a `GEMINI.md` already exists, append the TeamMemory section rather than overwriting. Implement an append-if-exists check (read, skip if it already contains "# TeamMemory", else append).
 
 - [ ] **Step 4: Add the `gemini` case to `init`**
 
 ```go
 	case "gemini":
-		if err := installGemini(e.repoDir); err != nil {
+		if err := installGemini(repoDir); err != nil {
 			return err
 		}
 ```

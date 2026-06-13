@@ -338,10 +338,12 @@ In `internal/cli/checkaction.go`, change `runHook` to take the adapter. Parse wi
 
 Add `--harness` to `newCheckActionCmd` and pass the resolved adapter into `runHook`.
 
+> **Unused-import cleanup (will not compile otherwise):** deleting `hookInput`/`hookOutput`/`hookSpecific` removes the only `encoding/json` user in `checkaction.go`, and deleting `postHookInput` removes it from `signal.go` (slice 1). Remove `"encoding/json"` from both files' import blocks (the adapter owns JSON now). Go fails the build on an unused import.
+
 - [ ] **Step 4: Run the full suite**
 
 Run: `go test ./...`
-Expected: PASS — the existing Claude Code e2e/unit tests (`nudge.txtar`, `checkaction_test.go`, `signal_test.go`, `nudge_test.go`) stay green because the `claude` adapter reproduces the prior wire shapes exactly.
+Expected: PASS. There is **no** `checkaction_test.go` in the repo — the Claude wire shapes are covered by slice 1's `e2e/testdata/scripts/nudge.txtar`, `signal_test.go`, and `nudge_test.go`. Those are the regression gate: the `claude` adapter's `Render` must reproduce slice 1's `stopHookOutput`/`hookOutput` shapes exactly (`hookSpecificOutput` with `hookEventName`/`permissionDecision`/`permissionDecisionReason`/`additionalContext`).
 
 - [ ] **Step 5: Commit**
 
@@ -486,7 +488,7 @@ func TestSignalHookInjectsAdvisoryForEditedPath(t *testing.T) {
 }
 ```
 
-> This test depends on the Codex adapter (Task 5). If you are doing strict task ordering, write this test now, let it fail, and unskip it after Task 5 lands. Alternatively run the injection with `--harness claude` and assert the rendered `additionalContext`.
+> **Ordering:** this test uses `--harness codex`, which doesn't exist until Task 5 — and you **cannot** fall back to `--harness claude`, because the injection block is deliberately skipped on claude (it injects pre-edit instead). So land **Task 5 before this test goes green**: write the test here (it fails: unknown harness), implement the injection logic in Step 3, then unskip/confirm after Task 5. Equivalently, do Task 5 before Task 4.
 
 - [ ] **Step 2: Run test to verify it fails**
 
@@ -499,7 +501,11 @@ In `internal/cli/signal.go`, after recording the edit and before `store.Save(j)`
 
 ```go
 	var decision harness.Decision
-	if ev.FilePath != "" {
+	// Advisory injection runs only on non-Claude harnesses: Claude Code already
+	// injects advisory memories PRE-edit via check-action, so injecting again
+	// post-edit would double-surface. On claude this block is skipped and the
+	// empty Decision renders nothing — signal recording above still happens.
+	if a.Name() != "claude" && ev.FilePath != "" {
 		rel := relPath(e, ev.FilePath)
 		res, rerr := e.engine().Retrieve(retrieve.Query{Paths: []string{rel}})
 		if rerr == nil {
@@ -545,9 +551,7 @@ func hasDrift(r retrieve.Result) bool {
 }
 ```
 
-Add imports: `retrieve`, `model`, `harness`. `buildContext` is reused from `checkaction.go` (same package).
-
-> **Claude Code note:** on `--harness claude`, advisory injection already happens *pre-edit* in `check-action`. To avoid double-surfacing, the signal command should skip advisory injection when `harnessName == "claude"` (record signals only). Add `if a.Name() != "claude"` around the injection block.
+Add imports to `signal.go`: `retrieve`, `model`, `harness` (slice 1's `signal.go` imports none of these). `buildContext` is reused from `checkaction.go` (same `cli` package). `retrieve.Result.Memory` is an `index.IndexedMemory` — use `r.Memory.Enforcement`/`r.Memory.ID` (both exist); do **not** reference `r.Memory.Scope` (it has none — see slice 1 Task 8's note).
 
 - [ ] **Step 4: Run tests to verify they pass**
 
@@ -938,18 +942,18 @@ func installCodex(repoDir string) error {
 
 - [ ] **Step 4: Wire `--harness` into `init`**
 
-In `internal/cli/init.go`, add a `--harness` string flag. After the existing ledger/hook setup, dispatch:
+In `internal/cli/init.go`, add a `--harness` string flag. `newInitCmd` does **not** build an `env` — its `RunE` computes a local `repoDir, err := filepath.Abs(g.repo)` (`internal/cli/init.go:24`). Use that local `repoDir` variable (there is no `e` in scope). After the existing ledger/hook setup, dispatch:
 
 ```go
 	switch harnessName {
 	case "", "claude":
 		// existing Claude Code install path (unchanged)
 	case "codex":
-		if err := installCodex(e.repoDir); err != nil {
+		if err := installCodex(repoDir); err != nil {
 			return err
 		}
 	case "copilot":
-		if err := installCopilot(e.repoDir); err != nil {
+		if err := installCopilot(repoDir, cmd.OutOrStdout()); err != nil {
 			return err
 		}
 	default:
@@ -957,7 +961,7 @@ In `internal/cli/init.go`, add a `--harness` string flag. After the existing led
 	}
 ```
 
-> If `init` does not currently build an `env`/know `repoDir`, use the resolved repo path it already computes. Match the existing flag-registration and RunE style in `init.go`.
+> `fmt` is already imported in `init.go`. Slice 3 adds the `cursor`/`gemini` arms to this same switch — match this `repoDir` identifier there too.
 
 - [ ] **Step 5: Implement the Copilot installer**
 
@@ -967,12 +971,15 @@ Create `internal/cli/install_copilot.go` mirroring `installCodex`, writing `.git
 package cli
 
 import (
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 )
 
-// installCopilot writes Copilot CLI hook + MCP artifacts (spec §6.3).
-func installCopilot(repoDir string) error {
+// installCopilot writes Copilot CLI hook artifacts and prints the user-scope
+// MCP config the user must add by hand (spec §6.3).
+func installCopilot(repoDir string, out io.Writer) error {
 	dir := filepath.Join(repoDir, ".github", "hooks")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
@@ -988,11 +995,16 @@ func installCopilot(repoDir string) error {
   }
 }
 `
-	return os.WriteFile(filepath.Join(dir, "teammemory.json"), []byte(hooks), 0o644)
+	if err := os.WriteFile(filepath.Join(dir, "teammemory.json"), []byte(hooks), 0o644); err != nil {
+		return err
+	}
+	fmt.Fprintln(out, `Copilot MCP: add to ~/.copilot/mcp-config.json →`)
+	fmt.Fprintln(out, `  {"mcpServers":{"teammemory":{"type":"local","command":"tm","args":["mcp"]}}}`)
+	return nil
 }
 ```
 
-> MCP config for Copilot lives at `~/.copilot/mcp-config.json` (user scope). Have `init --harness copilot` print a one-line instruction to add `{"mcpServers":{"teammemory":{"type":"local","command":"tm","args":["mcp"]}}}` there, rather than writing into the user's home directory automatically.
+> The MCP config lives in the user's home (`~/.copilot/mcp-config.json`), not the repo — so `init` prints the snippet rather than writing into `$HOME` automatically. The test (`TestInstallCopilot...`, if you add one) should assert the repo hooks file, not the printed line.
 
 - [ ] **Step 6: Run tests to verify they pass**
 

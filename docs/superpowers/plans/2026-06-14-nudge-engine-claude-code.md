@@ -1452,8 +1452,8 @@ In `internal/cli/checkaction.go`, inside `runHook`, after the results are retrie
 					}
 				}
 				path := ""
-				if len(r.Memory.Scope.Paths) > 0 {
-					path = r.Memory.Scope.Paths[0]
+				if len(r.Memory.EffectiveScope) > 0 {
+					path = r.Memory.EffectiveScope[0]
 				}
 				j.RecordSurfaced(r.Memory.ID, path, drift)
 			}
@@ -1462,7 +1462,7 @@ In `internal/cli/checkaction.go`, inside `runHook`, after the results are retrie
 	}
 ```
 
-> The surfaced path is keyed off the memory's scope; the observe signal fires when the session later edits a path matching that scope. If `retrieve.Result` exposes the matched action path, prefer that — check `internal/retrieve` for a `Result.Path`/matched-scope field and use it instead of `Scope.Paths[0]` if present.
+> `retrieve.Result.Memory` is an `index.IndexedMemory` (not a `model.Memory`): it has **no `Scope` field** — the path globs live in `EffectiveScope []string` (`internal/index/query.go:23`). There is no matched-action-path field on `Result`, so key the surfaced record off `EffectiveScope[0]`. (Contrast: `actedPredicate` in Task 8 uses `e.led.Memories()`, which returns full `model.Memory` records *with* `Scope.Paths` — that one is correct as written.)
 
 - [ ] **Step 5: Run tests to verify they pass**
 
