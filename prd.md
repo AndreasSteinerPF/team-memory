@@ -432,7 +432,7 @@ Seventeen commands:
 
 ```text
 tm init          # create orphan branch, default policy.yaml, local index;
-                 # install Claude Code hooks+MCP, or --harness codex|copilot
+                 # install Claude Code hooks+MCP, or --harness codex|copilot|cursor|gemini
 tm sync          # fetch + union-merge + push the teammemory branch
 tm check-action  # query memory for an action (--hook mode for the plugin)
 tm signal        # record nudge signals from a PostToolUse event, or a prompt marker (--hook; --prompt; --harness)
