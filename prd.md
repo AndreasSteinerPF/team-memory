@@ -398,9 +398,9 @@ v1 limits: command matching uses leading-subcommand matching only (flags are not
 
 **SessionStart hook**: runs `tm brief` at session start; stdout is injected as session context. The briefing carries live ledger counts plus the standing instructions for the voluntary verbs — deterministic delivery of *when to remember*, not just *what is remembered*.
 
-**PostToolUse hook** runs `tm signal --hook`: records nudge signals (fail→pass, revert, edit churn, surfaced-but-unobserved, drift-anchor) into a per-session journal under `.git/tm/nudge`. Silent; never blocks. Each event advances a within-session turn counter.
+**PostToolUse hook** runs `tm signal --hook`: records raw events — command outcomes and edits — into a per-session journal under `.git/tm/nudge` (on non-Claude harnesses it also records surfaced memories; on Claude those come from the PreToolUse `check-action` hook). Silent; never blocks. Each event advances a within-session turn counter.
 
-**Stop hook** runs `tm nudge --hook`: at turn end, emits at most one proposing/observing nudge per the anti-spam policy (max 3/session, cooldown 3 turns, suppress-if-already-acted, observe outranks propose). Low-pressure wording; the verbs stay voluntary. The nudge is injected as additional context, not as a forced turn.
+**Stop hook** runs `tm nudge --hook`: at turn end, it reads the journal, detects the memory-worthy signals (fail→pass, revert, edit churn, surfaced-but-unobserved, drift-anchor), and emits at most one proposing/observing nudge per the anti-spam policy (max 3/session, cooldown 3 turns, suppress-if-already-acted, observe outranks propose). Low-pressure wording; the verbs stay voluntary. The nudge is injected as additional context, not as a forced turn.
 
 **UserPromptSubmit hook** records a prompt marker into the journal so the user-intervened signal can detect edit→prompt→re-edit on the same path (a Tier B attention flag that only aims the periodic self-review).
 

@@ -31,6 +31,7 @@ The result is a memory layer that gets *more* trustworthy over time instead of n
 - **Enforce hard constraints at edit *and command* time.** Promote a validated memory to a `requirement` and the `PreToolUse` hook *blocks* edits to matching paths — or Bash commands matching its command patterns — until the agent acknowledges it, turning tribal knowledge into a guardrail no agent can skip.
 - **Catch command-time failures, not just edits.** Scope a memory to a command pattern (e.g. `pytest *`, `terraform apply *`) and the hook surfaces — or blocks — it the moment an agent is about to run that command, not only when it edits a file.
 - **Flag fragile areas and stale docs** so agents treat risky files carefully and stop trusting documents an ADR already replaced.
+- **Get nudged to record at the right moment.** A near-moment nudge engine watches for memory-worthy moments (a test that went fail→pass, a reverted change, repeated churn on one path, a surfaced-but-unobserved memory) and, at turn end, escalates the single highest-value one to a pointed `tm_propose`/`tm_observe` prompt — so the lesson gets captured while it's fresh. The verbs stay voluntary, and an anti-spam budget keeps it from manufacturing junk.
 - **Let memory validate itself across the team.** A memory proposed on one branch, in one session, by one agent gets independently confirmed by another — and auto-activates only when that evidence threshold is met. No single agent can unilaterally create a binding rule.
 - **Keep humans in control of the high-impact calls.** Agents can propose and confirm freely; only a human can escalate a memory to a hard `requirement` or kill it.
 - **Audit every change as plain Git.** The entire ledger is an append-only orphan branch — `git log teammemory` shows who proposed what, who confirmed it, and when it became binding.
@@ -107,7 +108,7 @@ cd your-repo
 tm init
 ```
 
-This creates an orphan branch `teammemory` and a local SQLite index under `.git/tm/`. If `.claude/` exists, it also installs two Claude Code hooks in `.claude/settings.json`: the `PreToolUse` check (on edits *and Bash commands*) and a `SessionStart` briefing (`tm brief`).
+This creates an orphan branch `teammemory` and a local SQLite index under `.git/tm/`. If `.claude/` exists, it also installs the Claude Code hooks in `.claude/settings.json`: the `PreToolUse` check (on edits *and Bash commands*), a `SessionStart` briefing (`tm brief`), and the near-moment nudge engine — `PostToolUse` signal recording (`tm signal`), a `Stop` nudge emitter (`tm nudge`), and a `UserPromptSubmit` prompt marker (`tm signal --hook --prompt`).
 
 ### 2. Propose a memory
 
@@ -201,6 +202,8 @@ Five typed envelopes, each with a free-form summary and guidance:
 tm init          create orphan branch, default policy, local index; install Claude Code hooks
 tm sync          fetch + union-merge + push the teammemory branch
 tm check-action  query memory for an action (--hook mode for the PreToolUse hook)
+tm signal        record nudge signals (PostToolUse) or a prompt marker (--prompt) for the nudge engine
+tm nudge         emit at most one propose/observe nudge at turn end (--hook mode for the Stop hook)
 tm brief         session-start briefing for agent hooks (live counts + instructions)
 tm propose       create a memory record
 tm observe       add an observation (confirm / contradict / adjust_scope / mark_stale)
@@ -264,23 +267,35 @@ MCP tools: `tm_propose`, `tm_observe`, `tm_check_action`, `tm_search`, `tm_statu
 
 `tm brief` emits a short briefing — live ledger counts plus standing instructions for `tm_propose` / `tm_observe` / `tm_check_action` — designed to be injected into agent context at session start. `tm init` installs it automatically for Claude Code as a `SessionStart` hook. In a repo without an initialized ledger it prints nothing and exits 0, so the hook is always safe to install.
 
+### Near-moment nudges
+
+The session briefing tells an agent *when* to remember; the nudge engine catches the moments it would otherwise miss. `tm init` installs three more hooks for Claude Code:
+
+- **`PostToolUse` → `tm signal --hook`** records the raw events — command outcomes and edits — into a per-session journal under `.git/tm/nudge`. It is silent, never blocks, and advances a within-session turn counter.
+- **`Stop` → `tm nudge --hook`** runs at turn end. It reads the journal, detects the memory-worthy patterns (a test going fail→pass, a reverted change, repeated edit churn on one path, a surfaced-but-unobserved memory, anchor drift), and emits **at most one** proposing/observing nudge, injected as additional context (never a forced turn). An anti-spam policy bounds it: max 3 per session, a cooldown between nudges, suppress-if-already-acted, and `observe` outranks `propose`.
+- **`UserPromptSubmit` → `tm signal --hook --prompt`** records a prompt marker so the engine can detect an edit→prompt→re-edit on the same path (a signal that the user redirected the agent there).
+
+The nudge journal is local state under `.git/tm/nudge` — like acks, it is never committed to the ledger. The verbs themselves stay voluntary; the engine only raises the highest-value moments to a pointed prompt.
+
 ---
 
 ## Other agents
 
 Every agent reads the same ledger; what differs is the delivery guarantee:
 
-| Agent | Hook enforcement (edit + command) | Session briefing | Voluntary verbs (MCP) | Static fallback |
-|---|:---:|:---:|:---:|:---:|
-| Claude Code | ✅ (`PreToolUse` hook) | ✅ | ✅ | ✅ |
-| Codex CLI | — | ✅ | ✅ | ✅ |
-| Continue CLI | — | ✅ | ✅ | ✅ |
-| Copilot CLI | — | ✅ | ✅ | ✅ |
-| Cursor | — | ✅ | ✅ | ✅ (`.cursor/rules`) |
-| Gemini CLI | — | ✅ | ✅ | ✅ |
-| Other MCP / hook-less | — | — | ✅ | ✅ (only path) |
+| Agent | Hook enforcement (edit + command) | Session briefing | Near-moment nudges | Voluntary verbs (MCP) | Static fallback |
+|---|:---:|:---:|:---:|:---:|:---:|
+| Claude Code | ✅ (`PreToolUse` hook) | ✅ | ✅ | ✅ | ✅ |
+| Codex CLI | — | ✅ | ✅ | ✅ | ✅ |
+| Continue CLI | — | ✅ | ✅ | ✅ | ✅ |
+| Copilot CLI | — | ✅ | ✅ | ✅ | ✅ |
+| Cursor | — | ✅ | ✅ | ✅ | ✅ (`.cursor/rules`) |
+| Gemini CLI | — | ✅ | ✅ | ✅ | ✅ |
+| Other MCP / hook-less | — | — | — | ✅ | ✅ (only path) |
 
 Only Claude Code enforces `requirement` memories deterministically (the `PreToolUse` hook blocks a matching edit or Bash command until acked). Every other agent gets the session-start briefing and the voluntary verbs over MCP — same knowledge, but `check_action` is a voluntary call rather than a guaranteed one.
+
+The near-moment nudge engine is harness-neutral: a thin adapter maps each tool's post-tool, prompt, and turn-end events onto the same `tm signal` / `tm nudge` verbs, so Codex, Copilot, Cursor, and Gemini get the same propose/observe nudges as Claude Code. `tm init --harness <name>` wires the per-tool hooks (event names differ; the engine and anti-spam budget do not).
 
 The MCP server works with any MCP-compatible agent. For agents without MCP, `tm export` generates instruction blocks that are clearly marked and never the source of truth — the ledger is.
 
@@ -382,6 +397,7 @@ activation:
 - **Derived state:** status, risk, confidence, and enforcement are computed deterministically from the ledger and policy — never stored, never guessable.
 - **Sync:** union-merge of the orphan branch. Concurrent proposals never conflict because each record is an append-only ULID file.
 - **Hook:** the `PreToolUse` hook (on edits and Bash commands) reads the index (no network, no ledger-branch checkout) and completes in under 100 ms.
+- **Nudge engine:** `PostToolUse`/`UserPromptSubmit` record raw events to a per-session journal under `.git/tm/nudge`; the `Stop` hook detects the memory-worthy patterns and emits at most one bounded propose/observe nudge. Detection is pure and the journal is local-only — never a ledger record.
 
 ---
 
