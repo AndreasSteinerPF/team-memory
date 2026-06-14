@@ -38,8 +38,10 @@ func (codex) Parse(kind EventKind, r io.Reader) (Event, error) {
 }
 
 // Render mirrors the Claude wire shape; Codex accepts the same hookSpecificOutput
-// fields. VERIFY (prd.md §10.6; docs/verification/cross-harness.md): Codex's exit code may sit at a different path on some
-// versions — if a live payload shows otherwise, adjust only this adapter's Parse.
+// fields. Codex's PostToolUse payload is snake_case with the exit code at
+// tool_response.exit_code, and file edits report tool_name: "apply_patch" —
+// both confirmed against OpenAI's published hook docs (prd.md §10.6). The
+// harness test suite's gated live smoke test is the remaining belt-and-braces check.
 func (codex) Render(kind EventKind, d Decision, w io.Writer) error {
 	if d.Empty() {
 		return nil

@@ -1,35 +1,39 @@
 package cli
 
 import (
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 )
 
-// installCodex writes the .codex-plugin artifacts that wire TeamMemory's hooks
-// and MCP server into Codex CLI (prd.md §10.6). repoDir is the
-// project root. The exact Codex plugin schema is VERIFY-flagged (see
-// docs/verification/cross-harness.md): plugin.json declares the plugin and
-// references hooks/hooks.json; adjust here if a live payload differs.
-func installCodex(repoDir string) error {
-	dir := filepath.Join(repoDir, ".codex-plugin")
-	if err := os.MkdirAll(filepath.Join(dir, "hooks"), 0o755); err != nil {
+// installCodex writes Codex CLI hook config to <repo>/.codex/hooks.json and
+// prints the MCP setup the user must run (prd.md §10.6). Codex discovers hooks
+// from <repo>/.codex/hooks.json (and ~/.codex/hooks.json) and expects the event
+// map wrapped under a top-level "hooks" key. Codex prompts to trust repo hooks
+// on first run. (The earlier .codex-plugin/ layout only loads as a
+// marketplace-installed, trusted plugin, which tm init does not set up.)
+func installCodex(repoDir string, out io.Writer) error {
+	dir := filepath.Join(repoDir, ".codex")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	manifest := `{
-  "name": "teammemory",
-  "mcpServers": { "teammemory": { "command": "tm", "args": ["mcp"] } },
-  "hooks": "hooks/hooks.json"
-}
-`
-	if err := os.WriteFile(filepath.Join(dir, "plugin.json"), []byte(manifest), 0o644); err != nil {
-		return err
-	}
+	// File edits go through the apply_patch tool (the matcher may name Bash,
+	// apply_patch, Edit, or Write; the hook input always reports
+	// tool_name: "apply_patch").
 	hooks := `{
-  "PreToolUse":  [{ "matcher": "^(Bash|apply_patch)$", "hooks": [{ "type": "command", "command": "tm check-action --hook --harness codex" }] }],
-  "PostToolUse": [{ "matcher": "^(Bash|apply_patch)$", "hooks": [{ "type": "command", "command": "tm signal --hook --harness codex" }] }],
-  "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "tm signal --hook --prompt --harness codex" }] }],
-  "Stop": [{ "hooks": [{ "type": "command", "command": "tm nudge --hook --harness codex" }] }]
+  "hooks": {
+    "PreToolUse":  [{ "matcher": "^(Bash|apply_patch)$", "hooks": [{ "type": "command", "command": "tm check-action --hook --harness codex" }] }],
+    "PostToolUse": [{ "matcher": "^(Bash|apply_patch)$", "hooks": [{ "type": "command", "command": "tm signal --hook --harness codex" }] }],
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "tm signal --hook --prompt --harness codex" }] }],
+    "Stop": [{ "hooks": [{ "type": "command", "command": "tm nudge --hook --harness codex" }] }]
+  }
 }
 `
-	return os.WriteFile(filepath.Join(dir, "hooks", "hooks.json"), []byte(hooks), 0o644)
+	if err := os.WriteFile(filepath.Join(dir, "hooks.json"), []byte(hooks), 0o644); err != nil {
+		return err
+	}
+	fmt.Fprintln(out, "Codex MCP: run `codex mcp add teammemory -- tm mcp` (or add [mcp_servers.teammemory] to ~/.codex/config.toml).")
+	fmt.Fprintln(out, "Codex will prompt to trust the repo hooks in .codex/hooks.json on first run.")
+	return nil
 }

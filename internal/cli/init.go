@@ -71,10 +71,10 @@ func newInitCmd(g *globalOpts) *cobra.Command {
 			case "", "claude":
 				printSetup(out, repoDir, remote)
 			case "codex":
-				if err := installCodex(repoDir); err != nil {
+				if err := installCodex(repoDir, out); err != nil {
 					return err
 				}
-				fmt.Fprintln(out, "Installed Codex plugin in .codex-plugin/ (hooks + MCP server).")
+				fmt.Fprintln(out, "Installed Codex hooks in .codex/hooks.json.")
 			case "copilot":
 				if err := installCopilot(repoDir, out); err != nil {
 					return err

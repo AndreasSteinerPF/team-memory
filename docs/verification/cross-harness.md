@@ -48,23 +48,33 @@ cat /tmp/tm-hook-*.json | python3 -m json.tool   # pretty-print
 ## Codex CLI
 
 **Adapter:** `internal/harness/codex.go`
-**Installed config:** `.codex-plugin/hooks/hooks.json` (written by `tm init --harness codex`)
+**Installed config:** `<repo>/.codex/hooks.json` (written by `tm init --harness codex`)
+
+**Status — confirmed against OpenAI's published hook docs** (https://developers.openai.com/codex/hooks):
+Codex loads `<repo>/.codex/hooks.json` (and `~/.codex/hooks.json`) with the event
+map wrapped under a top-level `hooks` key; file edits report `tool_name:
+"apply_patch"` (a matcher may also name `Edit`/`Write`); the exit code sits at
+`tool_response.exit_code`. The recipe below is the belt-and-braces live re-check
+that the gated harness smoke test automates. Repo hooks require trust on first
+run — use `--dangerously-bypass-hook-trust` for non-interactive capture.
 
 ### Echo-hook JSON
 
-Replace `.codex-plugin/hooks/hooks.json` with the following to capture raw payloads.
-Restore the original content when verification is complete.
+Replace `<repo>/.codex/hooks.json` with the following to capture raw payloads
+(note the top-level `hooks` wrapper). Restore the original content when done.
 
 ```json
 {
-  "PreToolUse": [{
-    "matcher": "^(Bash|apply_patch)$",
-    "hooks": [{ "type": "command", "command": "sh -c 'cat > /tmp/tm-hook-pre-$(date +%s).json'" }]
-  }],
-  "PostToolUse": [{
-    "matcher": "^(Bash|apply_patch)$",
-    "hooks": [{ "type": "command", "command": "sh -c 'cat > /tmp/tm-hook-post-$(date +%s).json'" }]
-  }]
+  "hooks": {
+    "PreToolUse": [{
+      "matcher": "^(Bash|apply_patch)$",
+      "hooks": [{ "type": "command", "command": "sh -c 'cat > /tmp/tm-hook-pre-$(date +%s).json'" }]
+    }],
+    "PostToolUse": [{
+      "matcher": "^(Bash|apply_patch)$",
+      "hooks": [{ "type": "command", "command": "sh -c 'cat > /tmp/tm-hook-post-$(date +%s).json'" }]
+    }]
+  }
 }
 ```
 
@@ -111,11 +121,11 @@ the actual path — see remediation B below.
 
 ### Remediation
 
-**A — apply_patch not covered:** Change the matcher in
-`.codex-plugin/hooks/hooks.json` (and the template in
-`internal/cli/install_codex.go`) from `^(Bash|apply_patch)$` to `^Bash$`. Note
-in the installer comment that file-edit retrieval via `apply_patch` is
-unavailable until Codex upstream emits those hook events.
+**A — apply_patch not covered:** Change the matcher in `<repo>/.codex/hooks.json`
+(and the template in `internal/cli/install_codex.go`) from `^(Bash|apply_patch)$`
+to `^Bash$`. Note in the installer comment that file-edit retrieval via
+`apply_patch` is unavailable until Codex upstream emits those hook events. (Docs
+indicate `apply_patch` is covered, so this remediation is unlikely to be needed.)
 
 **B — exit code at a different path:** Update only the `ToolResponse` struct and
 the `ev.Failed` assignment in `codex.go`'s `Parse` function. No other file
@@ -128,10 +138,20 @@ depends on this wire shape.
 **Adapter:** `internal/harness/copilot.go`
 **Installed config:** `.github/hooks/teammemory.json` (written by `tm init --harness copilot`)
 
+**Status — confirmed against GitHub's docs** (https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/use-hooks):
+hooks load from `.github/hooks/*.json`; each hook entry must carry **both** a
+`bash` key (Linux/macOS) and a `powershell` key (Windows); the supported events
+are `sessionStart`/`sessionEnd`/`userPromptSubmitted`/`preToolUse`/`postToolUse`/`errorOccurred`
+(plus `agentStop`) — there is **no** `postToolUseFailure` event, so failure is
+signalled by `errorOccurred` and/or an `error` field. Still needing a live
+payload (automated by the gated harness smoke test): the exact failure field
+name and whether a script-hook's `additionalContext` is model-visible.
+
 ### Echo-hook JSON
 
 Replace `.github/hooks/teammemory.json` with the following to capture raw
-payloads. Restore when done.
+payloads (Windows uses the `powershell` key; substitute a capture script that
+writes stdin to a file). Restore when done.
 
 ```json
 {
@@ -139,11 +159,13 @@ payloads. Restore when done.
   "hooks": {
     "postToolUse": [{
       "type": "command",
-      "bash": "sh -c 'cat > /tmp/tm-hook-post-$(date +%s).json'"
+      "bash": "sh -c 'cat > /tmp/tm-hook-post-$(date +%s).json'",
+      "powershell": "powershell -NoProfile -File C:\\tmp\\capture.ps1 postToolUse"
     }],
-    "postToolUseFailure": [{
+    "errorOccurred": [{
       "type": "command",
-      "bash": "sh -c 'cat > /tmp/tm-hook-fail-$(date +%s).json'"
+      "bash": "sh -c 'cat > /tmp/tm-hook-fail-$(date +%s).json'",
+      "powershell": "powershell -NoProfile -File C:\\tmp\\capture.ps1 errorOccurred"
     }]
   }
 }
@@ -152,10 +174,9 @@ payloads. Restore when done.
 ### Actions to trigger
 
 **Check A — failure signal:** Ask Copilot to run a shell command that exits
-non-zero, e.g., "run `exit 99`". Observe whether a `tm-hook-fail-*.json` file
-appears (meaning Copilot fired a separate `postToolUseFailure` event) or only a
-`tm-hook-post-*.json` appears (meaning failure is signalled inline via
-`toolResult.exitCode`).
+non-zero, e.g., "run `exit 99`". Observe whether an `errorOccurred` payload
+appears (a separate failure event) and/or the `postToolUse` payload carries an
+`error` field or an exit code.
 
 **Check B — additionalContext on output:** Create a temporary hook script that
 emits a probe value on stdout, to confirm the agent actually sees it:
@@ -178,17 +199,17 @@ that succeeds, and inspect the subsequent agent turn for the probe string
 **(a) Failure signal source**
 
 ```sh
-# Did a dedicated postToolUseFailure file appear?
-ls /tmp/tm-hook-fail-*.json 2>/dev/null && echo "FAILURE EVENT" || echo "no failure event"
+# Did a dedicated errorOccurred file appear?
+ls /tmp/tm-hook-fail-*.json 2>/dev/null && echo "ERROR EVENT" || echo "no error event"
 
-# Or is exit code present inline in the postToolUse payload?
-grep -o '"exitCode":[0-9-]*' /tmp/tm-hook-post-*.json
+# Or is failure inline in the postToolUse payload (error field / exit code)?
+grep -oE '"(error|exitCode)":[^,}]*' /tmp/tm-hook-post-*.json
 ```
 
-The adapter (`copilot.go` lines 37–40) handles both paths: it checks
-`hook_event_name == "postToolUseFailure"` first, then falls back to
-`toolResult.exitCode`. Confirm that at least one of these signals is present in
-the captured payload.
+The adapter's `Parse` (`internal/harness/copilot.go`) treats a tool as failed
+when the event is `errorOccurred`, the `error` field is non-empty, or
+`toolResult.exitCode` is non-zero. Confirm which of these the live payload
+carries and prune the unused branches once known.
 
 **(b) additionalContext honored by script hook**
 
@@ -424,13 +445,15 @@ A verifier who completes the recipes above should tick the items they confirmed
 and report the results so the `VERIFY` annotations in the adapter source and
 `prd.md §10.6` can be resolved.
 
-- [ ] **Codex apply_patch coverage** — PreToolUse/PostToolUse hook fires for
-  `apply_patch` file edits (not Bash-only). Confirmed by `grep '"tool_name":"apply_patch"'`.
-- [ ] **Codex exit-code path** — exit code is present at `tool_response.exit_code`
-  in the PostToolUse payload. Confirmed by `grep -o '"exit_code":[0-9-]*'`.
-- [ ] **Copilot fail-signal source** — failure arrives via
-  `hook_event_name == "postToolUseFailure"` and/or `toolResult.exitCode` (camelCase).
-  Confirmed by inspecting captured payload files.
+- [x] **Codex apply_patch coverage** — file edits go through `apply_patch` (a
+  matcher may also name `Edit`/`Write`; hook input reports `tool_name:
+  "apply_patch"`). Confirmed via OpenAI hook docs; gated live smoke re-checks.
+- [x] **Codex exit-code path** — exit code is at `tool_response.exit_code` in the
+  PostToolUse payload. Confirmed via OpenAI hook docs; gated live smoke re-checks.
+- [ ] **Copilot fail-signal source** — event set confirmed via GitHub docs
+  (`errorOccurred`, not `postToolUseFailure`). LIVE-PENDING: which of the
+  `errorOccurred` event / `error` field / `toolResult.exitCode` the payload
+  actually carries. Confirmed by inspecting captured payload files.
 - [ ] **Copilot additionalContext honored** — a `postToolUse` script hook's
   `{"additionalContext":"..."}` stdout reaches the agent's context window.
   Confirmed by finding the probe string `TM-PROBE-12345` in the agent transcript.

@@ -16,14 +16,18 @@ func installCopilot(repoDir string, out io.Writer) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
+	// Each hook needs both a bash key (Linux/macOS) and a powershell key
+	// (Windows); Copilot picks one by OS. tm is a single native binary, so the
+	// command string is identical for both. A tool failure surfaces via the
+	// errorOccurred event (there is no postToolUseFailure event).
 	hooks := `{
   "version": 1,
   "hooks": {
-    "preToolUse":  [{ "type": "command", "bash": "tm check-action --hook --harness copilot" }],
-    "postToolUse": [{ "type": "command", "bash": "tm signal --hook --harness copilot" }],
-    "postToolUseFailure": [{ "type": "command", "bash": "tm signal --hook --harness copilot" }],
-    "userPromptSubmitted": [{ "type": "command", "bash": "tm signal --hook --prompt --harness copilot" }],
-    "agentStop": [{ "type": "command", "bash": "tm nudge --hook --harness copilot" }]
+    "preToolUse":  [{ "type": "command", "bash": "tm check-action --hook --harness copilot", "powershell": "tm check-action --hook --harness copilot" }],
+    "postToolUse": [{ "type": "command", "bash": "tm signal --hook --harness copilot", "powershell": "tm signal --hook --harness copilot" }],
+    "errorOccurred": [{ "type": "command", "bash": "tm signal --hook --harness copilot", "powershell": "tm signal --hook --harness copilot" }],
+    "userPromptSubmitted": [{ "type": "command", "bash": "tm signal --hook --prompt --harness copilot", "powershell": "tm signal --hook --prompt --harness copilot" }],
+    "agentStop": [{ "type": "command", "bash": "tm nudge --hook --harness copilot", "powershell": "tm nudge --hook --harness copilot" }]
   }
 }
 `

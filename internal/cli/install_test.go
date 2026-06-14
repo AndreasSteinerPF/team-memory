@@ -7,32 +7,26 @@ import (
 	"testing"
 )
 
-func TestInstallCodexWritesPluginArtifacts(t *testing.T) {
+func TestInstallCodexWritesRepoHooks(t *testing.T) {
 	repo := initRepo(t)
 	if code := runTMLocal(t, repo, "init", "--harness", "codex"); code != 0 {
 		t.Fatalf("init --harness codex exit %d", code)
 	}
-	manifest := filepath.Join(repo, ".codex-plugin", "plugin.json")
-	mdata, err := os.ReadFile(manifest)
-	if err != nil {
-		t.Fatalf("missing plugin manifest: %v", err)
-	}
-	// plugin.json declares the plugin, bundles the MCP server, and references the
-	// hooks file.
-	for _, want := range []string{"teammemory", "mcpServers", "hooks"} {
-		if !strings.Contains(string(mdata), want) {
-			t.Errorf("manifest missing %q:\n%s", want, mdata)
-		}
-	}
-	hooksFile := filepath.Join(repo, ".codex-plugin", "hooks", "hooks.json")
+	// Codex loads <repo>/.codex/hooks.json with the event map wrapped under a
+	// top-level "hooks" key.
+	hooksFile := filepath.Join(repo, ".codex", "hooks.json")
 	hdata, err := os.ReadFile(hooksFile)
 	if err != nil {
-		t.Fatalf("missing hooks file: %v", err)
+		t.Fatalf("missing .codex/hooks.json: %v", err)
 	}
-	for _, want := range []string{"PreToolUse", "PostToolUse", "Stop", "tm check-action --hook --harness codex", "tm signal --hook --harness codex", "tm nudge --hook --harness codex", "tm signal --hook --prompt --harness codex"} {
+	for _, want := range []string{`"hooks"`, "PreToolUse", "PostToolUse", "Stop", "apply_patch", "tm check-action --hook --harness codex", "tm signal --hook --harness codex", "tm nudge --hook --harness codex", "tm signal --hook --prompt --harness codex"} {
 		if !strings.Contains(string(hdata), want) {
 			t.Errorf("hooks file missing %q:\n%s", want, hdata)
 		}
+	}
+	// The legacy .codex-plugin/ layout must no longer be written.
+	if _, err := os.Stat(filepath.Join(repo, ".codex-plugin")); err == nil {
+		t.Error("unexpected legacy .codex-plugin/ directory")
 	}
 }
 
@@ -46,7 +40,7 @@ func TestInstallCopilotWritesRepoHooks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("missing copilot hooks: %v", err)
 	}
-	for _, want := range []string{"preToolUse", "postToolUse", "postToolUseFailure", "agentStop", "tm check-action --hook --harness copilot", "tm signal --hook --harness copilot", "tm nudge --hook --harness copilot", "tm signal --hook --prompt --harness copilot"} {
+	for _, want := range []string{"preToolUse", "postToolUse", "errorOccurred", "agentStop", `"bash"`, `"powershell"`, "tm check-action --hook --harness copilot", "tm signal --hook --harness copilot", "tm nudge --hook --harness copilot", "tm signal --hook --prompt --harness copilot"} {
 		if !strings.Contains(string(data), want) {
 			t.Errorf("copilot hooks missing %q:\n%s", want, data)
 		}
