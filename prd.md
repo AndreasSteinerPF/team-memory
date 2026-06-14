@@ -148,6 +148,7 @@ Most memories auto-activate at or below `warning` once they meet their risk tier
 ## 6. Product Principles
 
 1. **Deterministic delivery over voluntary recall.** The hook guarantees `check_action` happens at edit time; MCP covers the voluntary verbs.
+   1.5. **Near-moment nudge for the voluntary verbs.** Between deterministic delivery and voluntary recall: a PostToolUse/Stop hook detects memory-worthy moments and escalates the highest-value ones to pointed `tm_propose`/`tm_observe` prompts, while the verbs themselves stay voluntary.
 2. **Memory must affect future behavior.** If a record does not help a future agent decide better, it is not TeamMemory material.
 3. **Agents propose and observe naturally.** Collaboration happens during normal work, not in review rituals — and never waits on human code review.
 4. **Memories earn trust through independent evidence.** Active ≠ authoritative; contradictions weaken; staleness is detected, not assumed away.
@@ -249,6 +250,13 @@ retrieval:
 
 sync:
   auto_fetch_after: 5m
+
+nudge:
+  enabled: true
+  max_per_session: 3      # hard ceiling on nudges emitted per session
+  cooldown_turns: 3       # min turns between two nudges
+  self_review_every: 8    # turns before a generic memory-worthiness self-review
+  churn_threshold: 3      # edits to one path before it counts as a fragile-area churn signal
 ```
 
 Agents never supply risk or confidence. The proposing agent supplies only type, content, scope, evidence, and anchors.
@@ -389,6 +397,14 @@ v1 limits: command matching uses leading-subcommand matching only (flags are not
 > "Requirement (mem 01J8X4…): Billing migrations require downgrade-path tests. Run the downgrade-path tests, then run `tm ack 01J8X4…` and retry."
 
 **SessionStart hook**: runs `tm brief` at session start; stdout is injected as session context. The briefing carries live ledger counts plus the standing instructions for the voluntary verbs — deterministic delivery of *when to remember*, not just *what is remembered*.
+
+**PostToolUse hook** runs `tm signal --hook`: records nudge signals (fail→pass, revert, edit churn, surfaced-but-unobserved, drift-anchor) into a per-session journal under `.git/tm/nudge`. Silent; never blocks. Each event advances a within-session turn counter.
+
+**Stop hook** runs `tm nudge --hook`: at turn end, emits at most one proposing/observing nudge per the anti-spam policy (max 3/session, cooldown 3 turns, suppress-if-already-acted, observe outranks propose). Low-pressure wording; the verbs stay voluntary. The nudge is injected as additional context, not as a forced turn.
+
+**UserPromptSubmit hook** records a prompt marker into the journal so the user-intervened signal can detect edit→prompt→re-edit on the same path (a Tier B attention flag that only aims the periodic self-review).
+
+The nudge journal is local state under `.git/tm/nudge`, never a ledger record — like acks (Section 10.2). Detection is pure and the suppress-if-acted check is injected as a ledger predicate, so the nudge engine carries no index/ledger coupling.
 
 **MCP server** (stdio) for the voluntary verbs — see 10.3.
 
@@ -547,6 +563,8 @@ First 90 days: 500 stars; 5 external contributors; documented setups for 2+ codi
 ## 15. Risks and Mitigations
 
 **Agents ignore the tool** → the hook makes `check_action` deterministic in Claude Code (the headline feature, not a mitigation). Other agents: MCP + generated instructions; their experience is honestly documented as degraded. Session-start briefing injects the voluntary-verb instructions deterministically in every major agent CLI.
+
+**Agents ignore the voluntary verbs** → (1) the SessionStart brief injects the when-to-remember instructions every session; (2) a near-moment nudge engine (PostToolUse signal recording + Stop emission, Section 10.1) escalates the highest-value moments to pointed `tm_propose`/`tm_observe` prompts, bounded by an anti-spam budget (max 3/session, cooldown, suppress-if-already-acted) so it never manufactures junk proposals.
 
 **Memory spam** → usage-constraining MCP descriptions with explicit non-examples; five types only (`successful_pattern` deferred); provisional memories capped at 2 per check; cheap `reject`; FTS-assisted duplicate warning at propose time ("a similar memory exists — confirm it instead?").
 

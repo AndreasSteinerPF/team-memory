@@ -57,7 +57,7 @@ type Sync struct {
 	AutoFetchAfter string `yaml:"auto_fetch_after"` // duration string, e.g. "5m"
 }
 
-// Nudge configures the near-moment proposing/observing nudge engine (spec §4, §7).
+// Nudge configures the near-moment proposing/observing nudge engine (prd.md §8.1 config, §10.1 hooks).
 type Nudge struct {
 	Enabled         bool `yaml:"enabled"`
 	MaxPerSession   int  `yaml:"max_per_session"`
