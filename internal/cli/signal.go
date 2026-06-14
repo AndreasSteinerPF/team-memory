@@ -1,30 +1,18 @@
 package cli
 
 import (
-	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
-)
 
-// postHookInput is the PostToolUse event contract (Claude Code). tool_response
-// carries the exit code for Bash; nil exit_code ⇒ treat as success.
-type postHookInput struct {
-	SessionID string `json:"session_id"`
-	ToolName  string `json:"tool_name"`
-	ToolInput struct {
-		FilePath string `json:"file_path"`
-		Command  string `json:"command"`
-	} `json:"tool_input"`
-	ToolResponse struct {
-		ExitCode *int `json:"exit_code"`
-	} `json:"tool_response"`
-}
+	"github.com/AndreasSteinerPF/team-memory/internal/harness"
+)
 
 func newSignalCmd(g *globalOpts) *cobra.Command {
 	var hook bool
+	var harnessName string
 	cmd := &cobra.Command{
 		Use:   "signal",
 		Short: "Record nudge signals from a PostToolUse event (use --hook)",
@@ -33,11 +21,15 @@ func newSignalCmd(g *globalOpts) *cobra.Command {
 			if !hook {
 				return fmt.Errorf("signal currently supports only --hook mode")
 			}
-			var in postHookInput
-			if err := json.NewDecoder(cmd.InOrStdin()).Decode(&in); err != nil {
-				return fmt.Errorf("signal hook: decode stdin: %w", err)
+			a, err := harness.Get(harnessName)
+			if err != nil {
+				return err
 			}
-			if in.SessionID == "" {
+			ev, err := a.Parse(harness.PostTool, cmd.InOrStdin())
+			if err != nil {
+				return fmt.Errorf("signal hook: %w", err)
+			}
+			if ev.SessionID == "" {
 				return nil // cannot key a journal without a session
 			}
 			e, err := openEnv(g)
@@ -49,23 +41,23 @@ func newSignalCmd(g *globalOpts) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			j, err := store.Load(in.SessionID)
+			j, err := store.Load(ev.SessionID)
 			if err != nil {
 				return err
 			}
 			j.Turn++ // each PostToolUse advances the within-session clock
 
 			switch {
-			case in.ToolInput.Command != "":
-				failed := in.ToolResponse.ExitCode != nil && *in.ToolResponse.ExitCode != 0
-				j.RecordCommand(in.ToolInput.Command, failed)
-			case in.ToolInput.FilePath != "":
-				j.RecordEdit(relPath(e, in.ToolInput.FilePath))
+			case ev.HasOutcome:
+				j.RecordCommand(ev.Command, ev.Failed)
+			case ev.FilePath != "":
+				j.RecordEdit(relPath(e, ev.FilePath))
 			}
 			return store.Save(j)
 		},
 	}
 	cmd.Flags().BoolVar(&hook, "hook", false, "read a PostToolUse event on stdin and record signals")
+	cmd.Flags().StringVar(&harnessName, "harness", "claude", "harness adapter (claude, codex, copilot)")
 	return cmd
 }
 

@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -12,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/AndreasSteinerPF/team-memory/internal/harness"
 	"github.com/AndreasSteinerPF/team-memory/internal/model"
 	"github.com/AndreasSteinerPF/team-memory/internal/retrieve"
 )
@@ -20,6 +20,7 @@ func newCheckActionCmd(g *globalOpts) *cobra.Command {
 	var paths []string
 	var command, desc, provMode string
 	var hook bool
+	var harnessName string
 	cmd := &cobra.Command{
 		Use:   "check-action",
 		Short: "Surface memories relevant to an action (use --hook for the Claude Code PreToolUse hook)",
@@ -34,7 +35,11 @@ func newCheckActionCmd(g *globalOpts) *cobra.Command {
 			// (prd.md §7.4). Never waits on the network — hook latency unaffected.
 			maybeTriggerFetch(e)
 			if hook {
-				return runHook(cmd, e)
+				a, err := harness.Get(harnessName)
+				if err != nil {
+					return err
+				}
+				return runHook(cmd, e, a)
 			}
 			res, err := e.engine().Retrieve(retrieve.Query{
 				Paths: paths, Command: command, Description: desc, ProvisionalMode: provMode,
@@ -51,6 +56,7 @@ func newCheckActionCmd(g *globalOpts) *cobra.Command {
 	cmd.Flags().StringVar(&desc, "description", "", "free-text action description (FTS)")
 	cmd.Flags().StringVar(&provMode, "provisional-mode", "", "never | related | always (default: policy)")
 	cmd.Flags().BoolVar(&hook, "hook", false, "read a Claude Code PreToolUse event on stdin and emit a hook decision")
+	cmd.Flags().StringVar(&harnessName, "harness", "claude", "harness adapter (claude, codex, copilot)")
 	return cmd
 }
 
@@ -133,45 +139,25 @@ func maybeTriggerFetch(e *env) {
 	_ = cmd.Start()
 }
 
-// --- hook mode (Claude Code PreToolUse contract) ---
+// --- hook mode ---
 
-type hookInput struct {
-	SessionID string `json:"session_id"`
-	ToolName  string `json:"tool_name"`
-	ToolInput struct {
-		FilePath string `json:"file_path"`
-		Command  string `json:"command"`
-	} `json:"tool_input"`
-}
-
-type hookOutput struct {
-	HookSpecificOutput hookSpecific `json:"hookSpecificOutput"`
-}
-
-type hookSpecific struct {
-	HookEventName            string `json:"hookEventName"`
-	PermissionDecision       string `json:"permissionDecision,omitempty"`
-	PermissionDecisionReason string `json:"permissionDecisionReason,omitempty"`
-	AdditionalContext        string `json:"additionalContext,omitempty"`
-}
-
-func runHook(cmd *cobra.Command, e *env) error {
-	var in hookInput
-	if err := json.NewDecoder(cmd.InOrStdin()).Decode(&in); err != nil {
+func runHook(cmd *cobra.Command, e *env, a harness.Adapter) error {
+	ev, err := a.Parse(harness.PreTool, cmd.InOrStdin())
+	if err != nil {
 		return fmt.Errorf("hook: decode stdin: %w", err)
 	}
 	var q retrieve.Query
 	switch {
-	case in.ToolInput.FilePath != "":
-		rel := in.ToolInput.FilePath
+	case ev.FilePath != "":
+		rel := ev.FilePath
 		if abs, err := filepath.Abs(rel); err == nil {
 			if r, err := filepath.Rel(e.repoDir, abs); err == nil {
 				rel = filepath.ToSlash(r)
 			}
 		}
 		q.Paths = []string{rel}
-	case in.ToolInput.Command != "":
-		q.Command = in.ToolInput.Command
+	case ev.Command != "":
+		q.Command = ev.Command
 	default:
 		return nil // nothing to check
 	}
@@ -186,8 +172,8 @@ func runHook(cmd *cobra.Command, e *env) error {
 
 	// Record each surfaced memory into the nudge journal so observe signals
 	// have a source (spec §6.1). Pure side-effect: must not alter hook output.
-	if nstore, nerr := e.nudgeStore(); nerr == nil && in.SessionID != "" {
-		if j, lerr := nstore.Load(in.SessionID); lerr == nil {
+	if nstore, nerr := e.nudgeStore(); nerr == nil && ev.SessionID != "" {
+		if j, lerr := nstore.Load(ev.SessionID); lerr == nil {
 			for _, r := range res {
 				drift := false
 				for _, d := range r.Drift {
@@ -214,7 +200,7 @@ func runHook(cmd *cobra.Command, e *env) error {
 	var blockers, context []retrieve.Result
 	for _, r := range res {
 		if r.Memory.Enforcement == model.EnforcementRequirement && r.Memory.Status == model.StatusActive {
-			acked, err := store.IsAcked(r.Memory.ID, in.SessionID, now)
+			acked, err := store.IsAcked(r.Memory.ID, ev.SessionID, now)
 			if err != nil {
 				return err
 			}
@@ -226,19 +212,11 @@ func runHook(cmd *cobra.Command, e *env) error {
 		context = append(context, r)
 	}
 
-	enc := json.NewEncoder(cmd.OutOrStdout())
 	if len(blockers) > 0 {
-		return enc.Encode(hookOutput{hookSpecific{
-			HookEventName:            "PreToolUse",
-			PermissionDecision:       "deny",
-			PermissionDecisionReason: buildBlockReason(blockers),
-		}})
+		return a.Render(harness.PreTool, harness.Decision{Block: true, Reason: buildBlockReason(blockers)}, cmd.OutOrStdout())
 	}
 	if len(context) > 0 {
-		return enc.Encode(hookOutput{hookSpecific{
-			HookEventName:     "PreToolUse",
-			AdditionalContext: buildContext(context),
-		}})
+		return a.Render(harness.PreTool, harness.Decision{Context: buildContext(context)}, cmd.OutOrStdout())
 	}
 	return nil
 }

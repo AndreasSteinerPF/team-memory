@@ -1,34 +1,17 @@
 package cli
 
 import (
-	"encoding/json"
 	"fmt"
 
 	"github.com/spf13/cobra"
 
+	"github.com/AndreasSteinerPF/team-memory/internal/harness"
 	"github.com/AndreasSteinerPF/team-memory/internal/nudge"
 )
 
-type stopHookInput struct {
-	SessionID string `json:"session_id"`
-}
-
-// stopHookOutput injects the nudge as additional context at turn end.
-//
-// VERIFY (spec §10): confirm the Stop-hook context-injection shape on the
-// installed Claude Code version against a live payload. Some versions surface
-// Stop stdout directly; others require {"decision":"block","reason":...} (which
-// forces a turn — undesirable for a low-pressure nudge). This output struct
-// isolates that decision to one place; adjust here if the live payload differs.
-type stopHookOutput struct {
-	HookSpecificOutput struct {
-		HookEventName     string `json:"hookEventName"`
-		AdditionalContext string `json:"additionalContext"`
-	} `json:"hookSpecificOutput"`
-}
-
 func newNudgeCmd(g *globalOpts) *cobra.Command {
 	var hook bool
+	var harnessName string
 	cmd := &cobra.Command{
 		Use:   "nudge",
 		Short: "Emit a proposing/observing nudge from a Stop event (use --hook)",
@@ -37,11 +20,15 @@ func newNudgeCmd(g *globalOpts) *cobra.Command {
 			if !hook {
 				return fmt.Errorf("nudge currently supports only --hook mode")
 			}
-			var in stopHookInput
-			if err := json.NewDecoder(cmd.InOrStdin()).Decode(&in); err != nil {
-				return fmt.Errorf("nudge hook: decode stdin: %w", err)
+			a, err := harness.Get(harnessName)
+			if err != nil {
+				return err
 			}
-			if in.SessionID == "" {
+			ev, err := a.Parse(harness.Stop, cmd.InOrStdin())
+			if err != nil {
+				return fmt.Errorf("nudge hook: %w", err)
+			}
+			if ev.SessionID == "" {
 				return nil
 			}
 			e, err := openEnv(g)
@@ -53,12 +40,12 @@ func newNudgeCmd(g *globalOpts) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			j, err := store.Load(in.SessionID)
+			j, err := store.Load(ev.SessionID)
 			if err != nil {
 				return err
 			}
 
-			acted := e.actedPredicate(in.SessionID)
+			acted := e.actedPredicate(ev.SessionID)
 			n, ok := nudge.Decide(j, e.nudgeConfig(), acted)
 			if !ok {
 				return nil // stay silent
@@ -70,13 +57,11 @@ func newNudgeCmd(g *globalOpts) *cobra.Command {
 				return err
 			}
 
-			var out stopHookOutput
-			out.HookSpecificOutput.HookEventName = "Stop"
-			out.HookSpecificOutput.AdditionalContext = n.Text
-			return json.NewEncoder(cmd.OutOrStdout()).Encode(out)
+			return a.Render(harness.Stop, harness.Decision{Context: n.Text}, cmd.OutOrStdout())
 		},
 	}
 	cmd.Flags().BoolVar(&hook, "hook", false, "read a Stop event on stdin and emit at most one nudge")
+	cmd.Flags().StringVar(&harnessName, "harness", "claude", "harness adapter (claude, codex, copilot)")
 	return cmd
 }
 
