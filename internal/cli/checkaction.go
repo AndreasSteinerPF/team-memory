@@ -184,6 +184,27 @@ func runHook(cmd *cobra.Command, e *env) error {
 		return nil // emit nothing; the edit proceeds
 	}
 
+	// Record each surfaced memory into the nudge journal so observe signals
+	// have a source (spec §6.1). Pure side-effect: must not alter hook output.
+	if nstore, nerr := e.nudgeStore(); nerr == nil && in.SessionID != "" {
+		if j, lerr := nstore.Load(in.SessionID); lerr == nil {
+			for _, r := range res {
+				drift := false
+				for _, d := range r.Drift {
+					if d.Note != "" {
+						drift = true
+					}
+				}
+				path := ""
+				if len(r.Memory.EffectiveScope) > 0 {
+					path = r.Memory.EffectiveScope[0]
+				}
+				j.RecordSurfaced(r.Memory.ID, path, drift)
+			}
+			_ = nstore.Save(j)
+		}
+	}
+
 	store, err := e.ackStore()
 	if err != nil {
 		return err

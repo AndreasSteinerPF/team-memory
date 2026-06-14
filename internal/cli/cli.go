@@ -50,6 +50,7 @@ func newRootCmd() *cobra.Command {
 		newBriefCmd(g),
 		newDoctorCmd(g),
 		newSignalCmd(g),
+		newNudgeCmd(g),
 		// Subsequent tasks register their commands here.
 	)
 	return root
