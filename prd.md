@@ -459,19 +459,21 @@ The hook engine is harness-neutral. A single `Event`/`Decision` model (`internal
 
 The three hook verbs — `check-action` (PreToolUse), `signal` (PostToolUse / UserPromptSubmit), and `nudge` (Stop) — take `--harness <name>` (default `claude`) to select the adapter. On `UserPromptSubmit`, `signal` runs with `--prompt`: it records a prompt marker and advances the turn clock so the user-intervened signal can detect edit→prompt→re-edit on the same path; the PostToolUse path records command/edit outcomes.
 
-Per-harness wire shapes (v1 ships Claude Code, Codex, Copilot; Cursor and Gemini follow):
+Per-harness wire shapes (v1 ships Claude Code, Codex, Copilot, Cursor, and Gemini):
 
 | Harness | Event names | Block / inject output | Outcome (fail) source |
 | --- | --- | --- | --- |
 | Claude Code | `PreToolUse` / `PostToolUse` / `Stop` / `UserPromptSubmit` | `hookSpecificOutput.{permissionDecision,additionalContext}` | `tool_response.exit_code` |
 | Codex | same names, same `hookSpecificOutput` shape | same | `tool_response.exit_code` (VERIFY) |
 | Copilot | `preToolUse` / `postToolUse` / `postToolUseFailure` / `userPromptSubmitted` / `agentStop` | bare `{permissionDecision}` / `{additionalContext}` | `postToolUseFailure` event or `toolResult.exitCode` (VERIFY) |
+| Cursor | `beforeShellExecution` / `afterShellExecution` / `postToolUseFailure` / `afterFileEdit` / `beforeSubmitPrompt` / `stop` | `{permission,agent_message}` (block) / `{additional_context}` (allow) | `postToolUseFailure` event (failure flag, no exit code) (VERIFY) |
+| Gemini | `BeforeTool` / `AfterTool` / `BeforeAgent` / `AfterAgent` | `{decision,reason}` (block) / `{hookSpecificOutput:{additionalContext}}` (allow) | `tool_response.error` non-empty (failure flag, no exit code) (VERIFY) |
 
-**Packaging.** `tm init --harness {codex,copilot}` writes the harness's hook and plugin artifacts: Codex gets `.codex-plugin/plugin.json` (bundling the MCP server) plus `.codex-plugin/hooks/hooks.json`; Copilot gets `.github/hooks/teammemory.json` plus printed `~/.copilot/mcp-config.json` guidance. The default (`claude`) installs the Claude Code hooks into `.claude/settings.json` as before.
+**Packaging.** `tm init --harness {codex,copilot,cursor,gemini}` writes the harness's hook and plugin artifacts: Codex gets `.codex-plugin/plugin.json` (bundling the MCP server) plus `.codex-plugin/hooks/hooks.json`; Copilot gets `.github/hooks/teammemory.json` plus printed `~/.copilot/mcp-config.json` guidance; Cursor gets `.cursor/hooks.json` plus `.cursor/rules/teammemory.mdc` plus `.cursor/mcp.json`; Gemini gets `.gemini/settings.json` (hooks + MCP) plus a `GEMINI.md` section. The default (`claude`) installs the Claude Code hooks into `.claude/settings.json` as before.
 
 **Advisory injection fidelity.** Requirement enforcement (PreToolUse block + ack) works identically on every harness. Advisory (`hint`/`recommendation`/`warning`) memories differ in *when* they surface: Claude Code injects them **pre-edit** via the `check-action` hook, while other harnesses inject them **post-edit** via the `signal` hook (those harnesses only inject context post-tool). Post-edit injection retrieves advisory memories for the edited path, skips requirements (still blocked pre-tool), dedups per session, and is capped by `inject.advisory_max_per_session` (default 5). This pre-vs-post timing is the one deliberate fidelity difference between Claude Code and the other harnesses.
 
-The two wire-shape assumptions marked VERIFY above (Codex `apply_patch` hook coverage and exit-code path; Copilot script-hook `additionalContext` and failure signal) are confirmed against live payloads using the recipes in `docs/verification/cross-harness.md`.
+The wire-shape assumptions marked VERIFY above (Codex `apply_patch` hook coverage and exit-code path; Copilot script-hook `additionalContext` and failure signal; Cursor `hook_event_name`/`command` field names and `additional_context` model-visibility; Gemini pinned-tag schema and `hookSpecificOutput.additionalContext` model-visibility) are confirmed against live payloads using the recipes in `docs/verification/cross-harness.md`.
 
 ## 11. Retrieval
 
@@ -633,7 +635,7 @@ First 90 days: 500 stars; 5 external contributors; documented setups for 2+ codi
 6. **Tiered activation:** low risk activates immediately; medium/high need one independent confirmation; critical needs two independent confirmations; `requirement` enforcement always needs a human.
 7. Five memory types: `failed_attempt`, `constraint`, `fragile_area`, `stale_doc`, `decision`.
 8. Six observation kinds: `confirm`, `contradict`, `adjust_scope`, `mark_stale` (agents); `approve`, `reject` (humans).
-9. **Hook-first integration via a shared engine + per-harness adapters:** one harness-neutral hook engine drives `check_action`, `requirement` enforcement (block + ack), and the near-moment nudge; thin adapters translate each agent's hook wire format (Claude Code, Codex, Copilot in v1; Cursor and Gemini next — Section 10.6). The PreToolUse block path makes `requirement` enforcement real on every harness; advisory memories surface pre-edit on Claude Code and post-edit elsewhere — the one deliberate fidelity difference. MCP covers the voluntary verbs and hookless surfaces.
+9. **Hook-first integration via a shared engine + per-harness adapters:** one harness-neutral hook engine drives `check_action`, `requirement` enforcement (block + ack), and the near-moment nudge; thin adapters translate each agent's hook wire format (Claude Code, Codex, Copilot, Cursor, and Gemini in v1 — Section 10.6). The PreToolUse block path makes `requirement` enforcement real on every harness; advisory memories surface pre-edit on Claude Code and post-edit elsewhere — the one deliberate fidelity difference. MCP covers the voluntary verbs and hookless surfaces.
 10. Memory evolution is autonomous between agents — no human code review in the loop; humans govern only activation of critical memories and requirement-level enforcement.
 11. Anchor-drift annotation ships in v1.
 12. Retrieval is precision-first and lexical in v1; output capped at 5 memories, 2 provisional.
