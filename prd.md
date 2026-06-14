@@ -435,7 +435,7 @@ tm init          # create orphan branch, default policy.yaml, local index;
                  # install Claude Code hooks+MCP, or --harness codex|copilot
 tm sync          # fetch + union-merge + push the teammemory branch
 tm check-action  # query memory for an action (--hook mode for the plugin)
-tm signal        # record near-moment nudge signals from a PostToolUse event (--hook; --harness)
+tm signal        # record nudge signals from a PostToolUse event, or a prompt marker (--hook; --prompt; --harness)
 tm nudge         # emit at most one near-moment nudge from a Stop event (--hook; --harness)
 tm brief         # session-start briefing for agent hooks (live counts + instructions)
 tm propose       # create a memory record
@@ -457,7 +457,7 @@ tm doctor        # validate setup: ledger branch, index, hooks, MCP, remote
 
 The hook engine is harness-neutral. A single `Event`/`Decision` model (`internal/harness`) expresses what a hook saw (a pre-tool action, a post-tool outcome, a turn end, a prompt) and what to do about it (block with a reason, inject advisory context, or nothing). Each supported agent has a thin **adapter** that parses its concrete hook payload into an `Event` and renders a `Decision` back into its wire format; the engine (retrieval, requirement enforcement, nudge) never sees harness-specific JSON. Adding a harness is one adapter plus its packaging — no engine changes.
 
-The three hook verbs — `check-action` (PreToolUse), `signal` (PostToolUse / UserPromptSubmit), and `nudge` (Stop) — take `--harness <name>` (default `claude`) to select the adapter.
+The three hook verbs — `check-action` (PreToolUse), `signal` (PostToolUse / UserPromptSubmit), and `nudge` (Stop) — take `--harness <name>` (default `claude`) to select the adapter. On `UserPromptSubmit`, `signal` runs with `--prompt`: it records a prompt marker and advances the turn clock so the user-intervened signal can detect edit→prompt→re-edit on the same path; the PostToolUse path records command/edit outcomes.
 
 Per-harness wire shapes (v1 ships Claude Code, Codex, Copilot; Cursor and Gemini follow):
 
@@ -465,7 +465,7 @@ Per-harness wire shapes (v1 ships Claude Code, Codex, Copilot; Cursor and Gemini
 | --- | --- | --- | --- |
 | Claude Code | `PreToolUse` / `PostToolUse` / `Stop` / `UserPromptSubmit` | `hookSpecificOutput.{permissionDecision,additionalContext}` | `tool_response.exit_code` |
 | Codex | same names, same `hookSpecificOutput` shape | same | `tool_response.exit_code` (VERIFY) |
-| Copilot | `preToolUse` / `postToolUse` / `postToolUseFailure` / `agentStop` | bare `{permissionDecision}` / `{additionalContext}` | `postToolUseFailure` event or `toolResult.exitCode` (VERIFY) |
+| Copilot | `preToolUse` / `postToolUse` / `postToolUseFailure` / `userPromptSubmitted` / `agentStop` | bare `{permissionDecision}` / `{additionalContext}` | `postToolUseFailure` event or `toolResult.exitCode` (VERIFY) |
 
 **Packaging.** `tm init --harness {codex,copilot}` writes the harness's hook and plugin artifacts: Codex gets `.codex-plugin/plugin.json` (bundling the MCP server) plus `.codex-plugin/hooks/hooks.json`; Copilot gets `.github/hooks/teammemory.json` plus printed `~/.copilot/mcp-config.json` guidance. The default (`claude`) installs the Claude Code hooks into `.claude/settings.json` as before.
 

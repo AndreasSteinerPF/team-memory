@@ -22,7 +22,7 @@ func installCopilot(repoDir string, out io.Writer) error {
     "preToolUse":  [{ "type": "command", "bash": "tm check-action --hook --harness copilot" }],
     "postToolUse": [{ "type": "command", "bash": "tm signal --hook --harness copilot" }],
     "postToolUseFailure": [{ "type": "command", "bash": "tm signal --hook --harness copilot" }],
-    "userPromptSubmitted": [{ "type": "command", "bash": "tm signal --hook --harness copilot" }],
+    "userPromptSubmitted": [{ "type": "command", "bash": "tm signal --hook --prompt --harness copilot" }],
     "agentStop": [{ "type": "command", "bash": "tm nudge --hook --harness copilot" }]
   }
 }

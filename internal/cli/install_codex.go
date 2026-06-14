@@ -27,7 +27,7 @@ func installCodex(repoDir string) error {
 	hooks := `{
   "PreToolUse":  [{ "matcher": "^(Bash|apply_patch)$", "hooks": [{ "type": "command", "command": "tm check-action --hook --harness codex" }] }],
   "PostToolUse": [{ "matcher": "^(Bash|apply_patch)$", "hooks": [{ "type": "command", "command": "tm signal --hook --harness codex" }] }],
-  "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "tm signal --hook --harness codex" }] }],
+  "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "tm signal --hook --prompt --harness codex" }] }],
   "Stop": [{ "hooks": [{ "type": "command", "command": "tm nudge --hook --harness codex" }] }]
 }
 `

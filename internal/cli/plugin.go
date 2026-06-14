@@ -21,6 +21,9 @@ type hookSpec struct {
 var claudeHookSpecs = []hookSpec{
 	{event: "PreToolUse", matcher: "Edit|Write|MultiEdit|Bash", command: "tm check-action --hook"},
 	{event: "SessionStart", matcher: "", command: "tm brief"},
+	{event: "PostToolUse", matcher: "Edit|Write|MultiEdit|Bash", command: "tm signal --hook"},
+	{event: "Stop", matcher: "", command: "tm nudge --hook"},
+	{event: "UserPromptSubmit", matcher: "", command: "tm signal --hook --prompt"},
 }
 
 // installClaudeCodeHooks writes tm's hook entries to

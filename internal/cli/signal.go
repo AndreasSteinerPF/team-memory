@@ -14,6 +14,7 @@ import (
 
 func newSignalCmd(g *globalOpts) *cobra.Command {
 	var hook bool
+	var prompt bool
 	var harnessName string
 	cmd := &cobra.Command{
 		Use:   "signal",
@@ -26,6 +27,9 @@ func newSignalCmd(g *globalOpts) *cobra.Command {
 			a, err := harness.Get(harnessName)
 			if err != nil {
 				return err
+			}
+			if prompt {
+				return recordPromptSignal(cmd, g, a)
 			}
 			ev, err := a.Parse(harness.PostTool, cmd.InOrStdin())
 			if err != nil {
@@ -95,8 +99,38 @@ func newSignalCmd(g *globalOpts) *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&hook, "hook", false, "read a PostToolUse event on stdin and record signals")
+	cmd.Flags().BoolVar(&prompt, "prompt", false, "record a UserPromptSubmit marker instead of a tool outcome (use with --hook)")
 	cmd.Flags().StringVar(&harnessName, "harness", "claude", "harness adapter (claude, codex, copilot)")
 	return cmd
+}
+
+// recordPromptSignal handles UserPromptSubmit: it records a prompt marker and
+// advances the turn clock so the prompt sits between the surrounding edits,
+// which is what the user-intervened signal keys on (prd.md §10.1).
+func recordPromptSignal(cmd *cobra.Command, g *globalOpts, a harness.Adapter) error {
+	ev, err := a.Parse(harness.PromptSubmit, cmd.InOrStdin())
+	if err != nil {
+		return fmt.Errorf("signal hook: %w", err)
+	}
+	if ev.SessionID == "" {
+		return nil
+	}
+	e, err := openEnv(g)
+	if err != nil {
+		return err
+	}
+	defer e.close()
+	store, err := e.nudgeStore()
+	if err != nil {
+		return err
+	}
+	j, err := store.Load(ev.SessionID)
+	if err != nil {
+		return err
+	}
+	j.Turn++ // the prompt occupies its own turn, between the edits around it
+	j.RecordPrompt()
+	return store.Save(j)
 }
 
 // relPath converts an absolute or repo-relative path to a forward-slash repo path.

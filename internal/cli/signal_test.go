@@ -3,6 +3,7 @@ package cli_test
 import (
 	"bytes"
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -76,5 +77,40 @@ func TestSignalHookInjectsAdvisoryForAbsolutePath(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "Doc style") {
 		t.Errorf("expected advisory injection for absolute docs path, got: %q", out.String())
+	}
+}
+
+func TestSignalHookPromptRecordsMarker(t *testing.T) {
+	repo := initRepo(t)
+	// edit (turn 1) → prompt (turn 2) → edit (turn 3), same path.
+	runSignal(t, repo, `{"session_id":"s1","tool_name":"Edit","tool_input":{"file_path":"a.go"}}`)
+	var out, errb bytes.Buffer
+	if code := cli.Run([]string{"--repo", repo, "signal", "--hook", "--prompt"}, strings.NewReader(`{"session_id":"s1"}`), &out, &errb); code != 0 {
+		t.Fatalf("prompt signal exit %d: %s", code, errb.String())
+	}
+	runSignal(t, repo, `{"session_id":"s1","tool_name":"Edit","tool_input":{"file_path":"a.go"}}`)
+
+	data, err := os.ReadFile(filepath.Join(repo, ".git", "tm", "nudge", "s1.json"))
+	if err != nil {
+		t.Fatalf("read journal: %v", err)
+	}
+	var j struct {
+		PromptTurns []int `json:"prompt_turns"`
+		Edits       []struct {
+			Turn int `json:"turn"`
+		} `json:"edits"`
+	}
+	if err := json.Unmarshal(data, &j); err != nil {
+		t.Fatal(err)
+	}
+	if len(j.PromptTurns) != 1 {
+		t.Fatalf("prompt_turns = %v, want exactly one", j.PromptTurns)
+	}
+	if len(j.Edits) != 2 {
+		t.Fatalf("edits = %d, want 2", len(j.Edits))
+	}
+	// The prompt must sit strictly between the two edits (user-intervened detection).
+	if !(j.Edits[0].Turn < j.PromptTurns[0] && j.PromptTurns[0] < j.Edits[1].Turn) {
+		t.Errorf("prompt turn %d not strictly between edit turns %d and %d", j.PromptTurns[0], j.Edits[0].Turn, j.Edits[1].Turn)
 	}
 }

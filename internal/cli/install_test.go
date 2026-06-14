@@ -29,7 +29,7 @@ func TestInstallCodexWritesPluginArtifacts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("missing hooks file: %v", err)
 	}
-	for _, want := range []string{"PreToolUse", "PostToolUse", "Stop", "tm check-action --hook --harness codex", "tm signal --hook --harness codex", "tm nudge --hook --harness codex"} {
+	for _, want := range []string{"PreToolUse", "PostToolUse", "Stop", "tm check-action --hook --harness codex", "tm signal --hook --harness codex", "tm nudge --hook --harness codex", "tm signal --hook --prompt --harness codex"} {
 		if !strings.Contains(string(hdata), want) {
 			t.Errorf("hooks file missing %q:\n%s", want, hdata)
 		}
@@ -46,7 +46,7 @@ func TestInstallCopilotWritesRepoHooks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("missing copilot hooks: %v", err)
 	}
-	for _, want := range []string{"preToolUse", "postToolUse", "postToolUseFailure", "agentStop", "tm check-action --hook --harness copilot", "tm signal --hook --harness copilot", "tm nudge --hook --harness copilot"} {
+	for _, want := range []string{"preToolUse", "postToolUse", "postToolUseFailure", "agentStop", "tm check-action --hook --harness copilot", "tm signal --hook --harness copilot", "tm nudge --hook --harness copilot", "tm signal --hook --prompt --harness copilot"} {
 		if !strings.Contains(string(data), want) {
 			t.Errorf("copilot hooks missing %q:\n%s", want, data)
 		}

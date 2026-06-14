@@ -229,6 +229,28 @@ func TestInstallClaudeCodeHooksPartialUpgrade(t *testing.T) {
 	}
 }
 
+// TestClaudeHooksWireNudgeEngine pins that tm init installs the nudge-engine
+// hooks (prd.md §10.1): PostToolUse→signal, Stop→nudge, and UserPromptSubmit→
+// signal --prompt (the prompt marker that drives the user-intervened signal).
+func TestClaudeHooksWireNudgeEngine(t *testing.T) {
+	want := map[string]string{
+		"PostToolUse":      "tm signal --hook",
+		"Stop":             "tm nudge --hook",
+		"UserPromptSubmit": "tm signal --hook --prompt",
+	}
+	for event, cmd := range want {
+		found := false
+		for _, h := range claudeHookSpecs {
+			if h.event == event && h.command == cmd {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("missing hook: %s → %q", event, cmd)
+		}
+	}
+}
+
 // TestPreToolUseMatcherIncludesBash verifies that the PreToolUse hook matcher
 // includes "Bash" so the hook fires on Bash tool calls (prd.md §10.1).
 func TestPreToolUseMatcherIncludesBash(t *testing.T) {
