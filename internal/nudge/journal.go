@@ -49,6 +49,7 @@ type Journal struct {
 	Surfaced    []Surfaced   `json:"surfaced,omitempty"`     // memories shown this session
 	PromptTurns []int        `json:"prompt_turns,omitempty"` // turns a user prompt landed
 	Fired       []FiredNudge `json:"fired,omitempty"`
+	Injected    []string     `json:"injected,omitempty"` // advisory memory ids delivered
 	UpdatedAt   time.Time    `json:"updated_at"`
 }
 
@@ -118,6 +119,23 @@ func (j *Journal) RecordCommand(command string, failed bool) {
 	j.Commands = append(j.Commands, CmdOutcome{Signature: sig, Failed: failed, Turn: j.Turn})
 	if isRevert(command) {
 		j.Reverts = append(j.Reverts, j.Turn)
+	}
+}
+
+// AlreadyInjected reports whether memID's advisory was injected this session.
+func (j *Journal) AlreadyInjected(memID string) bool {
+	for _, id := range j.Injected {
+		if id == memID {
+			return true
+		}
+	}
+	return false
+}
+
+// MarkInjected records that memID's advisory was injected (idempotent).
+func (j *Journal) MarkInjected(memID string) {
+	if !j.AlreadyInjected(memID) {
+		j.Injected = append(j.Injected, memID)
 	}
 }
 

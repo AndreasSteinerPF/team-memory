@@ -125,3 +125,9 @@ func TestRequirementEnforcementDefaultAndRoundTrip(t *testing.T) {
 		t.Fatal("Load(DefaultYAML()) must preserve human_required=true")
 	}
 }
+
+func TestDefaultInjectConfig(t *testing.T) {
+	if Default().Inject.AdvisoryMaxPerSession != 5 {
+		t.Errorf("Inject.AdvisoryMaxPerSession = %d, want 5", Default().Inject.AdvisoryMaxPerSession)
+	}
+}

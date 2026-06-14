@@ -16,6 +16,7 @@ type Policy struct {
 	Retrieval              Retrieval                       `yaml:"retrieval"`
 	Sync                   Sync                            `yaml:"sync"`
 	Nudge                  Nudge                           `yaml:"nudge"`
+	Inject                 Inject                          `yaml:"inject"`
 }
 
 type Escalators struct {
@@ -55,6 +56,11 @@ type Retrieval struct {
 
 type Sync struct {
 	AutoFetchAfter string `yaml:"auto_fetch_after"` // duration string, e.g. "5m"
+}
+
+// Inject configures post-tool advisory memory injection (spec §5, §7).
+type Inject struct {
+	AdvisoryMaxPerSession int `yaml:"advisory_max_per_session"`
 }
 
 // Nudge configures the near-moment proposing/observing nudge engine (prd.md §8.1 config, §10.1 hooks).
@@ -103,6 +109,7 @@ func Default() Policy {
 			SelfReviewEvery: 8,
 			ChurnThreshold:  3,
 		},
+		Inject: Inject{AdvisoryMaxPerSession: 5},
 	}
 }
 

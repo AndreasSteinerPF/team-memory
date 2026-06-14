@@ -67,3 +67,18 @@ func TestRecordCommandDetectsRevert(t *testing.T) {
 		t.Errorf("revert not recorded: %+v", j.Reverts)
 	}
 }
+
+func TestMarkInjectedDedups(t *testing.T) {
+	j := &nudge.Journal{Session: "s"}
+	if j.AlreadyInjected("MEM1") {
+		t.Fatal("fresh journal should not have MEM1")
+	}
+	j.MarkInjected("MEM1")
+	if !j.AlreadyInjected("MEM1") {
+		t.Error("MEM1 should be marked injected")
+	}
+	j.MarkInjected("MEM1") // idempotent
+	if len(j.Injected) != 1 {
+		t.Errorf("Injected = %v, want one entry", j.Injected)
+	}
+}
