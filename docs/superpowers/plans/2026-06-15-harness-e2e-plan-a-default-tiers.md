@@ -192,6 +192,11 @@ func (f fakeDescriptor) Packaging() []PackagingExpectation { return nil }
 
 func TestRegisterAndGetDescriptor(t *testing.T) {
 	Register(fakeDescriptor{name: "fake"})
+	// CRITICAL: remove the fake from the shared package-global registry so it does
+	// not leak into DescriptorNames() and break TestCapabilityMatrixConformance
+	// (no "fake" matrix row) and TestPackaging (`tm init --harness fake` errors)
+	// when the whole package runs under `go test ./e2e/harness/`.
+	t.Cleanup(func() { delete(descriptors, "fake") })
 	d, ok := GetDescriptor("fake")
 	if !ok || d.Name() != "fake" {
 		t.Fatalf("GetDescriptor(fake) = %v %v", d, ok)
@@ -648,7 +653,12 @@ block; the test parses only that block.
 
 - [ ] **Step 1: Add the fenced matrix to `prd.md` §10.6**
 
-Find §10.6 and add, near the cross-harness table:
+Append the block at the END of §10.6, immediately after its existing
+cross-harness wire-shape paragraph (the one referencing
+`docs/verification/cross-harness.md`) and before the next `##`/`###` heading. The
+parser scans the whole file for the ` ```capability-matrix ` fence, so exact
+placement is not load-bearing for correctness — but keep it in §10.6 so the spec
+and the conformance test stay co-located (AGENTS.md). Add:
 
 ````markdown
 The scenario-capability matrix below is the authoritative source for which E2E

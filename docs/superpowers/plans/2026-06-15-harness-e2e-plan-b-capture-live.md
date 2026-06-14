@@ -75,7 +75,8 @@ func TestRecordWritesStdinToFile(t *testing.T) {
 func TestRecordTimesOutWithoutInput(t *testing.T) {
 	dst := filepath.Join(t.TempDir(), "out.json")
 	// A reader that never returns EOF and never yields data simulates a held-open stdin.
-	pr, _ := newBlockingReader()
+	pr, closer := newBlockingReader()
+	defer closer() // unblock + reap the abandoned read goroutine when the test ends
 	start := time.Now()
 	err := record(pr, dst, 200*time.Millisecond)
 	if err == nil {
@@ -114,6 +115,10 @@ func record(r io.Reader, path string, timeout time.Duration) error {
 		data []byte
 		err  error
 	}
+	// Buffered (size 1) so this goroutine's send never blocks even after a
+	// timeout return. On timeout the io.ReadAll goroutine is intentionally
+	// ABANDONED — it stays blocked on a held-open stdin until the recordhook
+	// process exits 0 (main reaps it). Acceptable for a short-lived hook helper.
 	ch := make(chan result, 1)
 	go func() {
 		data, err := io.ReadAll(r)
