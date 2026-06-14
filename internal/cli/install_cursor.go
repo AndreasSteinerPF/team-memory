@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 )
 
-// installCursor writes Cursor hook + rule + MCP artifacts (prd.md §6.4).
+// installCursor writes Cursor hook + rule + MCP artifacts (prd.md §10.6).
 func installCursor(repoDir string) error {
 	cdir := filepath.Join(repoDir, ".cursor")
 	if err := os.MkdirAll(filepath.Join(cdir, "rules"), 0o755); err != nil {
