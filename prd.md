@@ -428,13 +428,15 @@ Same MCP server. As of 2026, Codex CLI, Copilot CLI, Cursor, Gemini CLI, and Con
 
 ### 10.5 CLI
 
-Fifteen commands:
+Seventeen commands:
 
 ```text
 tm init          # create orphan branch, default policy.yaml, local index;
-                 # detect Claude Code and offer hook+MCP install; print MCP snippet
+                 # install Claude Code hooks+MCP, or --harness codex|copilot
 tm sync          # fetch + union-merge + push the teammemory branch
 tm check-action  # query memory for an action (--hook mode for the plugin)
+tm signal        # record near-moment nudge signals from a PostToolUse event (--hook; --harness)
+tm nudge         # emit at most one near-moment nudge from a Stop event (--hook; --harness)
 tm brief         # session-start briefing for agent hooks (live counts + instructions)
 tm propose       # create a memory record
 tm observe       # add an observation record
@@ -450,6 +452,26 @@ tm doctor        # validate setup: ledger branch, index, hooks, MCP, remote
 ```
 
 `tm approve` and `tm reject` write `approve`/`reject` observation records with `actor.kind: human`.
+
+### 10.6 Cross-harness adapters
+
+The hook engine is harness-neutral. A single `Event`/`Decision` model (`internal/harness`) expresses what a hook saw (a pre-tool action, a post-tool outcome, a turn end, a prompt) and what to do about it (block with a reason, inject advisory context, or nothing). Each supported agent has a thin **adapter** that parses its concrete hook payload into an `Event` and renders a `Decision` back into its wire format; the engine (retrieval, requirement enforcement, nudge) never sees harness-specific JSON. Adding a harness is one adapter plus its packaging — no engine changes.
+
+The three hook verbs — `check-action` (PreToolUse), `signal` (PostToolUse / UserPromptSubmit), and `nudge` (Stop) — take `--harness <name>` (default `claude`) to select the adapter.
+
+Per-harness wire shapes (v1 ships Claude Code, Codex, Copilot; Cursor and Gemini follow):
+
+| Harness | Event names | Block / inject output | Outcome (fail) source |
+| --- | --- | --- | --- |
+| Claude Code | `PreToolUse` / `PostToolUse` / `Stop` / `UserPromptSubmit` | `hookSpecificOutput.{permissionDecision,additionalContext}` | `tool_response.exit_code` |
+| Codex | same names, same `hookSpecificOutput` shape | same | `tool_response.exit_code` (VERIFY) |
+| Copilot | `preToolUse` / `postToolUse` / `postToolUseFailure` / `agentStop` | bare `{permissionDecision}` / `{additionalContext}` | `postToolUseFailure` event or `toolResult.exitCode` (VERIFY) |
+
+**Packaging.** `tm init --harness {codex,copilot}` writes the harness's hook and plugin artifacts: Codex gets `.codex-plugin/plugin.json` (bundling the MCP server) plus `.codex-plugin/hooks/hooks.json`; Copilot gets `.github/hooks/teammemory.json` plus printed `~/.copilot/mcp-config.json` guidance. The default (`claude`) installs the Claude Code hooks into `.claude/settings.json` as before.
+
+**Advisory injection fidelity.** Requirement enforcement (PreToolUse block + ack) works identically on every harness. Advisory (`hint`/`recommendation`/`warning`) memories differ in *when* they surface: Claude Code injects them **pre-edit** via the `check-action` hook, while other harnesses inject them **post-edit** via the `signal` hook (those harnesses only inject context post-tool). Post-edit injection retrieves advisory memories for the edited path, skips requirements (still blocked pre-tool), dedups per session, and is capped by `inject.advisory_max_per_session` (default 5). This pre-vs-post timing is the one deliberate fidelity difference between Claude Code and the other harnesses.
+
+The two wire-shape assumptions marked VERIFY above (Codex `apply_patch` hook coverage and exit-code path; Copilot script-hook `additionalContext` and failure signal) are confirmed against live payloads using the recipes in `docs/verification/cross-harness.md`.
 
 ## 11. Retrieval
 
@@ -611,7 +633,7 @@ First 90 days: 500 stars; 5 external contributors; documented setups for 2+ codi
 6. **Tiered activation:** low risk activates immediately; medium/high need one independent confirmation; critical needs two independent confirmations; `requirement` enforcement always needs a human.
 7. Five memory types: `failed_attempt`, `constraint`, `fragile_area`, `stale_doc`, `decision`.
 8. Six observation kinds: `confirm`, `contradict`, `adjust_scope`, `mark_stale` (agents); `approve`, `reject` (humans).
-9. **Hook-first integration:** Claude Code PreToolUse hook makes `check_action` deterministic and makes `requirement` enforcement real (block + ack); MCP covers voluntary verbs and other agents.
+9. **Hook-first integration via a shared engine + per-harness adapters:** one harness-neutral hook engine drives `check_action`, `requirement` enforcement (block + ack), and the near-moment nudge; thin adapters translate each agent's hook wire format (Claude Code, Codex, Copilot in v1; Cursor and Gemini next — Section 10.6). The PreToolUse block path makes `requirement` enforcement real on every harness; advisory memories surface pre-edit on Claude Code and post-edit elsewhere — the one deliberate fidelity difference. MCP covers the voluntary verbs and hookless surfaces.
 10. Memory evolution is autonomous between agents — no human code review in the loop; humans govern only activation of critical memories and requirement-level enforcement.
 11. Anchor-drift annotation ships in v1.
 12. Retrieval is precision-first and lexical in v1; output capped at 5 memories, 2 provisional.

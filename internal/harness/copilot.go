@@ -43,7 +43,7 @@ func (copilot) Parse(kind EventKind, r io.Reader) (Event, error) {
 	return ev, nil
 }
 
-// Render emits Copilot's hook decision. VERIFY (spec §10): confirm a script
+// Render emits Copilot's hook decision. VERIFY (prd.md §10.6; docs/verification/cross-harness.md): confirm a script
 // (non-SDK) postToolUse hook actually receives additionalContext on output and
 // exitCode/postToolUseFailure on input; if the script path drops
 // additionalContext, packaging must ship the SDK hook variant. Adjust only here.

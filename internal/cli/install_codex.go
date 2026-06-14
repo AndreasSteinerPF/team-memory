@@ -6,7 +6,7 @@ import (
 )
 
 // installCodex writes the .codex-plugin artifacts that wire TeamMemory's hooks
-// and MCP server into Codex CLI (prd.md §6.2 / spec §6.2). repoDir is the
+// and MCP server into Codex CLI (prd.md §10.6). repoDir is the
 // project root. The exact Codex plugin schema is VERIFY-flagged (see
 // docs/verification/cross-harness.md): plugin.json declares the plugin and
 // references hooks/hooks.json; adjust here if a live payload differs.

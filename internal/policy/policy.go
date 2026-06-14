@@ -58,7 +58,7 @@ type Sync struct {
 	AutoFetchAfter string `yaml:"auto_fetch_after"` // duration string, e.g. "5m"
 }
 
-// Inject configures post-tool advisory memory injection (spec §5, §7).
+// Inject configures post-tool advisory memory injection (prd.md §8.1 config, §10.6 cross-harness).
 type Inject struct {
 	AdvisoryMaxPerSession int `yaml:"advisory_max_per_session"`
 }

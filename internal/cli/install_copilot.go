@@ -8,7 +8,7 @@ import (
 )
 
 // installCopilot writes Copilot CLI repo hook artifacts and prints the
-// user-scope MCP config the user must add by hand (prd.md §6.3 / spec §6.3).
+// user-scope MCP config the user must add by hand (prd.md §10.6).
 // The MCP config lives in the user's home (~/.copilot/mcp-config.json), not the
 // repo, so init prints the snippet rather than writing into $HOME.
 func installCopilot(repoDir string, out io.Writer) error {

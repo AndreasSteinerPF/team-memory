@@ -66,7 +66,7 @@ func newNudgeCmd(g *globalOpts) *cobra.Command {
 }
 
 // actedPredicate returns a function reporting whether this session has already
-// proposed/observed for a signal — the suppress-if-acted rule (spec §4). It
+// proposed/observed for a signal — the suppress-if-acted rule (prd.md §10.1). It
 // checks the ledger for records authored by sessionID touching the signal's
 // path (propose) or targeting the signal's memory (observe).
 func (e *env) actedPredicate(sessionID string) func(nudge.Signal) bool {

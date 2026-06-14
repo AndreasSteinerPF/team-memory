@@ -171,7 +171,7 @@ func runHook(cmd *cobra.Command, e *env, a harness.Adapter) error {
 	}
 
 	// Record each surfaced memory into the nudge journal so observe signals
-	// have a source (spec §6.1). Pure side-effect: must not alter hook output.
+	// have a source (prd.md §10.1). Pure side-effect: must not alter hook output.
 	if nstore, nerr := e.nudgeStore(); nerr == nil && ev.SessionID != "" {
 		if j, lerr := nstore.Load(ev.SessionID); lerr == nil {
 			for _, r := range res {

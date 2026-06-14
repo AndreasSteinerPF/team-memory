@@ -38,7 +38,7 @@ func (codex) Parse(kind EventKind, r io.Reader) (Event, error) {
 }
 
 // Render mirrors the Claude wire shape; Codex accepts the same hookSpecificOutput
-// fields. VERIFY (spec §10): Codex's exit code may sit at a different path on some
+// fields. VERIFY (prd.md §10.6; docs/verification/cross-harness.md): Codex's exit code may sit at a different path on some
 // versions — if a live payload shows otherwise, adjust only this adapter's Parse.
 func (codex) Render(kind EventKind, d Decision, w io.Writer) error {
 	if d.Empty() {

@@ -1,6 +1,6 @@
 // Package harness translates between TeamMemory's harness-neutral hook
 // Event/Decision model and each coding agent's concrete hook wire format
-// (spec §2 adapter contract). The engine (internal/nudge, internal/retrieve)
+// (prd.md §10.6 cross-harness adapters). The engine (internal/nudge, internal/retrieve)
 // never sees harness-specific JSON.
 package harness
 
