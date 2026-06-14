@@ -78,3 +78,41 @@ func TestInstallCursorWritesHooksAndRules(t *testing.T) {
 		t.Errorf("missing brief rule: %v", err)
 	}
 }
+
+func TestInstallGeminiWritesExtension(t *testing.T) {
+	repo := initRepo(t)
+	if code := runTMLocal(t, repo, "init", "--harness", "gemini"); code != 0 {
+		t.Fatalf("init --harness gemini exit %d", code)
+	}
+	settings, err := os.ReadFile(filepath.Join(repo, ".gemini", "settings.json"))
+	if err != nil {
+		t.Fatalf("missing .gemini/settings.json: %v", err)
+	}
+	for _, want := range []string{"AfterTool", "BeforeTool", "AfterAgent", "tm nudge --hook --harness gemini", "mcpServers"} {
+		if !strings.Contains(string(settings), want) {
+			t.Errorf("settings.json missing %q:\n%s", want, settings)
+		}
+	}
+}
+
+func TestInstallGeminiPreservesExistingBrief(t *testing.T) {
+	repo := initRepo(t)
+	// Pre-existing GEMINI.md with user content must survive.
+	sentinel := "# My project rules\nAlways run the linter.\n"
+	if err := os.WriteFile(filepath.Join(repo, "GEMINI.md"), []byte(sentinel), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if code := runTMLocal(t, repo, "init", "--harness", "gemini"); code != 0 {
+		t.Fatalf("exit %d", code)
+	}
+	got, err := os.ReadFile(filepath.Join(repo, "GEMINI.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(got), "Always run the linter.") {
+		t.Error("existing GEMINI.md content was clobbered")
+	}
+	if !strings.Contains(string(got), "# TeamMemory") {
+		t.Error("TeamMemory section not appended")
+	}
+}
