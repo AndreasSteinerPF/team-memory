@@ -40,6 +40,11 @@ func (claude) Parse(kind EventKind, r io.Reader) (Event, error) {
 	return ev, nil
 }
 
+// Render emits the hook decision. VERIFY (spec §10): on Stop the
+// context-injection shape may differ across Claude Code versions — some surface
+// Stop stdout directly, others require {"decision":"block","reason":...} (which
+// forces a turn, undesirable for a low-pressure nudge). This Render is the one
+// place that decides it; adjust here if a live payload differs.
 func (claude) Render(kind EventKind, d Decision, w io.Writer) error {
 	if d.Empty() {
 		return nil // emit nothing; the action proceeds

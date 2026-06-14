@@ -23,7 +23,7 @@ func newCheckActionCmd(g *globalOpts) *cobra.Command {
 	var harnessName string
 	cmd := &cobra.Command{
 		Use:   "check-action",
-		Short: "Surface memories relevant to an action (use --hook for the Claude Code PreToolUse hook)",
+		Short: "Surface memories relevant to an action (use --hook for the PreToolUse hook)",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			e, err := openEnv(g)
@@ -55,7 +55,7 @@ func newCheckActionCmd(g *globalOpts) *cobra.Command {
 	cmd.Flags().StringVar(&command, "command", "", "the command being run (matched against scope.commands)")
 	cmd.Flags().StringVar(&desc, "description", "", "free-text action description (FTS)")
 	cmd.Flags().StringVar(&provMode, "provisional-mode", "", "never | related | always (default: policy)")
-	cmd.Flags().BoolVar(&hook, "hook", false, "read a Claude Code PreToolUse event on stdin and emit a hook decision")
+	cmd.Flags().BoolVar(&hook, "hook", false, "read a PreToolUse event on stdin and emit a hook decision")
 	cmd.Flags().StringVar(&harnessName, "harness", "claude", "harness adapter (claude, codex, copilot)")
 	return cmd
 }
@@ -144,7 +144,7 @@ func maybeTriggerFetch(e *env) {
 func runHook(cmd *cobra.Command, e *env, a harness.Adapter) error {
 	ev, err := a.Parse(harness.PreTool, cmd.InOrStdin())
 	if err != nil {
-		return fmt.Errorf("hook: decode stdin: %w", err)
+		return fmt.Errorf("check-action hook: %w", err)
 	}
 	var q retrieve.Query
 	switch {
