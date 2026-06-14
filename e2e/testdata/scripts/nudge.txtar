@@ -1,0 +1,29 @@
+exec tm init
+
+# Record a fail → edit → pass sequence for one session via the PostToolUse hook.
+stdin fail.json
+exec tm signal --hook
+stdin edit.json
+exec tm signal --hook
+stdin pass.json
+exec tm signal --hook
+
+# The Stop hook now emits a pointed propose nudge for the recovered failure.
+stdin stop.json
+exec tm nudge --hook
+stdout 'tm_propose'
+stdout 'failed_attempt'
+
+# A second Stop in the same turn is suppressed by the cooldown.
+stdin stop.json
+exec tm nudge --hook
+! stdout 'tm_propose'
+
+-- fail.json --
+{"session_id":"sX","tool_name":"Bash","tool_input":{"command":"go test ./..."},"tool_response":{"exit_code":1}}
+-- edit.json --
+{"session_id":"sX","tool_name":"Edit","tool_input":{"file_path":"internal/index/index.go"}}
+-- pass.json --
+{"session_id":"sX","tool_name":"Bash","tool_input":{"command":"go test ./..."},"tool_response":{"exit_code":0}}
+-- stop.json --
+{"session_id":"sX"}
