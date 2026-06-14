@@ -123,7 +123,8 @@ e2e/harness/
   capture.go           # //go:build harness_live: capture-once driver → writes testdata
 
   cmd/recordhook/      # //go:build harness_live: standalone stdin-recording hook helper
-  descriptors/         # claude.go, codex.go, copilot.go, cursor.go, gemini.go
+  descriptor_<harness>.go # one per harness (same package — a descriptors/ subdir
+                          # would force a second package and an import cycle)
   testdata/<harness>/  # fixtures + provenance manifests
 ```
 
