@@ -10,6 +10,7 @@ import (
 	"github.com/AndreasSteinerPF/team-memory/internal/git"
 	"github.com/AndreasSteinerPF/team-memory/internal/index"
 	"github.com/AndreasSteinerPF/team-memory/internal/ledger"
+	"github.com/AndreasSteinerPF/team-memory/internal/nudge"
 	"github.com/AndreasSteinerPF/team-memory/internal/policy"
 	"github.com/AndreasSteinerPF/team-memory/internal/retrieve"
 )
@@ -84,6 +85,23 @@ func (e *env) engine() *retrieve.Engine {
 // ackStore opens the local requirement-acknowledgment store under .git/tm/acks.
 func (e *env) ackStore() (*acks.Store, error) {
 	return acks.Open(e.gitDir)
+}
+
+// nudgeStore opens the local nudge journal store under .git/tm/nudge.
+func (e *env) nudgeStore() (*nudge.Store, error) {
+	return nudge.Open(e.gitDir)
+}
+
+// nudgeConfig maps the policy's nudge settings onto the nudge package's Config.
+func (e *env) nudgeConfig() nudge.Config {
+	n := e.pol.Nudge
+	return nudge.Config{
+		Enabled:         n.Enabled,
+		MaxPerSession:   n.MaxPerSession,
+		CooldownTurns:   n.CooldownTurns,
+		SelfReviewEvery: n.SelfReviewEvery,
+		ChurnThreshold:  n.ChurnThreshold,
+	}
 }
 
 // ledgerRemote returns the remote used for ledger fetch/push: the repo-local
