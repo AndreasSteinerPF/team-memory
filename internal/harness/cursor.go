@@ -20,9 +20,21 @@ import (
 // re-run) still satisfies the predicate. Keep the bounded [fail.Turn,pass.Turn]
 // check; do NOT add dedup here.
 //
-// VERIFY (prd.md §10.6): confirm afterShellExecution/postToolUseFailure payload
-// field names (command, hook_event_name) and that additional_context injects
-// model-visible text on allow.
+// Confirmed against real cursor-agent payloads (cursor 2026.06.12):
+//   - afterShellExecution: top-level "command" + "output", NO exit code; fires for
+//     both passing and failing commands, so it alone cannot signal failure.
+//   - postToolUseFailure: the failure signal. For a failed SHELL command it carries
+//     tool_name "Shell" with the command nested at tool_input.command (NOT
+//     top-level) plus error_message/failure_type. For a non-shell tool (e.g. a
+//     failed Read) it carries tool_input.file_path and no command.
+//   - afterFileEdit: top-level "file_path" + edits[].
+// So command is read from top-level OR tool_input.command; file_path only from
+// top-level (afterFileEdit) — pulling tool_input.file_path would make a failed
+// Read look like an edit and record a spurious churn signal.
+//
+// VERIFY (prd.md §10.6): the headless cursor-agent CLI does NOT fire the "stop" or
+// "beforeSubmitPrompt" hooks, so the nudge (Stop) and prompt signals are only
+// exercised in the IDE / via replayed fixtures, not by live capture.
 func init() { register(cursor{}) }
 
 type cursor struct{}
@@ -35,18 +47,28 @@ func (cursor) Parse(kind EventKind, r io.Reader) (Event, error) {
 		HookEventName string `json:"hook_event_name"`
 		Command       string `json:"command"`
 		FilePath      string `json:"file_path"`
+		ToolInput     struct {
+			Command string `json:"command"`
+		} `json:"tool_input"`
 	}
 	if err := json.NewDecoder(r).Decode(&raw); err != nil {
 		return Event{}, err
 	}
+	// postToolUseFailure nests a failed shell command under tool_input.command;
+	// every other command-bearing event uses the top-level field.
+	command := raw.Command
+	if command == "" {
+		command = raw.ToolInput.Command
+	}
 	ev := Event{
 		Kind: kind, SessionID: raw.SessionID,
-		Command: raw.Command, FilePath: raw.FilePath,
+		Command: command, FilePath: raw.FilePath,
 	}
 	// Only shell events carry a command outcome. Guarding on hook_event_name
 	// stops a file-edit event (afterFileEdit) that happens to carry a command
-	// field from being misrecorded as a command outcome.
-	if kind == PostTool && raw.Command != "" &&
+	// field from being misrecorded as a command outcome. A non-shell
+	// postToolUseFailure (e.g. a failed Read) has no command and is ignored here.
+	if kind == PostTool && command != "" &&
 		(raw.HookEventName == "afterShellExecution" || raw.HookEventName == "postToolUseFailure") {
 		ev.HasOutcome = true
 		ev.Failed = raw.HookEventName == "postToolUseFailure"
