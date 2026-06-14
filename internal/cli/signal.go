@@ -18,7 +18,7 @@ func newSignalCmd(g *globalOpts) *cobra.Command {
 	var harnessName string
 	cmd := &cobra.Command{
 		Use:   "signal",
-		Short: "Record nudge signals from a PostToolUse event (use --hook)",
+		Short: "Record nudge signals from a PostToolUse or UserPromptSubmit event (use --hook)",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if !hook {
@@ -106,7 +106,7 @@ func newSignalCmd(g *globalOpts) *cobra.Command {
 
 // recordPromptSignal handles UserPromptSubmit: it records a prompt marker and
 // advances the turn clock so the prompt sits between the surrounding edits,
-// which is what the user-intervened signal keys on (prd.md §10.1).
+// which is what the user-intervened signal keys on (prd.md §10.1, §10.6).
 func recordPromptSignal(cmd *cobra.Command, g *globalOpts, a harness.Adapter) error {
 	ev, err := a.Parse(harness.PromptSubmit, cmd.InOrStdin())
 	if err != nil {
