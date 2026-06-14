@@ -59,3 +59,22 @@ func TestInstallUnknownHarnessErrors(t *testing.T) {
 		t.Error("expected non-zero exit for unknown harness")
 	}
 }
+
+func TestInstallCursorWritesHooksAndRules(t *testing.T) {
+	repo := initRepo(t)
+	if code := runTMLocal(t, repo, "init", "--harness", "cursor"); code != 0 {
+		t.Fatalf("init --harness cursor exit %d", code)
+	}
+	hooks, err := os.ReadFile(filepath.Join(repo, ".cursor", "hooks.json"))
+	if err != nil {
+		t.Fatalf("missing .cursor/hooks.json: %v", err)
+	}
+	for _, want := range []string{"afterShellExecution", "postToolUseFailure", "tm nudge --hook --harness cursor"} {
+		if !strings.Contains(string(hooks), want) {
+			t.Errorf("hooks.json missing %q:\n%s", want, hooks)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(repo, ".cursor", "rules", "teammemory.mdc")); err != nil {
+		t.Errorf("missing brief rule: %v", err)
+	}
+}

@@ -24,7 +24,7 @@ func newInitCmd(g *globalOpts) *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			// Validate harness flag before any I/O so unknown values always error.
 			switch harnessName {
-			case "", "claude", "codex", "copilot":
+			case "", "claude", "codex", "copilot", "cursor":
 				// valid
 			default:
 				return fmt.Errorf("unknown harness %q", harnessName)
@@ -80,12 +80,17 @@ func newInitCmd(g *globalOpts) *cobra.Command {
 					return err
 				}
 				fmt.Fprintln(out, "Installed Copilot hooks in .github/hooks/teammemory.json.")
+			case "cursor":
+				if err := installCursor(repoDir); err != nil {
+					return err
+				}
+				fmt.Fprintln(out, "Installed Cursor hooks in .cursor/ (hooks + rule + MCP).")
 			}
 			return nil
 		},
 	}
 	cmd.Flags().StringVar(&remote, "remote", "", "optional separate remote for the ledger branch")
-	cmd.Flags().StringVar(&harnessName, "harness", "", "install hooks for this harness (claude, codex, copilot)")
+	cmd.Flags().StringVar(&harnessName, "harness", "", "install hooks for this harness (claude, codex, copilot, cursor)")
 	return cmd
 }
 
