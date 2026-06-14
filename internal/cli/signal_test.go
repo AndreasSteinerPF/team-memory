@@ -2,6 +2,8 @@ package cli_test
 
 import (
 	"bytes"
+	"encoding/json"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -42,5 +44,37 @@ func TestSignalHookInjectsAdvisoryForEditedPath(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "Doc style") {
 		t.Errorf("expected advisory injection for docs/x.md, got: %q", out.String())
+	}
+}
+
+func TestSignalHookInjectsAdvisoryForAbsolutePath(t *testing.T) {
+	repo := initRepo(t)
+	var o, e bytes.Buffer
+	cli.Run([]string{"--repo", repo, "propose", "decision", "--title", "Doc style", "--scope", "docs/**", "--guidance", "Use sentence case"}, strings.NewReader(""), &o, &e)
+
+	// An absolute in-repo path is what Claude Code / Codex actually send; this
+	// exercises relPath's production branch (Abs+Rel yields a clean repo-relative
+	// path; the ".." fallback does NOT trigger).
+	abs := filepath.Join(repo, "docs", "y.md")
+	payload := struct {
+		SessionID string `json:"session_id"`
+		ToolName  string `json:"tool_name"`
+		ToolInput struct {
+			FilePath string `json:"file_path"`
+		} `json:"tool_input"`
+	}{SessionID: "s1", ToolName: "Edit"}
+	payload.ToolInput.FilePath = abs
+	in, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var out, errb bytes.Buffer
+	code := cli.Run([]string{"--repo", repo, "signal", "--hook", "--harness", "codex"}, bytes.NewReader(in), &out, &errb)
+	if code != 0 {
+		t.Fatalf("exit = %d: %s", code, errb.String())
+	}
+	if !strings.Contains(out.String(), "Doc style") {
+		t.Errorf("expected advisory injection for absolute docs path, got: %q", out.String())
 	}
 }
