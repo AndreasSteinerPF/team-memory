@@ -125,16 +125,35 @@ func record(r io.Reader, path string, timeout time.Duration) error {
 		if res.err != nil {
 			return res.err
 		}
-		f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+		// APPEND (not truncate): a single driven prompt fires several hooks
+		// (PreToolUse, PostToolUse, Stop …), each rewritten to this recorder.
+		// Appending one JSON payload per line keeps them ALL so capture can
+		// select the right event afterward, instead of the last one clobbering
+		// the rest (Plan B review B5).
+		f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 		if err != nil {
 			return err
 		}
 		defer f.Close()
-		_, err = f.Write(res.data)
+		// Normalize to a single line so the staging file is valid JSONL.
+		line := append(bytesTrimNewlines(res.data), '\n')
+		_, err = f.Write(line)
 		return err
 	case <-time.After(timeout):
 		return fmt.Errorf("recordhook: stdin read timed out after %s", timeout)
 	}
+}
+
+// bytesTrimNewlines removes embedded newlines so each recorded payload is one
+// JSONL line (hook stdin is a single JSON object; this is belt-and-braces).
+func bytesTrimNewlines(b []byte) []byte {
+	out := make([]byte, 0, len(b))
+	for _, c := range b {
+		if c != '\n' && c != '\r' {
+			out = append(out, c)
+		}
+	}
+	return out
 }
 
 // newBlockingReader returns a reader that blocks forever (for the timeout test)
@@ -356,7 +375,7 @@ func GetDriver(name string) (LiveDriver, bool) { d, ok := drivers[name]; return 
 
 func init() {
 	registerDriver("claude", simpleDriver{
-		bin: "claude", flags: []string{"-p", "--dangerously-skip-permissions"},
+		bin: "claude", flags: []string{"--dangerously-skip-permissions"}, promptViaFlag: "-p",
 	})
 	registerDriver("codex", codexDriver{})
 	registerDriver("copilot", simpleDriver{
@@ -536,9 +555,11 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"testing"
 	"time"
 
 	"github.com/AndreasSteinerPF/team-memory/internal/cli"
+	"github.com/AndreasSteinerPF/team-memory/internal/harness"
 )
 
 // hookConfigPath maps a harness to the repo-relative config file that
@@ -577,7 +598,7 @@ func repoRoot() string {
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			return dir // fell off the top; return CWD's root
+			panic("harness_e2e: could not locate go.mod (module root) from CWD — recordhook build path would be wrong")
 		}
 		dir = parent
 	}
@@ -632,9 +653,13 @@ func driveCLIInRepo(ctx context.Context, drv LiveDriver, repo, recordFile, promp
 	cmd.Dir = repo
 	cmd.Env = append(os.Environ(), "TM_RECORD_FILE="+recordFile)
 	out, err := cmd.CombinedOutput()
-	if err != nil && ctx.Err() == nil {
-		return fmt.Errorf("%s %v: %v: %s", bin, args, err, out)
+	// A timeout is the codex-holds-stdin failure mode — surface it, never treat as
+	// success (review N1). A plain non-zero exit is NOT fatal: agent CLIs often
+	// exit non-zero, and what matters is whether hooks recorded (readJSONL checks).
+	if ctx.Err() == context.DeadlineExceeded {
+		return fmt.Errorf("%s timed out after %s (CLI may hold the hook stdin open); output: %s", bin, captureTimeout(), out)
 	}
+	_ = err
 	return nil
 }
 
@@ -656,6 +681,70 @@ func cliVersion(name string) string {
 }
 
 func captureTimeout() time.Duration { return 90 * time.Second }
+
+// captureDate returns the capture date from TM_CAPTURE_DATE (set by the Taskfile)
+// or "unknown" — never time.Now(), so a direct `go test` run doesn't churn the
+// committed manifests with a moving date. Run via `task capture` to stamp it.
+func captureDate() string {
+	if v := os.Getenv("TM_CAPTURE_DATE"); v != "" {
+		return v
+	}
+	return "unknown"
+}
+
+// newGitOnlyRepo creates a temp git repo WITHOUT running tm init (capture runs a
+// single harness-specific init via runInit, avoiding Plan A newScenarioRepo's
+// double-init — review B2).
+func newGitOnlyRepo(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	for _, args := range [][]string{
+		{"init", "-q", "-b", "main"},
+		{"config", "user.email", "tm@example.com"},
+		{"config", "user.name", "TM Test"},
+	} {
+		if out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v: %s", args, err, out)
+		}
+	}
+	return dir
+}
+
+// readJSONL reads the recorder's append log (one hook payload per line).
+func readJSONL(path string) ([][]byte, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var out [][]byte
+	for _, ln := range bytes.Split(data, []byte("\n")) {
+		if ln = bytes.TrimSpace(ln); len(ln) > 0 {
+			out = append(out, ln)
+		}
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("no payloads recorded in %s", path)
+	}
+	return out, nil
+}
+
+// selectPayload returns the first recorded payload (parsed via the harness
+// adapter at PostTool) for which pred is true. Capture rewrites ALL hooks to the
+// recorder, so the log holds PreToolUse/PostToolUse/Stop payloads; pred (plus a
+// raw field-presence check) disambiguates which one a fixture wants. The picked
+// payload is still diff-reviewed before commit (spec: capture is diff-reviewed).
+func selectPayload(a harness.Adapter, lines [][]byte, pred func(harness.Event, []byte) bool) ([]byte, bool) {
+	for _, ln := range lines {
+		ev, err := a.Parse(harness.PostTool, bytes.NewReader(ln))
+		if err != nil {
+			continue
+		}
+		if pred(ev, ln) {
+			return ln, true
+		}
+	}
+	return nil, false
+}
 ```
 
 - [ ] **Step 2: Implement `capture_test.go`**
@@ -669,26 +758,69 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/AndreasSteinerPF/team-memory/internal/harness"
 )
 
-// captureScenario describes one capture: a prompt that induces the wire events
-// for a fixture, and the fixture file to write.
-type captureScenario struct {
-	scenario string
-	fixture  string
-	prompt   string
+// captureSel selects one recorded payload from the hook log for a fixture file.
+type captureSel struct {
+	fixture string
+	// pick reports whether a recorded payload (parsed at PostTool) is the one for
+	// this fixture; raw is the original bytes for field-presence disambiguation.
+	pick func(ev harness.Event, raw []byte) bool
 }
 
-// capturePlan lists the prompts that induce each Plan A fixture. Prompts are
-// intentionally explicit so the model reliably performs the actions.
+// captureScenario drives ONE prompt in ONE repo (so the session/journal is real
+// and the fail/pass commands share a signature), records every fired hook to a
+// JSONL staging file, then selects each fixture's payload from it.
+type captureScenario struct {
+	scenario string
+	prompt   string
+	picks    []captureSel
+}
+
+// hasResponseField reports whether a raw payload carries a tool-RESPONSE field,
+// i.e. it is a PostToolUse payload (PreToolUse carries the command but no
+// response/exit), which disambiguates the passing PostToolUse from the
+// PreToolUse of the same command.
+func hasResponseField(raw []byte) bool {
+	s := string(raw)
+	for _, k := range []string{`"tool_response"`, `"toolResult"`, `"exit_code"`, `"exitCode"`} {
+		if strings.Contains(s, k) {
+			return true
+		}
+	}
+	return false
+}
+
+// capturePlan drives one real session per scenario. The fail_pass prompt uses the
+// SAME command (`cat tmcheck.txt`) failing then passing around an edit, so the
+// two outcomes share a signature and detectFailPass pairs them (review B1).
 var capturePlan = []captureScenario{
-	{"fail_pass_nudge", "cmd-fail", "Run the shell command `false` exactly once. Do nothing else."},
-	{"fail_pass_nudge", "edit", "Create a file internal/index/x.go containing `package index`."},
-	{"fail_pass_nudge", "cmd-pass", "Run the shell command `true` exactly once. Do nothing else."},
-	// requirement_block / pretool_context_inject edits are captured from a
-	// scoped-path edit prompt:
-	{"requirement_block", "edit-scoped", "Create a file billing/migrations/m.sql containing `-- v1`."},
+	{
+		scenario: "fail_pass_nudge",
+		prompt: "Do exactly these three steps in order and nothing else: " +
+			"1) run the shell command `cat tmcheck.txt` (it will fail, the file does not exist yet); " +
+			"2) create a file named tmcheck.txt containing the text ok; " +
+			"3) run the shell command `cat tmcheck.txt` again (it will now succeed).",
+		picks: []captureSel{
+			{fixture: "cmd-fail", pick: func(ev harness.Event, _ []byte) bool { return ev.HasOutcome && ev.Failed }},
+			{fixture: "cmd-pass", pick: func(ev harness.Event, raw []byte) bool {
+				return ev.HasOutcome && !ev.Failed && ev.Command != "" && hasResponseField(raw)
+			}},
+			{fixture: "edit", pick: func(ev harness.Event, _ []byte) bool { return ev.FilePath != "" && ev.Command == "" }},
+			// stop stays authored ({"session_id":"e2e-session"}) — trivial, not captured.
+		},
+	},
+	{
+		scenario: "requirement_block",
+		prompt:   "Create a file named billing/migrations/m.sql containing the text `-- v1`. Do nothing else.",
+		picks: []captureSel{
+			{fixture: "edit-scoped", pick: func(ev harness.Event, _ []byte) bool { return ev.FilePath != "" }},
+		},
+	},
 }
 
 func TestCapture(t *testing.T) {
@@ -702,6 +834,10 @@ func TestCapture(t *testing.T) {
 			if err := requireCLI(name); err != nil {
 				t.Fatalf("%v", err)
 			}
+			a, err := harness.Get(name)
+			if err != nil {
+				t.Fatalf("harness.Get: %v", err)
+			}
 			d := GetMust(name)
 
 			workdir := t.TempDir()
@@ -711,9 +847,8 @@ func TestCapture(t *testing.T) {
 			}
 
 			for _, cs := range capturePlan {
-				repo := newScenarioRepo(t)
-				// Install hooks for this harness, then rewrite the hook command
-				// to the recordhook helper.
+				// Single git repo + single harness-specific init (no double-init).
+				repo := newGitOnlyRepo(t)
 				if code := runInit(repo, name); code != 0 {
 					t.Fatalf("tm init --harness %s failed", name)
 				}
@@ -721,37 +856,42 @@ func TestCapture(t *testing.T) {
 					t.Fatalf("rewrite hook: %v", err)
 				}
 
-				fixtureFile := filepath.Join(d.FixtureDir(), cs.scenario, cs.fixture+".json")
-				if err := os.MkdirAll(filepath.Dir(fixtureFile), 0o755); err != nil {
-					t.Fatal(err)
-				}
-				// recordhook writes to a temp file first (in the repo), then we
-				// normalize into the fixture path.
-				rawFile := filepath.Join(repo, "captured.json")
+				staging := filepath.Join(repo, "captured.jsonl")
 				ctx, cancel := context.WithTimeout(context.Background(), captureTimeout())
-				err := driveCLIInRepo(ctx, drv, repo, rawFile, cs.prompt)
+				derr := driveCLIInRepo(ctx, drv, repo, staging, cs.prompt)
 				cancel()
-				if err != nil {
-					t.Errorf("[%s/%s/%s] drive: %v", name, cs.scenario, cs.fixture, err)
+				if derr != nil {
+					t.Errorf("[%s/%s] drive: %v", name, cs.scenario, derr)
 					continue
 				}
-				raw, err := os.ReadFile(rawFile)
-				if err != nil {
-					t.Errorf("[%s/%s/%s] no payload recorded (hook may not have fired): %v", name, cs.scenario, cs.fixture, err)
+				lines, lerr := readJSONL(staging)
+				if lerr != nil {
+					t.Errorf("[%s/%s] no hooks recorded (hook may not have fired): %v", name, cs.scenario, lerr)
 					continue
 				}
-				norm := normalizePayload(string(raw), repo)
-				if err := os.WriteFile(fixtureFile, []byte(norm), 0o644); err != nil {
-					t.Fatal(err)
+				for _, sel := range cs.picks {
+					raw, found := selectPayload(a, lines, sel.pick)
+					if !found {
+						t.Errorf("[%s/%s] no recorded payload matched fixture %q (recorded %d hooks)",
+							name, cs.scenario, sel.fixture, len(lines))
+						continue
+					}
+					norm := normalizePayload(string(raw), repo)
+					fixtureFile := filepath.Join(d.FixtureDir(), cs.scenario, sel.fixture+".json")
+					if err := os.MkdirAll(filepath.Dir(fixtureFile), 0o755); err != nil {
+						t.Fatal(err)
+					}
+					if err := os.WriteFile(fixtureFile, []byte(norm+"\n"), 0o644); err != nil {
+						t.Fatal(err)
+					}
+					t.Logf("captured %s", fixtureFile)
 				}
-				t.Logf("captured %s", fixtureFile)
 			}
-			// Stamp the manifest.
 			_ = writeManifest(filepath.Join(d.FixtureDir(), "manifest.json"), Manifest{
 				Provenance:   "captured",
 				CapturedFrom: name + " " + cliVersion(name),
-				CapturedDate: os.Getenv("TM_CAPTURE_DATE"), // injected by the Taskfile; avoids time.Now in tests
-				Note:         "Captured via TestCapture; normalized with {{REPO}} + fixed session id.",
+				CapturedDate: captureDate(),
+				Note:         "Captured via TestCapture; normalized with {{REPO}} + fixed session id; payloads selected from the hook log and diff-reviewed.",
 			})
 		})
 	}
@@ -760,17 +900,76 @@ func TestCapture(t *testing.T) {
 
 > All helpers used here (`runInit`, `rewriteHookToRecorder`, `driveCLIInRepo`,
 > `cliVersion`, `buildRecordhook`, `repoRoot`, `requireCLI`, `captureTimeout`,
-> `hookConfigPath`) are defined in `capture.go` (Step 1). `TM_CAPTURE_DATE` is
-> passed by the Taskfile (`date -u +%F`) to keep `time.Now()` out of the test (it
-> is unavailable in this codebase's test guidance and would defeat reproducible
-> fixtures). `newScenarioRepo` and `normalizePayload` come from Plan A's
-> `runner.go` and Plan B's `normalize.go`.
+> `captureDate`, `newGitOnlyRepo`, `readJSONL`, `selectPayload`, `hookConfigPath`)
+> are defined in `capture.go` (Step 1). `normalizePayload` is Plan B's
+> `normalize.go`. The `posttool_advisory_inject` and `pretool_context_inject`
+> scenarios reuse `requirement_block`'s captured `edit-scoped.json` — copy it into
+> those scenario dirs during review (the payload is identical; only the consuming
+> verb/kind differs at replay).
+>
+> **Selection is best-effort and diff-reviewed:** because all hooks are rewritten
+> to the appending recorder, the log holds PreToolUse/PostToolUse/Stop payloads;
+> the `pick` predicates plus `hasResponseField` choose the intended one, but Step
+> 4 requires inspecting the committed diff — the spec mandates capture be
+> diff-reviewed, so a mis-selection is caught by a human before commit.
+>
+> **Cursor caveat (when unblocked):** the `cmd-pass` selector keys on a PostTool
+> response field (`hasResponseField`). Cursor's passing event is a FLAT
+> `afterShellExecution` payload with no response/exit field, so when Cursor's
+> driver is added (Task 7) `hasResponseField` needs a cursor branch that also
+> accepts `"hook_event_name":"afterShellExecution"`. Until then Cursor is skipped,
+> so this does not block.
+
+- [ ] **Step 2b: Unit-test the selection logic (no live CLI needed)**
+
+The payload selection is the load-bearing part of the B5 fix; test it directly
+with a sample hook log. This runs under `-tags harness_live` but needs no CLI.
+Add to `capture_test.go`:
+
+```go
+func TestSelectPayloadPicksByOutcome(t *testing.T) {
+	a, _ := harness.Get("claude")
+	lines := [][]byte{
+		[]byte(`{"session_id":"e2e-session","tool_name":"Bash","tool_input":{"command":"cat tmcheck.txt"}}`),                                  // PreToolUse cat (no response)
+		[]byte(`{"session_id":"e2e-session","tool_name":"Bash","tool_input":{"command":"cat tmcheck.txt"},"tool_response":{"exit_code":1}}`), // PostToolUse fail
+		[]byte(`{"session_id":"e2e-session","tool_name":"Edit","tool_input":{"file_path":"/x/tmcheck.txt"}}`),                                 // edit
+		[]byte(`{"session_id":"e2e-session","tool_name":"Bash","tool_input":{"command":"cat tmcheck.txt"},"tool_response":{"exit_code":0}}`), // PostToolUse pass
+		[]byte(`{"session_id":"e2e-session"}`),                                                                                                // stop
+	}
+	failPick := func(ev harness.Event, _ []byte) bool { return ev.HasOutcome && ev.Failed }
+	passPick := func(ev harness.Event, raw []byte) bool {
+		return ev.HasOutcome && !ev.Failed && ev.Command != "" && hasResponseField(raw)
+	}
+	editPick := func(ev harness.Event, _ []byte) bool { return ev.FilePath != "" && ev.Command == "" }
+
+	if got, ok := selectPayload(a, lines, failPick); !ok || !strings.Contains(string(got), `"exit_code":1`) {
+		t.Errorf("fail pick = %s ok=%v", got, ok)
+	}
+	if got, ok := selectPayload(a, lines, passPick); !ok || !strings.Contains(string(got), `"exit_code":0`) {
+		t.Errorf("pass pick = %s ok=%v (must skip the response-less PreToolUse cat)", got, ok)
+	}
+	if got, ok := selectPayload(a, lines, editPick); !ok || !strings.Contains(string(got), "file_path") {
+		t.Errorf("edit pick = %s ok=%v", got, ok)
+	}
+}
+```
+
+Run: `go test -tags harness_live ./e2e/harness/ -run TestSelectPayload -v`
+Expected: PASS. This proves the predicates disambiguate the PreToolUse `cat` from
+the passing PostToolUse `cat` (the exact ambiguity review B5 raised) before any
+live capture runs.
 
 - [ ] **Step 3: Capture for the four working harnesses, one at a time**
 
-Run (claude first; repeat for codex, copilot, gemini):
+Run via the Taskfile so the capture date is stamped portably (the environment
+here is PowerShell-primary — do NOT use bash `VAR=$(…)` prefixes). The `capture:*`
+target sets `TM_CAPTURE_DATE` via go-task's embedded shell:
 ```
-TM_CAPTURE_DATE=$(date -u +%F) go test -tags harness_live ./e2e/harness/ -run TestCapture/claude -v
+task capture:claude    # then: task capture:codex, task capture:copilot, task capture:gemini
+```
+If go-task is not installed, run the equivalent in PowerShell:
+```powershell
+$env:TM_CAPTURE_DATE = (Get-Date -AsUTC -Format 'yyyy-MM-dd'); go test -tags harness_live ./e2e/harness/ -run TestCapture/claude -v
 ```
 Expected: per-fixture `captured …` log lines; new/updated files under
 `e2e/harness/testdata/claude/…` and a `manifest.json` with `provenance:captured`.
@@ -843,14 +1042,14 @@ func TestLive(t *testing.T) {
 			if err != nil {
 				t.Fatalf("%v", err)
 			}
-			repo := newScenarioRepo(t)
+			repo := newGitOnlyRepo(t)
 			if code := runInit(repo, name); code != 0 {
 				t.Fatalf("tm init --harness %s failed", name)
 			}
 			if err := rewriteHookToRecorder(repo, name, drv.RecordHookCommand(recordBin)); err != nil {
 				t.Fatalf("rewrite hook: %v", err)
 			}
-			marker := filepath.Join(repo, "fired.json")
+			marker := filepath.Join(repo, "fired.jsonl")
 			ctx, cancel := context.WithTimeout(context.Background(), captureTimeout())
 			defer cancel()
 			// A trivial prompt that runs one shell command — enough to trip a

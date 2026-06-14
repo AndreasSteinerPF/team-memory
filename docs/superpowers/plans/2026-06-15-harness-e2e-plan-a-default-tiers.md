@@ -898,9 +898,13 @@ func TestContract(t *testing.T) {
 			dir := filepath.Join(GetMust(name).FixtureDir(), "contract")
 
 			// Parse: the failing-command fixture → Failed && HasOutcome.
+			// A missing contract fixture is a HARD FAIL: every registered
+			// descriptor must have one (spec error-handling — a required fixture
+			// absent is not an expected skip). Skips belong only to the replay
+			// tier's optional scenario fixtures.
 			failBytes, err := os.ReadFile(filepath.Join(dir, "cmd-fail.json"))
 			if err != nil {
-				t.Skipf("no contract fixture for %s yet: %v", name, err)
+				t.Fatalf("required contract fixture missing for %s: %v", name, err)
 			}
 			ev, err := a.Parse(harness.PostTool, strings.NewReader(string(failBytes)))
 			if err != nil {
@@ -1218,6 +1222,14 @@ func runOneScenario(t *testing.T, d HarnessDescriptor, harnessName string, sc Sc
 			t.Fatalf("required fixture %s/%s.json missing: %v", scenarioDir, step.Fixture, err)
 		}
 		payload := substituteRepo(string(payloadBytes), repo)
+		// Guard the shared-session invariant: every step of a scenario must carry
+		// the same fixedSessionID so the nudge journal accumulates. A fixture with
+		// a different (or missing) session id would silently produce an empty
+		// journal and a silent-pass nudge (spec decision 7). Fail loudly instead.
+		if !strings.Contains(payload, fixedSessionID) {
+			t.Fatalf("fixture %s/%s.json does not contain session id %q; multi-step journal would not accumulate",
+				scenarioDir, step.Fixture, fixedSessionID)
+		}
 		out, _ := tm(payload, args...)
 		lastOut = []byte(out)
 	}
@@ -1423,7 +1435,11 @@ kind.)
 
 Per-harness variants — only the wire shape changes:
 - **codex:** identical to claude.
-- **gemini:** `cmd-fail` uses `"tool_response":{"error":"exit status 1"}`, `cmd-pass` uses `"tool_response":{"error":""}`, edit uses `tool_input.file_path`.
+- **gemini:** the `command` MUST stay in `tool_input` or gemini's Parse sets `HasOutcome=false` (`gemini.go:41`). Full bodies:
+  - `cmd-fail.json`: `{"session_id":"e2e-session","tool_name":"run_shell_command","tool_input":{"command":"go test ./..."},"tool_response":{"error":"exit status 1"}}`
+  - `cmd-pass.json`: `{"session_id":"e2e-session","tool_name":"run_shell_command","tool_input":{"command":"go test ./..."},"tool_response":{"error":""}}`
+  - `edit.json`: `{"session_id":"e2e-session","tool_name":"write_file","tool_input":{"file_path":"{{REPO}}/internal/index/x.go"}}`
+  - `stop.json`: `{"session_id":"e2e-session"}`
 - **cursor:** flat — `cmd-fail` = `{"session_id":"e2e-session","hook_event_name":"postToolUseFailure","command":"go test ./..."}`, `cmd-pass` = `{"session_id":"e2e-session","hook_event_name":"afterShellExecution","command":"go test ./..."}`, edit = `{"session_id":"e2e-session","hook_event_name":"afterFileEdit","file_path":"{{REPO}}/internal/index/x.go"}`, scoped edit likewise with the billing path, stop = `{"session_id":"e2e-session"}`.
 - **copilot:** camelCase — `cmd-fail` = `{"sessionId":"e2e-session","hookEventName":"postToolUse","toolName":"shell","toolArgs":"{\"command\":\"go test ./...\"}","toolResult":{"exitCode":1}}`, `cmd-pass` = same with `"exitCode":0`, edit = `{"sessionId":"e2e-session","hookEventName":"postToolUse","toolName":"edit","toolArgs":"{\"file_path\":\"{{REPO}}/internal/index/x.go\"}"}`, scoped edit likewise with the billing path, stop = `{"sessionId":"e2e-session"}`.
 
@@ -1571,13 +1587,21 @@ Expected: PASS.
 
 - [ ] **Step 5: Slim `install_test.go` to remove duplication**
 
-In `internal/cli/install_test.go`, delete the bodies of `TestInstallCodexWritesRepoHooks` and `TestInstallCopilotWritesRepoHooks` (now covered by the packaging tier) — but KEEP `TestInstallUnknownHarnessErrors`, `TestInstallCursorWritesHooksAndRules`'s rule-file check, and the Gemini `TestInstallGeminiPreservesExistingBrief` test (the GEMINI.md preservation behavior is NOT covered by the packaging tier and must stay). Add a comment at the top of the file:
+In `internal/cli/install_test.go`, remove the four tests whose file-content
+assertions are now fully covered by the descriptor-driven packaging tier:
+`TestInstallCodexWritesRepoHooks`, `TestInstallCopilotWritesRepoHooks`,
+`TestInstallCursorWritesHooksAndRules` (hooks.json strings + the
+`.cursor/rules/teammemory.mdc` existence are both in the cursor descriptor's
+`Packaging()`), and `TestInstallGeminiWritesExtension` (the `.gemini/settings.json`
+strings are in the gemini descriptor). KEEP `TestInstallUnknownHarnessErrors` and
+`TestInstallGeminiPreservesExistingBrief` — those test behaviors the packaging
+tier does NOT cover (unknown-harness error; GEMINI.md content preservation). Add a
+comment at the top of the file:
 ```go
 // Packaging file-content assertions live in the harness E2E packaging tier
 // (e2e/harness/packaging_test.go, descriptor Packaging()). This file keeps only
 // behaviors not covered there: unknown-harness error and GEMINI.md preservation.
 ```
-Remove `TestInstallCodexWritesRepoHooks` and `TestInstallCopilotWritesRepoHooks` entirely.
 
 - [ ] **Step 6: Run the full CLI + harness suites**
 
