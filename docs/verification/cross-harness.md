@@ -291,7 +291,7 @@ set `Failed=true` for the command outcome.
 **(c) File-edit pre-event coverage**
 
 ```sh
-# Did a beforeFileEdit file appear?
+# Did an afterFileEdit file appear?
 ls /tmp/tm-hook-edit-*.json 2>/dev/null && echo "AFTER-EDIT EVENT" || echo "no file-edit event"
 ```
 
@@ -312,7 +312,7 @@ grep -r "TM-PROBE-CURSOR-12345" ~/.cursor/ 2>/dev/null || echo "not found in ~/.
 
 ### Remediation
 
-**If `beforeShellExecution`/`preToolUse` does not fire for file edits:** This
+**If `beforeFileEdit` does not fire for file edits:** This
 is expected on current Cursor. Note in `install_cursor.go` that edit-time
 requirement enforcement on Cursor fires only for shell commands (via
 `beforeShellExecution`), not for file edits. Adjust only the installer template
