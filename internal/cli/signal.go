@@ -8,6 +8,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/AndreasSteinerPF/team-memory/internal/harness"
+	"github.com/AndreasSteinerPF/team-memory/internal/model"
+	"github.com/AndreasSteinerPF/team-memory/internal/retrieve"
 )
 
 func newSignalCmd(g *globalOpts) *cobra.Command {
@@ -53,7 +55,43 @@ func newSignalCmd(g *globalOpts) *cobra.Command {
 			case ev.FilePath != "":
 				j.RecordEdit(relPath(e, ev.FilePath))
 			}
-			return store.Save(j)
+
+			var decision harness.Decision
+			// Advisory injection runs only on non-Claude harnesses: Claude Code
+			// already injects advisory memories PRE-edit via check-action, so
+			// injecting again post-edit would double-surface. On claude this block
+			// is skipped and the empty Decision renders nothing — signal recording
+			// above still happens.
+			if a.Name() != "claude" && ev.FilePath != "" {
+				rel := relPath(e, ev.FilePath)
+				if res, rerr := e.engine().Retrieve(retrieve.Query{Paths: []string{rel}}); rerr == nil {
+					max := e.pol.Inject.AdvisoryMaxPerSession
+					var fresh []retrieve.Result
+					for _, r := range res {
+						// Skip requirements (blocked pre-tool, not advised post-tool)
+						// and anything already injected this session.
+						if r.Memory.Enforcement == model.EnforcementRequirement {
+							continue
+						}
+						if j.AlreadyInjected(r.Memory.ID) {
+							continue
+						}
+						if len(j.Injected) >= max {
+							break
+						}
+						fresh = append(fresh, r)
+						j.MarkInjected(r.Memory.ID)
+						j.RecordSurfaced(r.Memory.ID, rel, hasDrift(r))
+					}
+					if len(fresh) > 0 {
+						decision.Context = buildContext(fresh)
+					}
+				}
+			}
+			if err := store.Save(j); err != nil {
+				return err
+			}
+			return a.Render(harness.PostTool, decision, cmd.OutOrStdout())
 		},
 	}
 	cmd.Flags().BoolVar(&hook, "hook", false, "read a PostToolUse event on stdin and record signals")
@@ -62,11 +100,27 @@ func newSignalCmd(g *globalOpts) *cobra.Command {
 }
 
 // relPath converts an absolute or repo-relative path to a forward-slash repo path.
+// When p is already repo-relative (not absolute), filepath.Abs resolves it against
+// the process CWD which may differ from the repo dir; if the result escapes the
+// repo root (starts with ".."), we fall back to using p as-is.
 func relPath(e *env, p string) string {
 	if abs, err := filepath.Abs(p); err == nil {
 		if r, err := filepath.Rel(e.repoDir, abs); err == nil {
-			return filepath.ToSlash(r)
+			slash := filepath.ToSlash(r)
+			if !strings.HasPrefix(slash, "../") && slash != ".." {
+				return slash
+			}
 		}
 	}
 	return strings.TrimPrefix(filepath.ToSlash(p), "./")
+}
+
+// hasDrift reports whether a result carries any drift annotation.
+func hasDrift(r retrieve.Result) bool {
+	for _, d := range r.Drift {
+		if d.Note != "" {
+			return true
+		}
+	}
+	return false
 }
