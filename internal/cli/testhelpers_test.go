@@ -37,3 +37,10 @@ func runSignalForTest(t *testing.T, repo, stdin string) {
 		t.Fatalf("signal hook failed (%d): %s", code, errb.String())
 	}
 }
+
+// runTMLocal runs tm in-process against repo and returns the exit code.
+func runTMLocal(t *testing.T, repo string, args ...string) int {
+	t.Helper()
+	var out, errb bytes.Buffer
+	return cli.Run(append([]string{"--repo", repo}, args...), strings.NewReader(""), &out, &errb)
+}

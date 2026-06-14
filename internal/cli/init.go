@@ -16,11 +16,20 @@ import (
 
 func newInitCmd(g *globalOpts) *cobra.Command {
 	var remote string
+	var harnessName string
 	cmd := &cobra.Command{
 		Use:   "init",
 		Short: "Create the ledger branch, default policy, and local index",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			// Validate harness flag before any I/O so unknown values always error.
+			switch harnessName {
+			case "", "claude", "codex", "copilot":
+				// valid
+			default:
+				return fmt.Errorf("unknown harness %q", harnessName)
+			}
+
 			repoDir, err := filepath.Abs(g.repo)
 			if err != nil {
 				return err
@@ -30,40 +39,53 @@ func newInitCmd(g *globalOpts) *cobra.Command {
 				return err
 			}
 			out := cmd.OutOrStdout()
-			if led.Exists() {
-				fmt.Fprintf(out, "ledger already initialized on branch %q\n", g.branch)
-				return nil
-			}
-			py, err := policy.DefaultYAML()
-			if err != nil {
-				return err
-			}
-			if err := led.Init(py); err != nil {
-				return err
-			}
-			if remote != "" {
-				// env isn't open yet (the ledger was just created), so run git
-				// directly rather than through e.git.
-				if _, err := (git.Runner{Dir: repoDir}).Run("config", "tm.remote", remote); err != nil {
+			if !led.Exists() {
+				py, err := policy.DefaultYAML()
+				if err != nil {
 					return err
 				}
+				if err := led.Init(py); err != nil {
+					return err
+				}
+				if remote != "" {
+					// env isn't open yet (the ledger was just created), so run git
+					// directly rather than through e.git.
+					if _, err := (git.Runner{Dir: repoDir}).Run("config", "tm.remote", remote); err != nil {
+						return err
+					}
+				}
+				gitDir, err := led.GitDir()
+				if err != nil {
+					return err
+				}
+				idx, err := index.Open(index.PathFor(gitDir), led)
+				if err != nil {
+					return err
+				}
+				defer idx.Close()
+				fmt.Fprintf(out, "Initialized TeamMemory ledger on branch %q.\n", g.branch)
+			} else {
+				fmt.Fprintf(out, "ledger already initialized on branch %q\n", g.branch)
 			}
-			gitDir, err := led.GitDir()
-			if err != nil {
-				return err
+			switch harnessName {
+			case "", "claude":
+				printSetup(out, repoDir, remote)
+			case "codex":
+				if err := installCodex(repoDir); err != nil {
+					return err
+				}
+				fmt.Fprintln(out, "Installed Codex plugin in .codex-plugin/ (hooks + MCP server).")
+			case "copilot":
+				if err := installCopilot(repoDir, out); err != nil {
+					return err
+				}
+				fmt.Fprintln(out, "Installed Copilot hooks in .github/hooks/teammemory.json.")
 			}
-			idx, err := index.Open(index.PathFor(gitDir), led)
-			if err != nil {
-				return err
-			}
-			defer idx.Close()
-
-			fmt.Fprintf(out, "Initialized TeamMemory ledger on branch %q.\n", g.branch)
-			printSetup(out, repoDir, remote)
 			return nil
 		},
 	}
 	cmd.Flags().StringVar(&remote, "remote", "", "optional separate remote for the ledger branch")
+	cmd.Flags().StringVar(&harnessName, "harness", "", "install hooks for this harness (claude, codex, copilot)")
 	return cmd
 }
 
