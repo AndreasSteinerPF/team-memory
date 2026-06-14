@@ -49,6 +49,7 @@ func newRootCmd() *cobra.Command {
 		newMCPCmd(g),
 		newBriefCmd(g),
 		newDoctorCmd(g),
+		newSignalCmd(g),
 		// Subsequent tasks register their commands here.
 	)
 	return root
