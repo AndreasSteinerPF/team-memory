@@ -83,6 +83,12 @@ build/test/default-tier targets.
 - Seed `testdata/<harness>/` with fixtures (authored from the adapters' known
   shapes for Plan A; replaced by real captures in Plan B). Each fixture's
   manifest marks provenance `authored` until a capture upgrades it.
+  **Caveat (acknowledged circularity):** authored fixtures are hand-derived from
+  the same adapter code the tests exercise, so Plan A's Tier 1/Tier 2 passing
+  proves the framework is internally consistent — NOT that the wire format
+  matches reality. Wire-format correctness is established only when Plan B's
+  capture upgrades each fixture to `captured`. Authored fixtures exist solely to
+  let the framework land green and be reviewable before any CLI is available.
 - prd.md §10.6: add the scenario-capability matrix.
 
 ### Plan B — Capture + live tiers (gated, requires all CLIs)
@@ -210,6 +216,26 @@ This summary is **conformance-checked against the authoritative prd.md §10.6
 capability matrix**: if a descriptor's declared capability disagrees with §10.6,
 the test fails. The report does not replace §10.6 — it verifies reality matches it.
 
+**Conformance mechanism (must be implementable, not prose-diffing).** prd.md
+§10.6 carries the capability matrix as a single fenced ` ```capability-matrix `
+block in a fixed, trivially-parseable format — a pipe table whose first column is
+the harness name and whose remaining columns are capability names, each cell
+`yes`/`no`:
+
+```capability-matrix
+harness  | PreToolBlock | PostToolFailureSensor | StopNudge | PromptSubmit | AdvisoryInjection
+claude   | yes          | yes                   | yes       | yes          | no
+codex    | yes          | yes                   | yes       | yes          | yes
+…
+```
+
+The conformance test reads *that fenced block only* (a ~20-line parser keyed on
+the fence label, no general markdown parsing), builds a `CapabilitySet` per
+harness, and diffs it against each descriptor's `Capabilities()`. Any
+disagreement fails. This keeps prd.md the single authoritative source while
+making the matrix machine-checkable. Authoring this fenced block in §10.6 is the
+prd.md change that lands with Plan A.
+
 ## Fixtures, provenance, and capture
 
 ### Layout
@@ -227,6 +253,14 @@ Payloads are stored with the repo root replaced by `{{REPO}}` and a fixed
 `session_id`, so they replay in any temp repo on any machine. The runner
 substitutes the live temp-repo path before piping. Without this, scope-glob
 matching silently fails (raw absolute paths escape the replay repo root).
+
+**The fixed `session_id` is one constant shared across *all steps of a
+scenario*, not per fixture.** The nudge journal is keyed by `session_id`
+(`signal.go:38,50`; `nudge.go:31,43`), so a multi-step scenario
+(fail → pass → nudge) only accumulates a journal if every step replays under the
+same id. Capture pins this single per-scenario id, and the runner never
+re-randomizes it. A per-fixture id would make the `nudge` step load an empty
+journal and stay silent (`nudge.go:49-51`), silently passing a broken scenario.
 
 ### `manifest.json`
 
@@ -308,6 +342,11 @@ structure explicitly. The wildcard task key is quoted (`'capture:*'`).
 - **Tier 1 Contract:** table over every fixture → `adapter.Parse` → assert the
   neutral `Event` (kind, command/path, `Failed`/`HasOutcome`); and for each
   `Decision` variant → `adapter.Render` → compare to the `.golden` wire file.
+  **Golden determinism:** Render output is canonicalized before compare
+  (compact JSON, sorted keys) so field ordering never flakes the test — the
+  current adapters already render from structs, not maps, so ordering is stable,
+  but the canonicalize step guards against a future map-based adapter. Golden
+  files are regenerated with a `-update` test flag and diff-reviewed in git.
 - **Tier 2 Replay:** the scenario × harness matrix above, in-process.
 - **Tier 3 Packaging:** absorbs today's `internal/cli/install_test.go`
   expectations into each descriptor's `Packaging()`; the duplicated assertions in
@@ -350,9 +389,10 @@ This spec lives under `docs/superpowers/specs/` and is **ephemeral** — it is
 removed before pushing completed work (AGENTS.md). The durable content that must
 graduate into prd.md as the plans land:
 
-- **§10.6:** the new per-harness scenario-capability matrix (the conformance
-  source of truth), and an updated note that the harness test suite (already
-  referenced at prd.md:476) now exists with its tier structure.
+- **§10.6:** the new per-harness scenario-capability matrix as the
+  ` ```capability-matrix ` fenced block (the conformance source of truth, parsed
+  by the conformance test), and an updated note that the harness test suite
+  (already referenced at prd.md:476) now exists with its tier structure.
 - No new `tm` command graduates — `recordhook` is a test-only helper, so §10.5's
   command list is unchanged.
 
