@@ -1,5 +1,5 @@
-// Package nudge owns the near-moment proposing/observing nudge engine (spec
-// §2–4). It keeps a per-session journal under .git/tm/nudge, detects
+// Package nudge owns the near-moment proposing/observing nudge engine (prd.md
+// §10.1). It keeps a per-session journal under .git/tm/nudge, detects
 // memory-worthy signals from hook events, and decides at most one nudge per
 // turn. Local state only, never a ledger record — like internal/acks.
 package nudge
