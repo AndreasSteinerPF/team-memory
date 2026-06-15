@@ -240,6 +240,14 @@ the SDK's return value). Adjust only the hook JSON template written by
 **Adapter:** `internal/harness/cursor.go`
 **Installed config:** `.cursor/hooks.json` (written by `tm init --harness cursor`)
 
+**Status — live firing confirmed (cursor 2026.06.12):** The headless
+`cursor-agent` CLI (installed as `agent`) fires `.cursor/hooks.json` hooks when
+driven with `agent -p --force --trust "<prompt>"`. Two headless limitations apply:
+(1) the headless CLI does **not** fire `stop` or `beforeSubmitPrompt`, so
+Cursor's Stop-nudge and prompt fixtures stay authored rather than live-captured;
+(2) `afterShellExecution` carries no exit code, so `cmd-pass` also stays
+authored. See `e2e/harness/CURSOR_NOTES.md` for full live-tier notes.
+
 ### Echo-hook JSON
 
 Replace `.cursor/hooks.json` with the following to capture raw payloads.
