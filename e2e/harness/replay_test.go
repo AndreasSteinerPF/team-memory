@@ -103,6 +103,30 @@ func init() {
 			}
 		},
 	})
+
+	// S5: edit P → user prompt → edit P again ⇒ a "user redirected" self-review
+	// nudge on Stop, aimed at P. Exercises the signal-prompt verb / PromptSubmit
+	// capability (the prompt marker advances the turn clock, so P is edited both
+	// before and after the prompt — detectIntervened in internal/nudge/policy.go).
+	RegisterScenario(Scenario{
+		Name:     "user_intervened_nudge",
+		Requires: []Capability{CapPromptSubmit, CapStopNudge},
+		Steps: []Step{
+			{Verb: "signal", Fixture: "edit"},
+			{Verb: "signal-prompt", Fixture: "prompt"},
+			{Verb: "signal", Fixture: "edit"},
+			{Verb: "nudge", Fixture: "stop"},
+		},
+		Expect: func(t TestingT, d HarnessDescriptor, out []byte, _ map[string]string) {
+			ctx := d.AdvisoryContext(out)
+			if !strings.Contains(ctx, "redirected you while editing") {
+				t.Errorf("expected user-intervened nudge in context, got: %q (raw %s)", ctx, out)
+			}
+			if !strings.Contains(ctx, "internal/index/x.go") {
+				t.Errorf("expected intervened nudge to name the edited path, got: %q", ctx)
+			}
+		},
+	})
 }
 
 // ulidRe matches a Crockford-base32 ULID anywhere in a string (same charset the
