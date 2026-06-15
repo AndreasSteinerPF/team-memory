@@ -9,7 +9,7 @@ import (
 )
 
 // Capability is one harness-scenario capability. The authoritative set lives in
-// prd.md §10.6's capability-matrix fenced block; capabilities_conformance_test.go
+// prd.md §10.6's capability-matrix fenced block; conformance_test.go
 // checks descriptors against it.
 type Capability string
 
