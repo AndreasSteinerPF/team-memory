@@ -80,6 +80,12 @@ func runInit(repo, harness string) int {
 // commands all begin with `tm ` inside a JSON string; we replace that prefix
 // with the (JSON-escaped) recorder path. The recorder ignores the trailing args.
 func rewriteHookToRecorder(repo, harness, recorderBin string) error {
+	// Embed a forward-slash path: harnesses run hook commands via a POSIX shell
+	// on Windows, where a backslash path (C:\...) gets mangled and the recorder
+	// never runs. Forward-slash Windows paths (C:/...) work under sh, cmd, and
+	// PowerShell alike. (Real tm hooks use bare `tm` on PATH, so this affects
+	// only the capture helper's absolute-path rewrite.)
+	recorderBin = filepath.ToSlash(recorderBin)
 	rel, ok := hookConfigPath[harness]
 	if !ok {
 		return fmt.Errorf("no hook config path for %q", harness)
@@ -89,7 +95,7 @@ func rewriteHookToRecorder(repo, harness, recorderBin string) error {
 	if err != nil {
 		return fmt.Errorf("read hook config %s: %w", rel, err)
 	}
-	// JSON-escape the recorder path (Windows backslashes etc.).
+	// JSON-escape the (forward-slashed) recorder path.
 	esc, err := json.Marshal(recorderBin)
 	if err != nil {
 		return err
