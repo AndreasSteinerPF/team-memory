@@ -14,13 +14,22 @@ func installGemini(repoDir string) error {
 	if err := os.MkdirAll(gdir, 0o755); err != nil {
 		return err
 	}
+	// Gemini requires each event to hold an array of GROUPS, where every group
+	// carries a nested "hooks" array of {type:"command", command:...}. A flat
+	// [{command:...}] entry is rejected at load ("Discarding invalid hook
+	// definition") and never fires. Tool events (BeforeTool/AfterTool) also need
+	// a matcher (regex compared against the tool name, e.g. run_shell_command);
+	// ".*" fires for every tool and the engine ignores non-actionable ones. The
+	// agent-lifecycle events (BeforeAgent/AfterAgent) take no matcher. Confirmed
+	// against live `gemini` payloads (hook_event_name BeforeTool/AfterTool,
+	// tool_name run_shell_command). (prd.md §10.6)
 	settings := `{
   "mcpServers": { "teammemory": { "command": "tm", "args": ["mcp"] } },
   "hooks": {
-    "BeforeTool":  [{ "command": "tm check-action --hook --harness gemini" }],
-    "AfterTool":   [{ "command": "tm signal --hook --harness gemini" }],
-    "BeforeAgent": [{ "command": "tm signal --hook --prompt --harness gemini" }],
-    "AfterAgent":  [{ "command": "tm nudge --hook --harness gemini" }]
+    "BeforeTool":  [{ "matcher": ".*", "hooks": [{ "type": "command", "command": "tm check-action --hook --harness gemini" }] }],
+    "AfterTool":   [{ "matcher": ".*", "hooks": [{ "type": "command", "command": "tm signal --hook --harness gemini" }] }],
+    "BeforeAgent": [{ "hooks": [{ "type": "command", "command": "tm signal --hook --prompt --harness gemini" }] }],
+    "AfterAgent":  [{ "hooks": [{ "type": "command", "command": "tm nudge --hook --harness gemini" }] }]
   }
 }
 `

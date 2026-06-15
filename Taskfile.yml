@@ -17,6 +17,12 @@ tasks:
   test:harness:live:
     desc: 'Live firing tier (needs harness CLIs)'
     cmds: ['go test -tags harness_live ./e2e/harness/ -run TestLive']
+  setup:codex-live:
+    desc: 'Scaffold the codex live-test repo (set TM_CODEX_LIVE_REPO; then trust it once via `codex`)'
+    cmds: ['go test -tags harness_live ./e2e/harness/ -run TestSetupCodexLiveRepo -v']
+  test:harness:live:codex:
+    desc: 'Codex live firing (needs TM_CODEX_LIVE_REPO scaffolded + trusted once via `codex`)'
+    cmds: ['go test -tags harness_live ./e2e/harness/ -run TestLive/codex -v']
   capture:
     desc: 'Re-capture fixtures for all harnesses'
     env: { TM_CAPTURE_DATE: { sh: 'date -u +%F' } }

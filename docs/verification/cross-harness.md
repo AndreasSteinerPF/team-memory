@@ -58,6 +58,55 @@ map wrapped under a top-level `hooks` key; file edits report `tool_name:
 that the gated harness smoke test automates. Repo hooks require trust on first
 run — use `--dangerously-bypass-hook-trust` for non-interactive capture.
 
+**Codex hook firing — verified working (CLI 0.139.0, 2026-06-15):** Codex DOES
+fire hooks, including headless `codex exec`, but **only after the repo's hooks are
+trusted once interactively**. On first interactive `codex` run in the repo, a
+"Hooks need review — N hooks are new or changed" prompt appears; choosing **"Trust
+all and continue"** persists a per-hook `sha256` under `[hooks.state]` in
+`~/.codex/config.toml`, keyed by `<hooks.json abs path>:<event>:<group>:<idx>`.
+With that trust recorded, `codex exec` fires `SessionStart`/`UserPromptSubmit`/
+`PreToolUse`/`PostToolUse`/`Stop` headlessly — and notably does **not** need
+`--dangerously-bypass-hook-trust` once trusted. (`--dangerously-bypass-hook-trust`
+on a fresh, untrusted repo does **not** substitute for that persisted trust in
+this version, which is why the per-run-temp-repo `TestLive/codex` can't fire and
+is skipped/gated on a pre-trusted repo. See the manual recipe at the end of this
+section.)
+
+**Codex live wire-shape findings (correcting the docs-based assumptions):**
+- Shell tool reports `tool_name: "Bash"` with the command at `tool_input.command`
+  (so the `^(Bash|apply_patch)$` matcher is correct).
+- A **successful** `PostToolUse` carries `tool_response` as a **plain string** (the
+  command output, e.g. `"hello\r\n"`), NOT an object with `exit_code`. The
+  `codex.go` adapter currently reads `tool_response.exit_code` — this needs fixing.
+- A **failing** tool call (both a thrown error and a clean non-zero `exit 3`) emits
+  **no `PostToolUse` at all** — only `PreToolUse` then `Stop`. So command-failure
+  sensing via `PostToolUse` does not work on codex as modelled; the `codex` row's
+  `PostToolFailureSensor` capability needs revisiting.
+
+**Automated codex live test (`TestLive/codex`).** Because each `TestLive` run
+uses a fresh, untrusted temp repo, codex's subtest can't fire there. Instead it is
+gated on `TM_CODEX_LIVE_REPO` — a repo prepared once and trusted interactively:
+
+```sh
+# 1. Scaffold: builds the recorder into <repo> and writes .codex/hooks.json
+#    (every event → recorder; catch-all matcher on the tool events).
+TM_CODEX_LIVE_REPO=/path/to/codex-live \
+  go test -tags harness_live ./e2e/harness/ -run TestSetupCodexLiveRepo -v
+
+# 2. Trust it ONCE (the only manual step): run codex interactively in that repo
+#    and choose "Hooks need review" → "Trust all and continue".
+cd /path/to/codex-live && codex   # then /quit after the trust prompt
+
+# 3. Run the live test — now codex exec fires headlessly against the trusted repo.
+TM_CODEX_LIVE_REPO=/path/to/codex-live \
+  go test -tags harness_live ./e2e/harness/ -run TestLive/codex -v
+```
+
+With `TM_CODEX_LIVE_REPO` unset, `TestLive/codex` **skips** (with these
+instructions) rather than failing. The marker file is written outside the repo,
+so the trusted `hooks.json` is never modified (which would invalidate the trust
+hash).
+
 ### Echo-hook JSON
 
 Replace `<repo>/.codex/hooks.json` with the following to capture raw payloads
@@ -358,16 +407,31 @@ injection. Adjust only `cursor.go`'s `Render` function and the installer note.
 **Adapter:** `internal/harness/gemini.go`
 **Installed config:** `.gemini/settings.json` (written by `tm init --harness gemini`)
 
+**Status — live firing confirmed (gemini CLI, verified 2026-06-15):** Driven with
+`gemini -p "<prompt>" --yolo`, the installed `.gemini/settings.json` hooks fire
+for all four events. The captured payloads confirm: `hook_event_name` is
+`BeforeTool`/`AfterTool`/`BeforeAgent`/`AfterAgent`; the shell tool reports
+`tool_name: "run_shell_command"` with the command at `tool_input.command`; the
+`AfterTool` success payload carries `tool_response.llmContent`/`returnDisplay`
+(no `error` field, so the adapter reads `Failed=false`). **Schema gotcha:** each
+event must use the nested group shape — `[{ "matcher": <regex>, "hooks": [{
+"type": "command", "command": … }] }]`; a flat `[{ "command": … }]` entry is
+rejected at load ("Discarding invalid hook definition") and never fires. Tool
+events (`BeforeTool`/`AfterTool`) require a matcher; `BeforeAgent`/`AfterAgent`
+omit it. Still LIVE-PENDING: the failing-command `tool_response.error` shape and
+`additionalContext` model-visibility.
+
 ### Echo-hook JSON
 
 Replace the `hooks` block in `.gemini/settings.json` with the following to
-capture raw `AfterTool` payloads. Restore when done. Keep `mcpServers` in place.
+capture raw payloads (note the nested `matcher`+`hooks` group shape — a flat
+entry will not fire). Restore when done. Keep `mcpServers` in place.
 
 ```json
 {
   "mcpServers": { "teammemory": { "command": "tm", "args": ["mcp"] } },
   "hooks": {
-    "AfterTool": [{ "command": "sh -c 'cat > /tmp/tm-hook-aftertool-$(date +%s).json'" }]
+    "AfterTool": [{ "matcher": ".*", "hooks": [{ "type": "command", "command": "sh -c 'cat > /tmp/tm-hook-aftertool-$(date +%s).json'" }] }]
   }
 }
 ```
@@ -472,9 +536,11 @@ and report the results so the `VERIFY` annotations in the adapter source and
   pre-edit event for file edits. If `beforeFileEdit` does not fire (expected),
   noted that edit-time requirement enforcement is shell-only on Cursor; installer
   template and adapter comment updated accordingly.
-- [ ] **Gemini pinned-tag schema** — captured `AfterTool` payload structure
-  matches `gemini.go`'s expected fields (`tool_response.error`, `tool_input.command`,
-  etc.) on the pinned Gemini CLI release tag (not `main`).
+- [x] **Gemini hook schema + firing** — live `gemini -p --yolo` payloads confirm
+  the nested group config shape is required, hooks fire for all four events,
+  `tool_name: "run_shell_command"`, and the command sits at `tool_input.command`
+  as `gemini.go` expects. LIVE-PENDING only: the failing-command
+  `tool_response.error` shape (success payload has no `error` field).
 - [ ] **Gemini additionalContext model-visibility** — `hookSpecificOutput.additionalContext`
   in the adapter's `Render` output reaches the model's context window (not
   user-only). Confirmed by finding probe string `TM-PROBE-GEMINI-12345` in the
