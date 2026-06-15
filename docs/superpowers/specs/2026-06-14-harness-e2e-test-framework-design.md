@@ -374,13 +374,17 @@ structure explicitly. The wildcard task key is quoted (`'capture:*'`).
 
 ## Open items / known blockers
 
-1. **Cursor CLI won't start** — a hard prerequisite for capturing Cursor fixtures
-   and the Cursor live tier. Cursor stays in logged skip-state until its CLI
-   runs. Diagnosis is a follow-up, not part of building the framework.
+1. **Cursor live tier — enabled, with headless limits** (was: blocked). The
+   headless `cursor-agent` CLI (installed as `agent`) fires `.cursor/hooks.json`
+   hooks — verified live (cursor 2026.06.12). Driver: `agent -p --force --trust`.
+   Two limits: the headless CLI does **not** fire `stop`/`beforeSubmitPrompt` (so
+   Cursor's nudge/prompt fixtures stay authored), and a failed shell command's
+   `postToolUseFailure` nests the command at `tool_input.command` (the cursor
+   adapter was fixed pre-implementation; prd.md §10.6 updated).
 2. **Live-payload VERIFY items** (§10.6) — Copilot's exact failure field +
-   script-hook `additionalContext` visibility; Cursor field names + edit-event
-   coverage; Gemini pinned-tag schema + `additionalContext` visibility. These are
-   the **acceptance criteria for Plan B's first capture run**.
+   script-hook `additionalContext` visibility; Gemini pinned-tag schema +
+   `additionalContext` visibility. These are the **acceptance criteria for Plan
+   B's first capture run**. (Cursor's are already resolved — see item 1.)
 3. **Authentication** for capture/live is environmental — an operator
    precondition, out of scope for the framework to manage.
 

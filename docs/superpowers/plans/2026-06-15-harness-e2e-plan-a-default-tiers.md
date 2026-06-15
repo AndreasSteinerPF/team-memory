@@ -26,7 +26,7 @@ These are the exact shapes the five adapters parse (input) and render (output), 
 **Parse input — a PostTool command outcome:**
 - **claude / codex / gemini:** `{"session_id":…,"tool_name":…,"tool_input":{"command":…,"file_path":…},"tool_response":{…}}` — claude/codex failure via `tool_response.exit_code != 0`; gemini failure via non-empty `tool_response.error`.
 - **copilot:** camelCase `{"sessionId":…,"hookEventName":…,"toolName":…,"toolArgs":"<json-string>","toolResult":{"exitCode":…},"error":…}`; failure via `hookEventName=="errorOccurred"`, non-empty `error`, or `toolResult.exitCode!=0`.
-- **cursor:** flat `{"session_id":…,"hook_event_name":…,"command":…,"file_path":…}`; failure via `hook_event_name=="postToolUseFailure"`.
+- **cursor:** flat for success/edit (`{"session_id":…,"hook_event_name":"afterShellExecution","command":…,"output":…}` — no exit code; `afterFileEdit` has top-level `file_path`). A failed shell command surfaces via a separate `postToolUseFailure` event with the command **nested at `tool_input.command`** (plus `tool_name:"Shell"`, `error_message`), NOT top-level. (Verified against live cursor-agent payloads; see `internal/harness/cursor.go`.)
 
 **Render output — block (deny) vs advisory (context):**
 - **claude / codex:** `{"hookSpecificOutput":{"hookEventName":…,"permissionDecision":"deny","permissionDecisionReason":R}}` or `{"hookSpecificOutput":{"hookEventName":…,"additionalContext":C}}`.
@@ -961,9 +961,9 @@ for command fixtures). Each is a failing-command PostTool payload.
 ```json
 {"sessionId":"e2e-session","hookEventName":"postToolUse","toolName":"shell","toolArgs":"{\"command\":\"go test ./...\"}","toolResult":{"exitCode":1}}
 ```
-`testdata/cursor/contract/cmd-fail.json`:
+`testdata/cursor/contract/cmd-fail.json` (command nested under `tool_input`, per the real postToolUseFailure shape):
 ```json
-{"session_id":"e2e-session","hook_event_name":"postToolUseFailure","command":"go test ./..."}
+{"session_id":"e2e-session","hook_event_name":"postToolUseFailure","tool_name":"Shell","tool_input":{"command":"go test ./..."},"error_message":"Command failed","failure_type":"error"}
 ```
 `testdata/gemini/contract/cmd-fail.json`:
 ```json
@@ -1450,7 +1450,7 @@ Per-harness variants — only the wire shape changes:
   - `cmd-pass.json`: `{"session_id":"e2e-session","tool_name":"run_shell_command","tool_input":{"command":"go test ./..."},"tool_response":{"error":""}}`
   - `edit.json`: `{"session_id":"e2e-session","tool_name":"write_file","tool_input":{"file_path":"{{REPO}}/internal/index/x.go"}}`
   - `stop.json`: `{"session_id":"e2e-session"}`
-- **cursor:** flat — `cmd-fail` = `{"session_id":"e2e-session","hook_event_name":"postToolUseFailure","command":"go test ./..."}`, `cmd-pass` = `{"session_id":"e2e-session","hook_event_name":"afterShellExecution","command":"go test ./..."}`, edit = `{"session_id":"e2e-session","hook_event_name":"afterFileEdit","file_path":"{{REPO}}/internal/index/x.go"}`, scoped edit likewise with the billing path, stop = `{"session_id":"e2e-session"}`.
+- **cursor:** `cmd-fail` (postToolUseFailure, command NESTED) = `{"session_id":"e2e-session","hook_event_name":"postToolUseFailure","tool_name":"Shell","tool_input":{"command":"go test ./..."},"error_message":"Command failed","failure_type":"error"}`, `cmd-pass` = `{"session_id":"e2e-session","hook_event_name":"afterShellExecution","command":"go test ./...","output":""}`, edit = `{"session_id":"e2e-session","hook_event_name":"afterFileEdit","file_path":"{{REPO}}/internal/index/x.go"}`, scoped edit likewise with the billing path, stop = `{"session_id":"e2e-session"}`.
 - **copilot:** camelCase — `cmd-fail` = `{"sessionId":"e2e-session","hookEventName":"postToolUse","toolName":"shell","toolArgs":"{\"command\":\"go test ./...\"}","toolResult":{"exitCode":1}}`, `cmd-pass` = same with `"exitCode":0`, edit = `{"sessionId":"e2e-session","hookEventName":"postToolUse","toolName":"edit","toolArgs":"{\"file_path\":\"{{REPO}}/internal/index/x.go\"}"}`, scoped edit likewise with the billing path, stop = `{"sessionId":"e2e-session"}`.
 
 Note: for `requirement_block`/`pretool_context_inject` the scoped path must be

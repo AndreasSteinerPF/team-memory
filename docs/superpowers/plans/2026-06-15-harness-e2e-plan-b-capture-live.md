@@ -11,9 +11,11 @@
 **Spec:** `docs/superpowers/specs/2026-06-14-harness-e2e-test-framework-design.md` (Plan B scope).
 
 **Prerequisite:** Plan A is merged. The five CLIs are installed and authenticated:
-`claude`, `codex`, `copilot`, `gemini`, `cursor`. **Known blocker:** the Cursor
-CLI currently won't start — Task 7 keeps Cursor in a logged skip until that is
-resolved, so Plan B lands green for the other four.
+`claude`, `codex`, `copilot`, `gemini`, `cursor`. **Cursor is live-enabled** (the
+headless `cursor-agent`, installed as `agent`, fires `.cursor/hooks.json` — verified
+cursor 2026.06.12) with two limits Task 7 documents: the headless CLI does not fire
+`stop`/`beforeSubmitPrompt`, and its passing event isn't auto-selectable — so
+cursor's `cmd-pass`/`stop` fixtures stay authored while `cmd-fail`/`edit` capture live.
 
 **Reference reading:**
 - Plan A's `e2e/harness/{runner.go,descriptor.go,scenario.go}` — the seams:
@@ -26,7 +28,7 @@ resolved, so Plan B lands green for the other four.
 - copilot: `copilot -p "<prompt>" --allow-all-tools`
 - claude: `claude -p "<prompt>" --dangerously-skip-permissions`
 - gemini: `gemini -p "<prompt>" --yolo` (confirm flag during Task 5)
-- cursor: TBD — blocked (Task 7).
+- cursor: `agent -p --force --trust "<prompt>"` (prompt trailing; binary installed as `agent`). Live firing verified; stop/prompt limits in Task 7.
 
 ---
 
@@ -389,7 +391,14 @@ func init() {
 	registerDriver("gemini", simpleDriver{
 		bin: "gemini", flags: []string{"--yolo"}, promptViaFlag: "-p",
 	})
-	// cursor: blocked (see Task 7) — intentionally not registered.
+	// cursor-agent: headless CLI installed as `agent` (verified firing hooks,
+	// cursor 2026.06.12). Prompt is a TRAILING positional; -p/--print = headless
+	// with full tool access, --force = auto-approve, --trust = trust workspace.
+	// NOTE: headless agent does NOT fire the stop/beforeSubmitPrompt hooks, so
+	// cursor's nudge/prompt fixtures stay authored (see Task 7).
+	registerDriver("cursor", simpleDriver{
+		bin: "agent", flags: []string{"-p", "--force", "--trust"},
+	})
 }
 
 // simpleDriver covers CLIs that take the prompt either as a trailing arg or
@@ -668,17 +677,20 @@ func driveCLIInRepo(ctx context.Context, drv LiveDriver, repo, recordFile, promp
 	return nil
 }
 
-// requireCLI fails fast if the harness binary is not on PATH.
-func requireCLI(name string) error {
-	if _, err := exec.LookPath(name); err != nil {
-		return fmt.Errorf("live tier requires %q on PATH: %w", name, err)
+// requireCLI fails fast if the driver's binary is not on PATH. It keys off the
+// driver's actual binary (e.g. cursor's is "agent", not "cursor"), not the
+// harness name.
+func requireCLI(drv LiveDriver) error {
+	bin, _ := drv.Command("")
+	if _, err := exec.LookPath(bin); err != nil {
+		return fmt.Errorf("live tier requires %q on PATH: %w", bin, err)
 	}
 	return nil
 }
 
-// cliVersion returns the harness CLI's reported version, or "unknown".
-func cliVersion(name string) string {
-	out, err := exec.Command(name, "--version").CombinedOutput()
+// cliVersion returns the CLI binary's reported version, or "unknown".
+func cliVersion(bin string) string {
+	out, err := exec.Command(bin, "--version").CombinedOutput()
 	if err != nil {
 		return "unknown"
 	}
@@ -836,9 +848,10 @@ func TestCapture(t *testing.T) {
 			if !ok {
 				t.Skipf("no live driver for %s (blocked/unsupported)", name)
 			}
-			if err := requireCLI(name); err != nil {
+			if err := requireCLI(drv); err != nil {
 				t.Fatalf("%v", err)
 			}
+			bin, _ := drv.Command("")
 			a, err := harness.Get(name)
 			if err != nil {
 				t.Fatalf("harness.Get: %v", err)
@@ -877,7 +890,12 @@ func TestCapture(t *testing.T) {
 				for _, sel := range cs.picks {
 					raw, found := selectPayload(a, lines, sel.pick)
 					if !found {
-						t.Errorf("[%s/%s] no recorded payload matched fixture %q (recorded %d hooks)",
+						// Soft warning, NOT a failure: capture is best-effort and
+						// diff-reviewed (Step 4), and the replay re-run (Step 5) is
+						// what asserts correctness. A no-match leaves the existing
+						// authored fixture untouched — expected for cursor's
+						// cmd-pass/stop (headless can't supply them; see Task 7).
+						t.Logf("[%s/%s] no recorded payload matched fixture %q (recorded %d hooks) — keeping existing fixture",
 							name, cs.scenario, sel.fixture, len(lines))
 						continue
 					}
@@ -894,7 +912,7 @@ func TestCapture(t *testing.T) {
 			}
 			_ = writeManifest(filepath.Join(d.FixtureDir(), "manifest.json"), Manifest{
 				Provenance:   "captured",
-				CapturedFrom: name + " " + cliVersion(name),
+				CapturedFrom: name + " " + cliVersion(bin),
 				CapturedDate: captureDate(),
 				Note:         "Captured via TestCapture; normalized with {{REPO}} + fixed session id; payloads selected from the hook log and diff-reviewed.",
 			})
@@ -918,12 +936,13 @@ func TestCapture(t *testing.T) {
 > 4 requires inspecting the committed diff — the spec mandates capture be
 > diff-reviewed, so a mis-selection is caught by a human before commit.
 >
-> **Cursor caveat (when unblocked):** the `cmd-pass` selector keys on a PostTool
-> response field (`hasResponseField`). Cursor's passing event is a FLAT
-> `afterShellExecution` payload with no response/exit field, so when Cursor's
-> driver is added (Task 7) `hasResponseField` needs a cursor branch that also
-> accepts `"hook_event_name":"afterShellExecution"`. Until then Cursor is skipped,
-> so this does not block.
+> **Cursor caveat:** the `cmd-pass` selector keys on a PostTool response field
+> (`hasResponseField`). Cursor's passing event is a FLAT `afterShellExecution`
+> payload with no response/exit field, so it is NOT auto-selected — cursor's
+> `cmd-pass` (and `stop`, which headless never fires) stay authored (Task 7). To
+> auto-capture cursor's `cmd-pass`, add a cursor branch to `hasResponseField` that
+> also accepts `"hook_event_name":"afterShellExecution"`. The no-match is a soft
+> log, not a failure, so this does not break cursor capture.
 
 - [ ] **Step 2b: Unit-test the selection logic (no live CLI needed)**
 
@@ -964,14 +983,16 @@ Expected: PASS. This proves the predicates disambiguate the PreToolUse `cat` fro
 the passing PostToolUse `cat` (the exact ambiguity review B5 raised) before any
 live capture runs.
 
-- [ ] **Step 3: Capture for the four working harnesses, one at a time**
+- [ ] **Step 3: Capture for all five harnesses, one at a time**
 
 Run via the Taskfile so the capture date is stamped portably (the environment
 here is PowerShell-primary — do NOT use bash `VAR=$(…)` prefixes). The `capture:*`
 target sets `TM_CAPTURE_DATE` via go-task's embedded shell:
 ```
-task capture:claude    # then: task capture:codex, task capture:copilot, task capture:gemini
+task capture:claude    # then: codex, copilot, gemini, cursor
 ```
+(cursor captures `cmd-fail`/`edit`/`edit-scoped` only; its `cmd-pass`/`stop`
+stay authored per Task 7 — expect those two to log a no-match and remain unchanged.)
 If go-task is not installed, run the equivalent in PowerShell:
 ```powershell
 $env:TM_CAPTURE_DATE = (Get-Date -AsUTC -Format 'yyyy-MM-dd'); go test -tags harness_live ./e2e/harness/ -run TestCapture/claude -v
@@ -1039,7 +1060,7 @@ func TestLive(t *testing.T) {
 			if !ok {
 				t.Skipf("no live driver for %s (blocked/unsupported)", name)
 			}
-			if err := requireCLI(name); err != nil {
+			if err := requireCLI(drv); err != nil {
 				t.Fatalf("%v", err)
 			}
 			workdir := t.TempDir()
@@ -1085,52 +1106,74 @@ git commit -m "test(harness-e2e): live firing tier asserts each CLI loads our ho
 
 ---
 
-## Task 7: Cursor skip + blocker documentation
+## Task 7: Cursor live-tier limitations
 
-Cursor's CLI won't start, so it has no driver (Task 3) and both gated tiers skip
-it cleanly. Document the blocker and the path to enabling Cursor.
+The headless `cursor-agent` CLI (installed as `agent`) **does** fire
+`.cursor/hooks.json` hooks — verified live (cursor 2026.06.12): `beforeShellExecution`,
+`afterShellExecution`, `afterFileEdit`, and `postToolUseFailure` all fire. So Cursor
+is a live harness (driver registered in Task 3) — with two documented limits:
+
+1. **`stop` and `beforeSubmitPrompt` do NOT fire headless.** `tm nudge` is bound to
+   `stop`, so Cursor's nudge (Stop) and prompt signals cannot be live-captured. Their
+   fixtures (`fail_pass_nudge/stop.json`, any prompt fixture) stay **authored**.
+2. **`cmd-pass` is not auto-selectable for cursor.** Cursor's passing event
+   (`afterShellExecution`) carries no response/exit field, so the `hasResponseField`
+   predicate in `selectPayload` skips it. Cursor's `cmd-pass.json` stays **authored**
+   (`{"session_id":"e2e-session","hook_event_name":"afterShellExecution","command":"go test ./...","output":""}`)
+   unless you add a cursor branch to `hasResponseField` that also accepts
+   `"hook_event_name":"afterShellExecution"`.
+
+So `task capture:cursor` captures `cmd-fail` (postToolUseFailure, nested command),
+`edit`, and `edit-scoped` live; `cmd-pass` and `stop` remain authored. Cursor's
+default tiers (contract/replay/packaging) run fully; `TestLive/cursor` PASSES
+(hooks fire).
 
 **Files:**
-- Create: `e2e/harness/CURSOR_BLOCKER.md`
-- Modify: `docs/verification/cross-harness.md` (note Cursor live-tier blocked)
+- Create: `e2e/harness/CURSOR_NOTES.md`
+- Modify: `docs/verification/cross-harness.md` (note Cursor headless limits)
 
-- [ ] **Step 1: Confirm Cursor skips, not fails**
+- [ ] **Step 1: Confirm Cursor live firing works**
 
-Run: `go test -tags harness_live ./e2e/harness/ -run 'TestCapture/cursor|TestLive/cursor' -v`
-Expected: SKIP for cursor (no driver registered), not FAIL.
+Run: `go test -tags harness_live ./e2e/harness/ -run TestLive/cursor -v`
+Expected: PASS — the marker file exists (the `agent` CLI fired our hook).
 
-- [ ] **Step 2: Write `CURSOR_BLOCKER.md`**
+- [ ] **Step 2: Write `CURSOR_NOTES.md`**
 
 ```markdown
-# Cursor live tier — blocked
+# Cursor live tier — notes
 
-The Cursor CLI does not currently start in this environment, so Plan B does not
-register a Cursor `LiveDriver` (e2e/harness/driver.go) and `TestCapture/cursor`
-and `TestLive/cursor` SKIP rather than fail.
+The headless `cursor-agent` CLI (installed as `agent`) fires `.cursor/hooks.json`
+hooks (verified, cursor 2026.06.12). Driver: `agent -p --force --trust "<prompt>"`
+(prompt is a trailing positional; `-p`=headless, `--force`=auto-approve,
+`--trust`=trust workspace). The binary may live at
+`%LOCALAPPDATA%\cursor-agent\agent.cmd` and not be on a non-interactive PATH —
+ensure `agent` is on PATH for the live tier.
 
-Cursor's default-tier coverage (contract, replay, packaging) still runs against
-its **authored** fixtures (manifest provenance `authored`).
+## Headless limitations (verified)
 
-## To enable Cursor
+- The headless CLI does NOT fire `stop` or `beforeSubmitPrompt`. So `tm nudge`
+  (Stop) and prompt signals are exercised only in the Cursor IDE or via replayed
+  fixtures. `fail_pass_nudge/stop.json` and any prompt fixture stay `authored`.
+- A failed shell command's `postToolUseFailure` nests the command at
+  `tool_input.command` (not top-level) — handled by `internal/harness/cursor.go`.
+- `afterShellExecution` has no exit code and fires for pass and fail alike; the
+  failure signal is the separate `postToolUseFailure` event.
 
-1. Get `cursor` (or `cursor-agent`) launching non-interactively; record the exact
-   invocation (the equivalent of `codex exec …`).
-2. Register a driver in `driver.go`:
-   `registerDriver("cursor", simpleDriver{bin: "<cursor-bin>", flags: […], promptViaFlag: "…"})`.
-3. Run `task capture:cursor`, review the diff, and the manifest flips to `captured`.
+So `task capture:cursor` captures `cmd-fail`/`edit`/`edit-scoped`; `cmd-pass` and
+`stop` stay authored (see Task 7 in the plan).
 ```
 
-- [ ] **Step 3: Note the blocker in the verification doc**
+- [ ] **Step 3: Note the limits in the verification doc**
 
-Add to `docs/verification/cross-harness.md` (Cursor section): a line that the
-live/capture tiers are blocked pending a working Cursor CLI, linking
-`e2e/harness/CURSOR_BLOCKER.md`.
+Add to `docs/verification/cross-harness.md` (Cursor section): the headless
+firing-confirmed status and the stop/prompt limitation, linking
+`e2e/harness/CURSOR_NOTES.md`.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add e2e/harness/CURSOR_BLOCKER.md docs/verification/cross-harness.md
-git commit -m "docs(harness-e2e): document Cursor live-tier blocker + enable path"
+git add e2e/harness/CURSOR_NOTES.md docs/verification/cross-harness.md
+git commit -m "docs(harness-e2e): Cursor live tier enabled; document headless limits"
 ```
 
 ---
@@ -1178,14 +1221,15 @@ git commit -m "build(harness-e2e): Taskfile live + capture targets"
 ## Final verification
 
 - [ ] Default suite still green (no live CLIs): `go test ./...` → PASS.
-- [ ] Live tier green for the four working harnesses:
-  `go test -tags harness_live ./e2e/harness/ -run 'TestLive/(claude|codex|copilot|gemini)' -v` → PASS.
-- [ ] Captured fixtures committed with `provenance: captured` for the four; cursor
-  remains `authored` + documented blocker.
+- [ ] Live firing tier green for all five harnesses:
+  `go test -tags harness_live ./e2e/harness/ -run TestLive -v` → PASS (cursor included — `agent` fires hooks).
+- [ ] Captured fixtures committed with `provenance: captured` for claude/codex/copilot/gemini;
+  cursor is `captured` for `cmd-fail`/`edit`/`edit-scoped` and `authored` for
+  `cmd-pass`/`stop` (headless can't supply them — Task 7).
 - [ ] Replay tier passes against captured fixtures: `go test ./e2e/harness/ -run TestReplay` → PASS.
 - [ ] §10.6 VERIFY items resolved or filed as adapter bug-fix follow-ups from the
-  capture diffs (Copilot failure field; Cursor field names once unblocked; Gemini
-  pinned-tag schema; additionalContext visibility).
+  capture diffs (Copilot failure field; Gemini pinned-tag schema; additionalContext
+  visibility). Cursor field names are already resolved (adapter fixed pre-implementation).
 - [ ] Update prd.md §10.6 note: the harness test suite now exists with live
   capture; drop/curtail the remaining VERIFY flags the captures resolved (same
   commit as the adapter fixes, per AGENTS.md).
