@@ -6,6 +6,81 @@
 All notable changes to TeamMemory are documented here. The format is based on
 [Keep a Changelog], and this project adheres to [Semantic Versioning].
 
+## [0.2.0] - 2026-06-16
+
+The cross-harness + ambient-nudging release. v0.1.x was Claude-only with
+deterministic edit-time injection and blocking; v0.2.0 extends the engine to
+**five coding agents**, adds a **proactive nudge engine**, **command-scoped
+memories** (enforced at Bash time), and an environment doctor — then pins all of
+it with an extensible end-to-end test suite validated against the live CLIs.
+
+### Added
+
+- **Cross-harness support — Codex, Copilot, Cursor, and Gemini** (in addition to
+  Claude Code). A harness-neutral `Event`/`Decision` model (`internal/harness`)
+  with a thin per-agent adapter parses each CLI's concrete hook payload and renders
+  decisions back into its wire format; the engine never sees harness-specific JSON.
+  `tm init --harness {codex,copilot,cursor,gemini}` writes each agent's hook + MCP
+  packaging. Requirement enforcement (PreToolUse block + ack) and advisory memory
+  injection work on all five; advisory memories inject **pre-edit** on Claude Code
+  and **post-edit** on the others (`tm signal`). Authoritative capability matrix in
+  `prd.md §10.6`. (`prd.md §10.6`, `§18`)
+- **Near-moment nudge engine.** TeamMemory now *proposes* memories at the moment
+  friction happens, not just retrieves them. A per-session journal
+  (`.git/tm/nudge/<session>.json`, local-only) records PostToolUse signals
+  (`tm signal`) and UserPromptSubmit markers; on Stop (`tm nudge`) the engine
+  detects patterns — a fail → fix → pass loop, or a user redirecting the agent
+  mid-edit — and surfaces a low-pressure "want to record this?" nudge. Anti-spam
+  policy with priority, per-session budget, and cooldown; configurable in
+  `policy.yaml`. (`prd.md §10.1`)
+- **Command-scoped memories & Bash-time enforcement.** Memories can now scope to
+  **command patterns**, not just file paths. Token-aware matching (leading
+  subcommand tokens match literally, a trailing `*` matches the rest; flags are
+  ignored) — e.g. `pytest *` matches `pytest -q tests/`. The PreToolUse hook
+  matches `Bash` actions and blocks unacknowledged `requirement` commands, and a
+  structural command channel feeds retrieval. `tm propose`/`tm observe`'s
+  `adjust_scope` and `tm_check_action` accept command scopes; bare-binary patterns
+  escalate risk. (`prd.md §8.1`, `§9.1`, `§10.1`, `§10.3`, `§11`)
+- **`tm doctor`** — environment diagnostics that validate the ledger branch, local
+  index, `policy.yaml`, sync remote, installed hooks, and MCP registration, with a
+  severity model and a meaningful exit code. (`prd.md §10.5`, `§12.2`)
+- **Harness E2E test framework** (`e2e/harness/`). A matrix-driven suite,
+  extensible on both axes (add a harness = one descriptor + fixtures + a matrix
+  row; add a scenario = one registration). Deterministic default tiers run in CI on
+  committed fixtures — **contract** (parse + render goldens), **replay** (engine
+  scenarios), **packaging** (`tm init`) — plus a conformance check that fails if a
+  descriptor disagrees with the `prd.md §10.6` capability matrix. A
+  build-tag-gated (`harness_live`) overlay drives the real CLIs: live hook-firing,
+  payload capture/normalization, real-tm behavior tests (requirement block,
+  outcome recording), and live failure-sensing.
+
+### Changed
+
+- **Capability matrix is authoritative and live-verified.** Command-failure sensing
+  (the fail → fix → pass nudge) works on **Copilot, Cursor, and Gemini** but **not
+  Claude Code or Codex**: both fire `PostToolUse` only on tool *success*, so a
+  failed command is never observed (verified live, Claude 2.1.177 / Codex 0.139.0).
+  Those two degrade gracefully — the nudge stays silent rather than misfiring. Slated
+  for re-check by ~2026-08-15 in case either CLI starts emitting a failure event.
+  Advisory-context model-visibility on Copilot and Gemini was confirmed by live
+  probe (keep injected advisory text descriptive, not imperative — Copilot flags
+  imperative hook side-channel instructions as injection).
+- **Guidance excludes system/OS-specific memories** so machine-local noise does not
+  enter the shared ledger. (`prd.md §5.1`, `§10.3`)
+
+### Fixed
+
+- **Concurrent sync race.** `tm sync` retries on a lost concurrent-push race instead
+  of failing, so simultaneous proposals from different clones converge reliably.
+- **Cross-harness wire-shape corrections** (caught by live validation before
+  release, so the adapters ship correct): Gemini's hook config requires the nested
+  `{matcher, hooks[]}` group shape (a flat entry is silently rejected at load);
+  Cursor on Windows prepends a UTF-8 BOM to hook stdin that Go's JSON decoder
+  rejected — silently breaking every Cursor hook — now stripped for all adapters; a
+  failed Cursor command is read from the nested `tool_input.command`; Codex's
+  successful `PostToolUse` carries `tool_response` as a string; Copilot and Gemini
+  report a command's exit status inside their result text, not a structured field.
+
 ## [0.1.1] - 2026-06-13
 
 ### Changed
@@ -58,5 +133,6 @@ dogfooding on real repositories.
 - **Acceptance tests** — flagship lifecycle demo, trap-repo retrieval benchmark,
   two-clone concurrent-sync convergence, and hook latency budget.
 
+[0.2.0]: https://github.com/AndreasSteinerPF/team-memory/releases/tag/v0.2.0
 [0.1.1]: https://github.com/AndreasSteinerPF/team-memory/releases/tag/v0.1.1
 [0.1.0]: https://github.com/AndreasSteinerPF/team-memory/releases/tag/v0.1.0
