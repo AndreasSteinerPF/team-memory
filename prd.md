@@ -615,13 +615,26 @@ First 90 days: 500 stars; 5 external contributors; documented setups for 2+ codi
 
 ## 17. Roadmap
 
-**Phase 1 — MVP:** everything in Section 12.1.
+**Phase 1 — MVP:** everything in Section 12.1. **Shipped** (v0.0.1: orphan-branch ledger, SQLite index, derived state, risk/policy, MCP server, Claude Code hook + nudge engine, `tm export`, retrieval, `tm brief`, `tm doctor`).
 
-**Phase 2 — Breadth:** `ownership` and `successful_pattern` types; `mark_duplicate` and supersession; richer Cursor/Codex/Continue setup guides; polished separate-remote UX; `tm doctor`.
+**Phase 2 — Breadth:** _in progress._
 
-**Phase 3 — GitHub workflow:** GitHub Action surfacing relevant memories on code PRs; memory timeline report.
+- **Cross-harness adapter layer** — Codex, Copilot, Cursor, and Gemini hook/MCP adapters with `tm init --harness {codex,copilot,cursor,gemini}` packaging (§6.2–§6.5, §10.6). **Shipped.**
+- **Cross-harness E2E test framework** — per-harness payload fixtures plus build-tag-gated live smoke tests that pin the remaining live-payload checks (§10.6; recipes in `docs/verification/cross-harness.md`). **Next.**
+- `ownership` and `successful_pattern` memory types; `mark_duplicate` and supersession observations.
+- Polished separate-remote UX.
 
-**Phase 4 — Retrieval depth:** symbol anchors, error-signature matching, content-hash drift detection, semantic ranking.
+**Phase 3 — GitHub workflow:** bring memories onto the PR review surface, not just the live agent hook.
+
+- **PR memory action** — a GitHub Action that runs retrieval against a PR's changed paths/commands and posts the relevant memories as a PR comment/check.
+- **Memory timeline report** — the static HTML timeline (§12.2) visualizing the record/observation history over time.
+
+**Phase 4 — Retrieval depth:** extend V1's precision-first lexical retrieval (§11) with deeper matching and ranking signals.
+
+- **Symbol anchors** — anchor memories to code symbols (functions/types), not just file paths and line ranges (§9.1).
+- **Error-signature matching** — surface memories by matching error/stack-trace signatures, so a failing command finds the memory about that failure.
+- **Content-hash drift detection** — detect when anchored code *content* has changed via content hashes, beyond line-range drift (§9.1).
+- **Semantic ranking** — embeddings-based ranking of candidates (V1 is lexical only, no embeddings — §11, §12.3).
 
 **Phase 5 — Governance depth:** signed records, multi-human approval, policy templates, expiry workflows, contested-memory review UI.
 
