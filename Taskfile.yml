@@ -1,0 +1,14 @@
+version: '3'
+tasks:
+  build:     { desc: 'Compile everything', cmds: ['go build ./...'] }
+  test:      { desc: 'Default suite (no live CLIs needed)', cmds: ['go test ./...'] }
+  test:unit: { desc: 'Internal unit tests only', cmds: ['go test ./internal/...'] }
+
+  # Harness E2E default tiers — committed fixtures, no live CLIs.
+  test:harness:           { desc: 'All default harness tiers', cmds: ['go test ./e2e/harness/...'] }
+  test:harness:contract:  { desc: 'Wire-format contract tier', cmds: ['go test ./e2e/harness/ -run TestContract'] }
+  test:harness:replay:    { desc: 'Engine scenario replay tier', cmds: ['go test ./e2e/harness/ -run TestReplay'] }
+  test:harness:packaging: { desc: 'tm init packaging tier', cmds: ['go test ./e2e/harness/ -run TestPackaging'] }
+  test:harness:update:    { desc: 'Regenerate render goldens', cmds: ['go test ./e2e/harness/ -run TestContract -update'] }
+
+  ci: { desc: 'What CI runs', cmds: [{ task: build }, { task: test }] }
