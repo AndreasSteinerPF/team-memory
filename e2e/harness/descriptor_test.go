@@ -4,11 +4,11 @@ import "testing"
 
 type fakeDescriptor struct{ name string }
 
-func (f fakeDescriptor) Name() string                { return f.name }
-func (f fakeDescriptor) Capabilities() CapabilitySet { return NewCapabilitySet(CapPreToolBlock) }
-func (f fakeDescriptor) FixtureDir() string          { return "testdata/" + f.name }
-func (f fakeDescriptor) IsDeny(out []byte) bool       { return false }
-func (f fakeDescriptor) BlockReason(out []byte) string { return "" }
+func (f fakeDescriptor) Name() string                      { return f.name }
+func (f fakeDescriptor) Capabilities() CapabilitySet       { return NewCapabilitySet(CapPreToolBlock) }
+func (f fakeDescriptor) FixtureDir() string                { return "testdata/" + f.name }
+func (f fakeDescriptor) IsDeny(out []byte) bool            { return false }
+func (f fakeDescriptor) BlockReason(out []byte) string     { return "" }
 func (f fakeDescriptor) AdvisoryContext(out []byte) string { return "" }
 func (f fakeDescriptor) Packaging() []PackagingExpectation { return nil }
 

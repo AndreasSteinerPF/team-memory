@@ -24,9 +24,11 @@ func cursorDecode(out []byte) cursorOut {
 	return o
 }
 
-func (cursorDescriptor) IsDeny(out []byte) bool            { return cursorDecode(out).Permission == "deny" }
-func (cursorDescriptor) BlockReason(out []byte) string     { return cursorDecode(out).AgentMessage }
-func (cursorDescriptor) AdvisoryContext(out []byte) string { return cursorDecode(out).AdditionalContext }
+func (cursorDescriptor) IsDeny(out []byte) bool        { return cursorDecode(out).Permission == "deny" }
+func (cursorDescriptor) BlockReason(out []byte) string { return cursorDecode(out).AgentMessage }
+func (cursorDescriptor) AdvisoryContext(out []byte) string {
+	return cursorDecode(out).AdditionalContext
+}
 
 func (cursorDescriptor) Packaging() []PackagingExpectation {
 	return []PackagingExpectation{

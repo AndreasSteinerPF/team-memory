@@ -26,9 +26,11 @@ func geminiDecode(out []byte) geminiOut {
 	return o
 }
 
-func (geminiDescriptor) IsDeny(out []byte) bool            { return geminiDecode(out).Decision == "deny" }
-func (geminiDescriptor) BlockReason(out []byte) string     { return geminiDecode(out).Reason }
-func (geminiDescriptor) AdvisoryContext(out []byte) string { return geminiDecode(out).HookSpecificOutput.AdditionalContext }
+func (geminiDescriptor) IsDeny(out []byte) bool        { return geminiDecode(out).Decision == "deny" }
+func (geminiDescriptor) BlockReason(out []byte) string { return geminiDecode(out).Reason }
+func (geminiDescriptor) AdvisoryContext(out []byte) string {
+	return geminiDecode(out).HookSpecificOutput.AdditionalContext
+}
 
 func (geminiDescriptor) Packaging() []PackagingExpectation {
 	return []PackagingExpectation{{

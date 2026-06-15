@@ -24,9 +24,15 @@ func copilotDecode(out []byte) copilotOut {
 	return o
 }
 
-func (copilotDescriptor) IsDeny(out []byte) bool          { return copilotDecode(out).PermissionDecision == "deny" }
-func (copilotDescriptor) BlockReason(out []byte) string   { return copilotDecode(out).PermissionDecisionReason }
-func (copilotDescriptor) AdvisoryContext(out []byte) string { return copilotDecode(out).AdditionalContext }
+func (copilotDescriptor) IsDeny(out []byte) bool {
+	return copilotDecode(out).PermissionDecision == "deny"
+}
+func (copilotDescriptor) BlockReason(out []byte) string {
+	return copilotDecode(out).PermissionDecisionReason
+}
+func (copilotDescriptor) AdvisoryContext(out []byte) string {
+	return copilotDecode(out).AdditionalContext
+}
 
 func (copilotDescriptor) Packaging() []PackagingExpectation {
 	return []PackagingExpectation{{
