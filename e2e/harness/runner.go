@@ -76,6 +76,10 @@ func newScenarioRepo(t *testing.T) string {
 // (with a log) unsupported or uncaptured combos, and prints a coverage summary.
 func RunScenarios(t *testing.T) {
 	type cell struct{ harness, scenario, status string }
+	// summary is appended from inside subtests and read after they complete.
+	// This is race-free ONLY because no subtest calls t.Parallel(): t.Run blocks
+	// until the subtest goroutine finishes, establishing a happens-before edge.
+	// Do not add t.Parallel() below without guarding summary with a mutex.
 	var summary []cell
 
 	for _, name := range DescriptorNames() {
