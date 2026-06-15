@@ -31,7 +31,7 @@ func (gemini) Parse(kind EventKind, r io.Reader) (Event, error) {
 			Error string `json:"error"`
 		} `json:"tool_response"`
 	}
-	if err := json.NewDecoder(r).Decode(&raw); err != nil {
+	if err := decodeJSON(r, &raw); err != nil {
 		return Event{}, err
 	}
 	ev := Event{

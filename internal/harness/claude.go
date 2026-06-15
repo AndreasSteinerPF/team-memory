@@ -23,7 +23,7 @@ func (claude) Parse(kind EventKind, r io.Reader) (Event, error) {
 			ExitCode *int `json:"exit_code"`
 		} `json:"tool_response"`
 	}
-	if err := json.NewDecoder(r).Decode(&raw); err != nil {
+	if err := decodeJSON(r, &raw); err != nil {
 		return Event{}, err
 	}
 	ev := Event{

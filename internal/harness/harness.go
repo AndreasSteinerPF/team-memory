@@ -5,6 +5,8 @@
 package harness
 
 import (
+	"bufio"
+	"encoding/json"
 	"fmt"
 	"io"
 )
@@ -45,6 +47,19 @@ type Adapter interface {
 	Name() string
 	Parse(kind EventKind, r io.Reader) (Event, error)
 	Render(kind EventKind, d Decision, w io.Writer) error
+}
+
+// decodeJSON decodes one JSON value from r into v, tolerating a leading UTF-8
+// BOM (EF BB BF). Some harness CLIs prepend a BOM to hook stdin on Windows
+// (observed live with cursor-agent 2026.06.12) — Go's json decoder otherwise
+// rejects it with "invalid character 'ï'", which silently breaks every hook for
+// that harness. All adapters parse through this. (prd.md §10.6)
+func decodeJSON(r io.Reader, v any) error {
+	br := bufio.NewReader(r)
+	if b, err := br.Peek(3); err == nil && b[0] == 0xEF && b[1] == 0xBB && b[2] == 0xBF {
+		_, _ = br.Discard(3)
+	}
+	return json.NewDecoder(br).Decode(v)
 }
 
 var registry = map[string]Adapter{}

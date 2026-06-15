@@ -51,7 +51,7 @@ func (cursor) Parse(kind EventKind, r io.Reader) (Event, error) {
 			Command string `json:"command"`
 		} `json:"tool_input"`
 	}
-	if err := json.NewDecoder(r).Decode(&raw); err != nil {
+	if err := decodeJSON(r, &raw); err != nil {
 		return Event{}, err
 	}
 	// postToolUseFailure nests a failed shell command under tool_input.command;

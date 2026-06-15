@@ -1,0 +1,203 @@
+//go:build harness_live
+
+package harness_e2e
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"testing"
+
+	"github.com/AndreasSteinerPF/team-memory/internal/cli"
+)
+
+// These tests go beyond TestLive (which proves a hook *fires* via a recorder):
+// they install the REAL tm as the hook command and assert tm's actual feature
+// behavior end-to-end against a live CLI — a requirement block, and event
+// recording into the nudge journal. (prd.md §10.1, §10.6)
+
+// buildTm builds the tm CLI under test into dir and returns its path, so the
+// hook exercises current code rather than a possibly-stale installed `tm`.
+func buildTm(dir string) (string, error) {
+	bin := filepath.Join(dir, "tm")
+	if runtime.GOOS == "windows" {
+		bin += ".exe"
+	}
+	cmd := exec.Command("go", "build", "-o", bin, "./cmd/tm")
+	cmd.Dir = repoRoot()
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return "", fmt.Errorf("build tm: %v: %s", err, out)
+	}
+	return bin, nil
+}
+
+// installRealTmHooks runs tm init for the harness, then rewrites the installed
+// hook commands to call the freshly-built tm (rewriteHookToRecorder swaps the
+// `tm ` prefix for the binary path while keeping the real args). Returns the
+// repo path.
+func installRealTmHooks(t *testing.T, name, tmBin string) string {
+	t.Helper()
+	repo := newGitOnlyRepo(t)
+	if name == "claude" {
+		_ = os.MkdirAll(filepath.Join(repo, ".claude"), 0o755)
+	}
+	if code := runInit(repo, name); code != 0 {
+		t.Fatalf("tm init --harness %s failed", name)
+	}
+	if err := rewriteHookToRecorder(repo, name, tmBin); err != nil {
+		t.Fatalf("rewrite hook to tm: %v", err)
+	}
+	return repo
+}
+
+// proposeActiveRequirement creates an active requirement memory scoped to scope
+// (via in-process cli.Run) and returns its id.
+func proposeActiveRequirement(t *testing.T, repo, scope string) string {
+	t.Helper()
+	var out, errb bytes.Buffer
+	if code := cli.Run([]string{"--repo", repo, "propose", "constraint",
+		"--title", "do not edit " + scope, "--scope", scope,
+		"--guidance", "Run the safety review and ack first.",
+		"--summary", "live block test", "--actor", "test"},
+		strings.NewReader(""), &out, &errb); code != 0 {
+		t.Fatalf("propose: %s", errb.String())
+	}
+	id := firstULID(out.String())
+	if id == "" {
+		t.Fatalf("no memory id in propose output: %s", out.String())
+	}
+	var ao, ae bytes.Buffer
+	if code := cli.Run([]string{"--repo", repo, "approve", id, "--enforcement", "requirement"},
+		strings.NewReader(""), &ao, &ae); code != 0 {
+		t.Fatalf("approve: %s", ae.String())
+	}
+	return id
+}
+
+// journalContains reports whether any nudge journal under .git/tm/nudge contains
+// needle (used to find a surfaced memory id).
+func journalContains(repo, needle string) bool {
+	dir := filepath.Join(repo, ".git", "tm", "nudge")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		if err == nil && bytes.Contains(data, []byte(needle)) {
+			return true
+		}
+	}
+	return false
+}
+
+// journalRecordedOutcome reports whether any nudge journal recorded a command or
+// edit — proof the real tm signal hook ran and processed a PostToolUse event.
+func journalRecordedOutcome(repo string) bool {
+	dir := filepath.Join(repo, ".git", "tm", "nudge")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		if err != nil {
+			continue
+		}
+		var j struct {
+			Commands []json.RawMessage `json:"commands"`
+			Edits    []json.RawMessage `json:"edits"`
+		}
+		if json.Unmarshal(data, &j) == nil && (len(j.Commands) > 0 || len(j.Edits) > 0) {
+			return true
+		}
+	}
+	return false
+}
+
+// TestLiveRequirementBlock drives the real Claude CLI against a repo with an
+// active requirement scoped to a path, and asserts the flagship feature works
+// end-to-end: the protected file is NOT written (the PreToolUse hook blocked it),
+// AND the check-action hook recorded the requirement as surfaced (positive proof
+// the hook fired — rules out "claude errored before attempting the write").
+// Claude-only: it is the harness with deterministic PreToolUse enforcement.
+func TestLiveRequirementBlock(t *testing.T) {
+	const name = "claude"
+	drv, ok := GetDriver(name)
+	if !ok {
+		t.Skipf("no live driver for %s", name)
+	}
+	if err := requireCLI(drv); err != nil {
+		t.Fatalf("%v", err)
+	}
+	tmBin, err := buildTm(t.TempDir())
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	repo := installRealTmHooks(t, name, tmBin)
+	memID := proposeActiveRequirement(t, repo, "protected.txt")
+
+	ctx, cancel := context.WithTimeout(context.Background(), captureTimeout())
+	defer cancel()
+	prompt := "Create a file named protected.txt containing the word hello. " +
+		"If a hook blocks the write, stop and do not retry."
+	if err := driveCLIInRepo(ctx, drv, repo, filepath.Join(t.TempDir(), "unused.jsonl"), prompt); err != nil {
+		t.Fatalf("[%s] drive: %v", name, err)
+	}
+
+	if _, err := os.Stat(filepath.Join(repo, "protected.txt")); err == nil {
+		t.Errorf("requirement block FAILED: protected.txt was written despite an active requirement")
+	}
+	if !journalContains(repo, memID) {
+		t.Errorf("no surfaced record for requirement %s — the check-action hook may not have fired (block unverified)", memID)
+	}
+}
+
+// TestLiveRealTmRecording installs the real tm as the hook command, drives each
+// per-run-capable CLI to run a shell command, and asserts tm recorded the
+// outcome in its nudge journal — proving the installed tm actually runs and
+// processes a live PostToolUse payload (TestLive only proves the hook fires).
+// Codex is skipped (its one-time interactive trust is covered by TestLive/codex).
+func TestLiveRealTmRecording(t *testing.T) {
+	for _, name := range DescriptorNames() {
+		name := name
+		t.Run(name, func(t *testing.T) {
+			if name == "codex" {
+				t.Skip("codex needs one-time interactive hook trust; firing is covered by TestLive/codex (TM_CODEX_LIVE_REPO)")
+			}
+			drv, ok := GetDriver(name)
+			if !ok {
+				t.Skipf("no live driver for %s", name)
+			}
+			if err := requireCLI(drv); err != nil {
+				t.Fatalf("%v", err)
+			}
+			tmBin, err := buildTm(t.TempDir())
+			if err != nil {
+				t.Fatalf("%v", err)
+			}
+			repo := installRealTmHooks(t, name, tmBin)
+			ctx, cancel := context.WithTimeout(context.Background(), captureTimeout())
+			defer cancel()
+			if err := driveCLIInRepo(ctx, drv, repo, filepath.Join(t.TempDir(), "unused.jsonl"),
+				"Run the shell command `echo hello` once."); err != nil {
+				t.Fatalf("[%s] drive: %v", name, err)
+			}
+			if !journalRecordedOutcome(repo) {
+				t.Errorf("[%s] real tm recorded no command/edit in .git/tm/nudge — the PostToolUse signal hook may not have run", name)
+			}
+		})
+	}
+}

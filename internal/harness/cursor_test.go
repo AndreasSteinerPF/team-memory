@@ -7,6 +7,22 @@ import (
 	"github.com/AndreasSteinerPF/team-memory/internal/harness"
 )
 
+// TestCursorParseToleratesBOM: cursor-agent on Windows prepends a UTF-8 BOM to
+// hook stdin (observed live, 2026.06.12). Go's json decoder rejects a leading
+// BOM, which silently broke every cursor hook (signal/nudge/block) until the
+// shared decodeJSON helper strips it. Parse must accept the BOM-prefixed payload.
+func TestCursorParseToleratesBOM(t *testing.T) {
+	a, _ := harness.Get("cursor")
+	in := "\xef\xbb\xbf" + `{"session_id":"s1","command":"echo hello","hook_event_name":"afterShellExecution"}`
+	ev, err := a.Parse(harness.PostTool, strings.NewReader(in))
+	if err != nil {
+		t.Fatalf("BOM-prefixed payload must parse, got: %v", err)
+	}
+	if ev.SessionID != "s1" || !ev.HasOutcome || ev.Command != "echo hello" {
+		t.Errorf("event = %+v (want SessionID=s1, HasOutcome, command=echo hello)", ev)
+	}
+}
+
 // TestCursorShellFailureMarksFailed uses the REAL postToolUseFailure payload
 // captured from cursor-agent for a failing shell command (`cmd /c exit 3`): the
 // command is nested under tool_input.command (NOT top-level), the event carries

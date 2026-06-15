@@ -297,6 +297,14 @@ Cursor's Stop-nudge and prompt fixtures stay authored rather than live-captured;
 (2) `afterShellExecution` carries no exit code, so `cmd-pass` also stays
 authored. See `e2e/harness/CURSOR_NOTES.md` for full live-tier notes.
 
+**Windows BOM (found via `TestLiveRealTmRecording`, 2026-06-15):** on Windows,
+`cursor-agent` prepends a UTF-8 BOM (`EF BB BF`) to hook stdin. Go's JSON decoder
+rejects a leading BOM (`invalid character 'ï' looking for beginning of value`),
+which silently broke every cursor hook (the recorder masked it; real `tm`
+surfaced it). Fixed in `internal/harness` — the shared `decodeJSON` helper strips
+a leading BOM before decoding, and all five adapters route through it. Regression
+test: `TestCursorParseToleratesBOM`.
+
 ### Echo-hook JSON
 
 Replace `.cursor/hooks.json` with the following to capture raw payloads.

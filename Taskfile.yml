@@ -17,6 +17,9 @@ tasks:
   test:harness:live:
     desc: 'Live firing tier (needs harness CLIs)'
     cmds: ['go test -tags harness_live ./e2e/harness/ -run TestLive']
+  test:harness:live:behavior:
+    desc: 'Live behavior tests: real requirement-block (Claude) + real-tm recording'
+    cmds: ['go test -tags harness_live ./e2e/harness/ -run ''TestLiveRequirementBlock|TestLiveRealTmRecording'' -v']
   setup:codex-live:
     desc: 'Scaffold the codex live-test repo (set TM_CODEX_LIVE_REPO; then trust it once via `codex`)'
     cmds: ['go test -tags harness_live ./e2e/harness/ -run TestSetupCodexLiveRepo -v']

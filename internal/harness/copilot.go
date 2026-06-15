@@ -38,7 +38,7 @@ func (copilot) Parse(kind EventKind, r io.Reader) (Event, error) {
 		} `json:"toolResult"`
 		Error string `json:"error"`
 	}
-	if err := json.NewDecoder(r).Decode(&raw); err != nil {
+	if err := decodeJSON(r, &raw); err != nil {
 		return Event{}, err
 	}
 	command, filePath := raw.ToolInput.Command, raw.ToolInput.FilePath
