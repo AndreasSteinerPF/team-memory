@@ -56,7 +56,7 @@ func newCheckActionCmd(g *globalOpts) *cobra.Command {
 	cmd.Flags().StringVar(&desc, "description", "", "free-text action description (FTS)")
 	cmd.Flags().StringVar(&provMode, "provisional-mode", "", "never | related | always (default: policy)")
 	cmd.Flags().BoolVar(&hook, "hook", false, "read a PreToolUse event on stdin and emit a hook decision")
-	cmd.Flags().StringVar(&harnessName, "harness", "claude", "harness adapter (claude, codex, copilot)")
+	cmd.Flags().StringVar(&harnessName, "harness", "claude", "harness adapter (claude, codex, copilot, cursor, gemini)")
 	return cmd
 }
 

@@ -100,7 +100,7 @@ func newSignalCmd(g *globalOpts) *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&hook, "hook", false, "read a PostToolUse event on stdin and record signals")
 	cmd.Flags().BoolVar(&prompt, "prompt", false, "record a UserPromptSubmit marker instead of a tool outcome (use with --hook)")
-	cmd.Flags().StringVar(&harnessName, "harness", "claude", "harness adapter (claude, codex, copilot)")
+	cmd.Flags().StringVar(&harnessName, "harness", "claude", "harness adapter (claude, codex, copilot, cursor, gemini)")
 	return cmd
 }
 

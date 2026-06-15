@@ -61,7 +61,7 @@ func newNudgeCmd(g *globalOpts) *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&hook, "hook", false, "read a Stop event on stdin and emit at most one nudge")
-	cmd.Flags().StringVar(&harnessName, "harness", "claude", "harness adapter (claude, codex, copilot)")
+	cmd.Flags().StringVar(&harnessName, "harness", "claude", "harness adapter (claude, codex, copilot, cursor, gemini)")
 	return cmd
 }
 
