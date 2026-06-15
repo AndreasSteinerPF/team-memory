@@ -11,6 +11,15 @@ type claude struct{}
 
 func (claude) Name() string { return "claude" }
 
+// Parse reads a Claude Code hook payload. NOTE (verified live, CLI 2.1.177,
+// 2026-06-15; see prd.md §10.6): Claude Code fires PostToolUse only after a tool
+// completes *successfully*, so a failing Bash command emits PreToolUse then no
+// PostToolUse at all — command-failure sensing cannot fire (the capability
+// matrix sets claude PostToolFailureSensor = no, like codex). A *successful*
+// Bash tool_response is {stdout,stderr,interrupted,isImage,noOutputExpected}
+// with no exit_code. The exit_code check below therefore never trips on real
+// claude payloads; it is retained for forward-compat should a future version
+// deliver a failure PostToolUse with an exit code.
 func (claude) Parse(kind EventKind, r io.Reader) (Event, error) {
 	var raw struct {
 		SessionID string `json:"session_id"`

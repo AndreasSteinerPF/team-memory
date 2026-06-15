@@ -28,6 +28,28 @@ func TestGeminiAfterToolSuccess(t *testing.T) {
 	}
 }
 
+// TestGeminiExitCodeFromLlmContent uses the REAL live shape (2026-06-15): Gemini
+// does NOT populate tool_response.error for a failed shell command; it emits an
+// "Exit Code: N" line inside tool_response.llmContent (only on a non-zero exit —
+// a successful command's llmContent has no such line). The adapter must read
+// failure from that line.
+func TestGeminiExitCodeFromLlmContent(t *testing.T) {
+	a, _ := harness.Get("gemini")
+	fail := `{"session_id":"s1","tool_name":"run_shell_command","tool_input":{"command":"cat tmcheck.txt"},"tool_response":{"llmContent":"Output: Get-Content: Cannot find path ...\nExit Code: 1\nProcess Group PGID: 3172"}}`
+	ev, err := a.Parse(harness.PostTool, strings.NewReader(fail))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ev.Failed || !ev.HasOutcome || ev.Command != "cat tmcheck.txt" {
+		t.Errorf("failing result: event = %+v", ev)
+	}
+	pass := `{"session_id":"s1","tool_name":"run_shell_command","tool_input":{"command":"cat tmcheck.txt"},"tool_response":{"llmContent":"Output: ok\nProcess Group PGID: 32380"}}`
+	ev, _ = a.Parse(harness.PostTool, strings.NewReader(pass))
+	if ev.Failed || !ev.HasOutcome {
+		t.Errorf("passing result (no Exit Code line) should be a success outcome, got %+v", ev)
+	}
+}
+
 func TestGeminiRenderBlock(t *testing.T) {
 	a, _ := harness.Get("gemini")
 	var b strings.Builder

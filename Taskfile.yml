@@ -20,6 +20,9 @@ tasks:
   test:harness:live:behavior:
     desc: 'Live behavior tests: real requirement-block (Claude) + real-tm recording'
     cmds: ['go test -tags harness_live ./e2e/harness/ -run ''TestLiveRequirementBlock|TestLiveRealTmRecording'' -v']
+  test:harness:live:failure:
+    desc: 'Live failure-sensing: adapter detects a failed command (copilot, gemini)'
+    cmds: ['go test -tags harness_live ./e2e/harness/ -run TestLiveCommandFailureSensed -v']
   setup:codex-live:
     desc: 'Scaffold the codex live-test repo (set TM_CODEX_LIVE_REPO; then trust it once via `codex`)'
     cmds: ['go test -tags harness_live ./e2e/harness/ -run TestSetupCodexLiveRepo -v']

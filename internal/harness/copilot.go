@@ -3,6 +3,8 @@ package harness
 import (
 	"encoding/json"
 	"io"
+	"regexp"
+	"strconv"
 )
 
 func init() { register(copilot{}) }
@@ -11,15 +13,20 @@ type copilot struct{}
 
 func (copilot) Name() string { return "copilot" }
 
+// copilotExitCodeRe matches the exit code Copilot embeds in a shell tool result's
+// human-readable text, e.g. "...<shellId: 0 completed with exit code 1>". Live
+// capture (copilot 1.0.62, 2026-06-15) showed Copilot does NOT emit a structured
+// toolResult.exitCode for shell commands: the result text carries the exit code,
+// and toolResult.resultType is "success" even when the command exited non-zero
+// (it reports that the TOOL ran, not that the command passed).
+var copilotExitCodeRe = regexp.MustCompile(`exit code (\d+)`)
+
 // Parse reads a Copilot CLI hook payload. Copilot uses camelCase fields
 // (toolName, toolArgs) and delivers tool arguments as a JSON-encoded string;
 // alternate/older shapes used snake_case tool_input, so both are accepted. A
-// tool failure surfaces as the errorOccurred event, a non-empty error field, or
-// a non-zero toolResult.exitCode.
-//
-// VERIFY (prd.md §10.6; docs/verification/cross-harness.md): the exact failure
-// representation and field casing are pinned by the harness test suite's live
-// capture. This parser deliberately accepts the documented variants until then.
+// tool failure surfaces as the errorOccurred event, a non-empty error field, a
+// non-zero toolResult.exitCode (forward-compat), or — for shell commands, the
+// live shape — a non-zero "exit code N" parsed from toolResult.textResultForLlm.
 func (copilot) Parse(kind EventKind, r io.Reader) (Event, error) {
 	var raw struct {
 		SessionIDSnake string `json:"session_id"`
@@ -34,7 +41,8 @@ func (copilot) Parse(kind EventKind, r io.Reader) (Event, error) {
 		} `json:"tool_input"`
 		ToolArgs   json.RawMessage `json:"toolArgs"`
 		ToolResult struct {
-			ExitCode *int `json:"exitCode"`
+			ExitCode         *int   `json:"exitCode"`
+			TextResultForLlm string `json:"textResultForLlm"`
 		} `json:"toolResult"`
 		Error string `json:"error"`
 	}
@@ -60,9 +68,30 @@ func (copilot) Parse(kind EventKind, r io.Reader) (Event, error) {
 			ev.Failed = true
 		case raw.ToolResult.ExitCode != nil:
 			ev.Failed = *raw.ToolResult.ExitCode != 0
+		default:
+			if code, ok := parseTrailingExitCode(copilotExitCodeRe, raw.ToolResult.TextResultForLlm); ok {
+				ev.Failed = code != 0
+			}
 		}
 	}
 	return ev, nil
+}
+
+// parseTrailingExitCode returns the exit code captured by re from text, using
+// the LAST match (a shell result may mention "exit code" in its output before
+// the trailing "<shellId: N completed with exit code C>" marker). ok is false
+// when text carries no exit-code marker.
+func parseTrailingExitCode(re *regexp.Regexp, text string) (int, bool) {
+	matches := re.FindAllStringSubmatch(text, -1)
+	if len(matches) == 0 {
+		return 0, false
+	}
+	last := matches[len(matches)-1]
+	code, err := strconv.Atoi(last[1])
+	if err != nil {
+		return 0, false
+	}
+	return code, true
 }
 
 // parseCopilotToolArgs extracts the command / file path from Copilot's toolArgs,

@@ -8,7 +8,12 @@ type claudeDescriptor struct{}
 
 func (claudeDescriptor) Name() string { return "claude" }
 func (claudeDescriptor) Capabilities() CapabilitySet {
-	return NewCapabilitySet(CapPreToolBlock, CapPostToolFailureSensor, CapStopNudge, CapPromptSubmit)
+	// No CapPostToolFailureSensor: Claude Code fires PostToolUse only on tool
+	// *success* (verified live, CLI 2.1.177 — a failing Bash command emits
+	// PreToolUse then no PostToolUse, and even a successful Bash response carries
+	// no exit_code), so command-failure sensing cannot fire. Same shape as codex;
+	// see prd.md §10.6. The adapter keeps exit_code parsing for forward-compat.
+	return NewCapabilitySet(CapPreToolBlock, CapStopNudge, CapPromptSubmit)
 }
 func (claudeDescriptor) FixtureDir() string { return "testdata/claude" }
 

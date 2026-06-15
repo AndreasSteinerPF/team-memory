@@ -1,1 +1,1 @@
-{"sessionId":"e2e-session","hookEventName":"postToolUse","toolName":"shell","toolArgs":"{\"command\":\"go test ./...\"}","toolResult":{"exitCode":0}}
+{"sessionId":"e2e-session","toolName":"powershell","toolArgs":"{\"command\":\"go test ./...\"}","toolResult":{"resultType":"success","textResultForLlm":"ok\n<shellId: 1 completed with exit code 0>"}}

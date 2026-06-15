@@ -47,6 +47,28 @@ func TestCopilotParsePostToolSuccess(t *testing.T) {
 	}
 }
 
+// TestCopilotExitCodeFromResultText uses the REAL live shape (copilot 1.0.62,
+// 2026-06-15): a shell tool carries no structured exitCode, reports
+// resultType:"success" even on a failed command, and embeds the true exit code
+// in toolResult.textResultForLlm as "<shellId: N completed with exit code C>".
+// The adapter must read failure from that trailing exit code.
+func TestCopilotExitCodeFromResultText(t *testing.T) {
+	a, _ := harness.Get("copilot")
+	fail := `{"sessionId":"s1","toolName":"powershell","toolArgs":"{\"command\":\"go test ./...\"}","toolResult":{"resultType":"success","textResultForLlm":"FAIL\n<shellId: 0 completed with exit code 1>"}}`
+	ev, err := a.Parse(harness.PostTool, strings.NewReader(fail))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ev.Failed || !ev.HasOutcome || ev.Command != "go test ./..." {
+		t.Errorf("failing result: event = %+v", ev)
+	}
+	pass := `{"sessionId":"s1","toolName":"powershell","toolArgs":"{\"command\":\"go test ./...\"}","toolResult":{"resultType":"success","textResultForLlm":"ok\n<shellId: 1 completed with exit code 0>"}}`
+	ev, _ = a.Parse(harness.PostTool, strings.NewReader(pass))
+	if ev.Failed || !ev.HasOutcome {
+		t.Errorf("passing result should be a success outcome, got %+v", ev)
+	}
+}
+
 // TestCopilotToolArgsObject confirms toolArgs is also accepted as a bare object,
 // and that the legacy snake_case tool_input shape still parses.
 func TestCopilotToolArgsVariants(t *testing.T) {

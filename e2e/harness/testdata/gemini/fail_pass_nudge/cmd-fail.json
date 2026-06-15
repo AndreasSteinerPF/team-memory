@@ -1,1 +1,1 @@
-{"session_id":"e2e-session","tool_name":"run_shell_command","tool_input":{"command":"go test ./..."},"tool_response":{"error":"exit status 1"}}
+{"session_id":"e2e-session","tool_name":"run_shell_command","tool_input":{"command":"go test ./..."},"tool_response":{"llmContent":"Output: FAIL\nExit Code: 1\nProcess Group PGID: 1234"}}

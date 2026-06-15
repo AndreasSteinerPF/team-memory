@@ -76,12 +76,14 @@ section.)
 - Shell tool reports `tool_name: "Bash"` with the command at `tool_input.command`
   (so the `^(Bash|apply_patch)$` matcher is correct).
 - A **successful** `PostToolUse` carries `tool_response` as a **plain string** (the
-  command output, e.g. `"hello\r\n"`), NOT an object with `exit_code`. The
-  `codex.go` adapter currently reads `tool_response.exit_code` — this needs fixing.
+  command output, e.g. `"hello\r\n"`), NOT an object with `exit_code`. **Fixed:**
+  `codex.go` now decodes `tool_response` as `json.RawMessage` and tolerates both a
+  string (passing) and an object (`exit_code` checked, forward-compat).
 - A **failing** tool call (both a thrown error and a clean non-zero `exit 3`) emits
-  **no `PostToolUse` at all** — only `PreToolUse` then `Stop`. So command-failure
-  sensing via `PostToolUse` does not work on codex as modelled; the `codex` row's
-  `PostToolFailureSensor` capability needs revisiting.
+  **no `PostToolUse` at all** — only `PreToolUse` then `Stop`. **Resolved:** the
+  `codex` row's `PostToolFailureSensor` was set to **no**, and the `fail_pass_nudge`
+  scenario is not applicable to codex. (Claude Code was later found to share this
+  exact behavior — see the Claude section below — and was flipped to `no` too.)
 
 **Automated codex live test (`TestLive/codex`).** Because each `TestLive` run
 uses a fresh, untrusted temp repo, codex's subtest can't fire there. Instead it is
@@ -191,10 +193,18 @@ depends on this wire shape.
 hooks load from `.github/hooks/*.json`; each hook entry must carry **both** a
 `bash` key (Linux/macOS) and a `powershell` key (Windows); the supported events
 are `sessionStart`/`sessionEnd`/`userPromptSubmitted`/`preToolUse`/`postToolUse`/`errorOccurred`
-(plus `agentStop`) — there is **no** `postToolUseFailure` event, so failure is
-signalled by `errorOccurred` and/or an `error` field. Still needing a live
-payload (automated by the gated harness smoke test): the exact failure field
-name and whether a script-hook's `additionalContext` is model-visible.
+(plus `agentStop`) — there is **no** `postToolUseFailure` event.
+
+**Live failure shape — RESOLVED (copilot 1.0.62, 2026-06-15):** a failed shell
+command does **not** surface via `errorOccurred` or a structured `toolResult.exitCode`.
+Copilot fires `postToolUse` with `toolResult.resultType: "success"` (the TOOL ran)
+even when the command exited non-zero; the real exit status is the trailing
+`exit code N` inside `toolResult.textResultForLlm`, e.g.
+`"...<shellId: 0 completed with exit code 1>"`. The adapter now parses that exit
+code (keeping the `errorOccurred`/`error`/`toolResult.exitCode` branches for
+forward-compat). Pinned by `harness.TestCopilotExitCodeFromResultText` (unit) and
+`TestLiveCommandFailureSensed/copilot` (live). Still needing a live payload: only
+whether a script-hook's `additionalContext` is model-visible.
 
 ### Echo-hook JSON
 
@@ -256,9 +266,10 @@ grep -oE '"(error|exitCode)":[^,}]*' /tmp/tm-hook-post-*.json
 ```
 
 The adapter's `Parse` (`internal/harness/copilot.go`) treats a tool as failed
-when the event is `errorOccurred`, the `error` field is non-empty, or
-`toolResult.exitCode` is non-zero. Confirm which of these the live payload
-carries and prune the unused branches once known.
+when the event is `errorOccurred`, the `error` field is non-empty, a structured
+`toolResult.exitCode` is non-zero, or — the live shell shape — a non-zero
+`exit code N` is parsed from `toolResult.textResultForLlm`. The live payload
+carries the last of these; the others are kept for forward-compat.
 
 **(b) additionalContext honored by script hook**
 
@@ -420,13 +431,22 @@ injection. Adjust only `cursor.go`'s `Render` function and the installer note.
 for all four events. The captured payloads confirm: `hook_event_name` is
 `BeforeTool`/`AfterTool`/`BeforeAgent`/`AfterAgent`; the shell tool reports
 `tool_name: "run_shell_command"` with the command at `tool_input.command`; the
-`AfterTool` success payload carries `tool_response.llmContent`/`returnDisplay`
-(no `error` field, so the adapter reads `Failed=false`). **Schema gotcha:** each
-event must use the nested group shape — `[{ "matcher": <regex>, "hooks": [{
-"type": "command", "command": … }] }]`; a flat `[{ "command": … }]` entry is
-rejected at load ("Discarding invalid hook definition") and never fires. Tool
-events (`BeforeTool`/`AfterTool`) require a matcher; `BeforeAgent`/`AfterAgent`
-omit it. Still LIVE-PENDING: the failing-command `tool_response.error` shape and
+`AfterTool` success payload carries `tool_response.llmContent`/`returnDisplay`.
+**Schema gotcha:** each event must use the nested group shape — `[{ "matcher":
+<regex>, "hooks": [{ "type": "command", "command": … }] }]`; a flat `[{ "command":
+… }]` entry is rejected at load ("Discarding invalid hook definition") and never
+fires. Tool events (`BeforeTool`/`AfterTool`) require a matcher;
+`BeforeAgent`/`AfterAgent` omit it.
+
+**Live failure shape — RESOLVED (2026-06-15):** a failed shell command does **not**
+populate `tool_response.error` (that field is absent). Gemini *does* fire
+`AfterTool` on failure, and the exit status appears as an `Exit Code: N` line
+inside `tool_response.llmContent` (e.g. `"Output: ...\nExit Code: 1\nProcess Group
+PGID: 3172"`) — present only on a non-zero exit; a successful command's
+`llmContent` has no such line. The adapter now parses that line (keeping the
+`tool_response.error` branch for forward-compat). Pinned by
+`harness.TestGeminiExitCodeFromLlmContent` (unit) and
+`TestLiveCommandFailureSensed/gemini` (live). Still LIVE-PENDING: only
 `additionalContext` model-visibility.
 
 ### Echo-hook JSON
@@ -451,8 +471,9 @@ exits zero, e.g., "run `echo hello`". Confirm a `tm-hook-aftertool-*.json`
 file appears. Inspect its full structure.
 
 **Check B — failing command payload:** Ask Gemini to run a shell command that
-exits non-zero, e.g., "run `exit 9`". Confirm a second file appears with a
-non-empty `tool_response.error` field.
+exits non-zero, e.g., "run `exit 9`". Confirm a second file appears. Note the
+failure is **not** in `tool_response.error` (absent) — it is the `Exit Code: N`
+line inside `tool_response.llmContent`.
 
 **Check C — additionalContext model-visibility:** Create a probe hook script:
 
@@ -471,15 +492,16 @@ reaches the model.
 
 ### What to confirm
 
-**(a) tool_response.error on failure**
+**(a) failure signal in llmContent (not tool_response.error)**
 
 ```sh
-grep -o '"error":"[^"]*"' /tmp/tm-hook-aftertool-*.json
+grep -o 'Exit Code: [0-9]*' /tmp/tm-hook-aftertool-*.json
 ```
 
-Expected: non-empty `"error"` value in the failing-command file and empty (or
-absent) in the passing-command file. The adapter (`gemini.go`) sets
-`Failed = raw.ToolResponse.Error != ""`.
+Expected: an `Exit Code: N` line (N non-zero) inside `tool_response.llmContent`
+in the failing-command file, and no such line in the passing-command file. The
+adapter (`gemini.go`) parses that line; `tool_response.error` is absent on the
+live payload and is kept only as a forward-compat branch.
 
 **(b) Schema matches the pinned Gemini release tag**
 
@@ -519,6 +541,28 @@ pinned release exposes for model-visible context injection. Adjust only
 
 ---
 
+## Claude Code
+
+**Adapter:** `internal/harness/claude.go`
+**Installed config:** `.claude/settings.json` (written by `tm init`)
+
+Claude Code is the reference harness, but one wire-shape assumption proved wrong
+and is worth recording here.
+
+**Failure sensing — RESOLVED (CLI 2.1.177, 2026-06-15):** Claude Code fires
+`PostToolUse` only after a tool completes **successfully**. A failing Bash command
+emits `PreToolUse` then **no `PostToolUse` at all** (confirmed across repeated live
+runs: only the *successful* retry and the file `Write` produced `PostToolUse`).
+A successful Bash `tool_response` is `{stdout,stderr,interrupted,isImage,noOutputExpected}`
+— with **no `exit_code`**. So command-failure sensing cannot fire on Claude, exactly
+like Codex. The capability matrix sets claude `PostToolFailureSensor = no`, the
+`fail_pass_nudge` scenario is not applicable, and the adapter's `exit_code` check is
+retained only for forward-compat. Pinned by `harness.TestClaudeSuccessPostToolHasNoExitCode`.
+**Re-check by ~2026-08-15** alongside Codex: if a later version emits a `PostToolUse`
+on failure, re-enable the capability and restore the scenario.
+
+---
+
 ## Checklist
 
 A verifier who completes the recipes above should tick the items they confirmed
@@ -530,10 +574,10 @@ and report the results so the `VERIFY` annotations in the adapter source and
   "apply_patch"`). Confirmed via OpenAI hook docs; gated live smoke re-checks.
 - [x] **Codex exit-code path** — exit code is at `tool_response.exit_code` in the
   PostToolUse payload. Confirmed via OpenAI hook docs; gated live smoke re-checks.
-- [ ] **Copilot fail-signal source** — event set confirmed via GitHub docs
-  (`errorOccurred`, not `postToolUseFailure`). LIVE-PENDING: which of the
-  `errorOccurred` event / `error` field / `toolResult.exitCode` the payload
-  actually carries. Confirmed by inspecting captured payload files.
+- [x] **Copilot fail-signal source** — RESOLVED live (1.0.62): failure is the
+  trailing `exit code N` in `toolResult.textResultForLlm` (`resultType` is
+  `"success"` even on failure; no structured `exitCode`). Adapter parses it; pinned
+  by `TestCopilotExitCodeFromResultText` + `TestLiveCommandFailureSensed/copilot`.
 - [ ] **Copilot additionalContext honored** — a `postToolUse` script hook's
   `{"additionalContext":"..."}` stdout reaches the agent's context window.
   Confirmed by finding the probe string `TM-PROBE-12345` in the agent transcript.
@@ -547,8 +591,13 @@ and report the results so the `VERIFY` annotations in the adapter source and
 - [x] **Gemini hook schema + firing** — live `gemini -p --yolo` payloads confirm
   the nested group config shape is required, hooks fire for all four events,
   `tool_name: "run_shell_command"`, and the command sits at `tool_input.command`
-  as `gemini.go` expects. LIVE-PENDING only: the failing-command
-  `tool_response.error` shape (success payload has no `error` field).
+  as `gemini.go` expects.
+- [x] **Gemini fail-signal source** — RESOLVED live: failure is the `Exit Code: N`
+  line in `tool_response.llmContent` (`tool_response.error` is absent). Adapter
+  parses it; pinned by `TestGeminiExitCodeFromLlmContent` +
+  `TestLiveCommandFailureSensed/gemini`.
+- [x] **Claude/Codex failure sensing** — RESOLVED live: both fire `PostToolUse` on
+  success only, so `PostToolFailureSensor = no` for both. Re-check by ~2026-08-15.
 - [ ] **Gemini additionalContext model-visibility** — `hookSpecificOutput.additionalContext`
   in the adapter's `Render` output reaches the model's context window (not
   user-only). Confirmed by finding probe string `TM-PROBE-GEMINI-12345` in the
