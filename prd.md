@@ -475,6 +475,17 @@ Per-harness wire shapes (v1 ships Claude Code, Codex, Copilot, Cursor, and Gemin
 
 Codex hook discovery (`<repo>/.codex/hooks.json`, wrapped schema), `apply_patch` coverage, and the `tool_response.exit_code` path are confirmed against OpenAI's published hook docs — `apply_patch` is the file-edit tool (a matcher may also name `Edit`/`Write`, but the hook input always reports `tool_name: "apply_patch"`). Copilot's hook location (`.github/hooks/*.json`), the required `bash`+`powershell` command keys, and the event set (`errorOccurred`, not `postToolUseFailure`) are confirmed against GitHub's docs. Cursor's field names are confirmed against live `cursor-agent` payloads (cursor 2026.06.12): `afterShellExecution` carries top-level `command` + `output` with **no exit code** (it fires for both passing and failing commands), while a failed shell command's failure surfaces via a separate `postToolUseFailure` event whose command is nested at `tool_input.command` (with `tool_name`/`error_message`/`failure_type`); a non-shell failure (e.g. a failed `Read`) carries `tool_input.file_path` and no command, so it is not a command outcome. The headless `cursor-agent` CLI does **not** fire the `stop` or `beforeSubmitPrompt` hooks, so Cursor's nudge (Stop) and prompt signals are exercised only in the IDE or via replayed fixtures — not by live capture. The remaining live-payload checks — Copilot's exact failure field and `additionalContext` model-visibility, and Gemini's pinned-tag schema and `additionalContext` visibility — are pinned by the harness test suite (fixtures plus build-tag-gated live smoke tests; recipes in `docs/verification/cross-harness.md`).
 
+The scenario-capability matrix below is the authoritative source for which E2E scenarios apply to each harness. The harness E2E suite parses this exact fenced block and fails if a descriptor disagrees (see e2e/harness/conformance_test.go).
+
+```capability-matrix
+harness | PreToolBlock | PostToolFailureSensor | StopNudge | PromptSubmit | AdvisoryInjection
+claude  | yes          | yes                   | yes       | yes          | no
+codex   | yes          | yes                   | yes       | yes          | yes
+copilot | yes          | yes                   | yes       | yes          | yes
+cursor  | yes          | yes                   | yes       | yes          | yes
+gemini  | yes          | yes                   | yes       | yes          | yes
+```
+
 ## 11. Retrieval
 
 V1 is precision-first, lexical only. No embeddings.
