@@ -203,8 +203,13 @@ even when the command exited non-zero; the real exit status is the trailing
 `"...<shellId: 0 completed with exit code 1>"`. The adapter now parses that exit
 code (keeping the `errorOccurred`/`error`/`toolResult.exitCode` branches for
 forward-compat). Pinned by `harness.TestCopilotExitCodeFromResultText` (unit) and
-`TestLiveCommandFailureSensed/copilot` (live). Still needing a live payload: only
-whether a script-hook's `additionalContext` is model-visible.
+`TestLiveCommandFailureSensed/copilot` (live).
+
+**additionalContext model-visibility — VERIFIED (2026-06-16):** a `postToolUse`
+hook's `additionalContext` reaches the model. Informational advisory content (tm's
+real shape) is surfaced and trusted; an imperative instruction is flagged as a
+prompt-injection attempt and declined — so keep injected advisory content
+descriptive. Nothing left live-pending for Copilot.
 
 ### Echo-hook JSON
 
@@ -446,8 +451,11 @@ PGID: 3172"`) — present only on a non-zero exit; a successful command's
 `llmContent` has no such line. The adapter now parses that line (keeping the
 `tool_response.error` branch for forward-compat). Pinned by
 `harness.TestGeminiExitCodeFromLlmContent` (unit) and
-`TestLiveCommandFailureSensed/gemini` (live). Still LIVE-PENDING: only
-`additionalContext` model-visibility.
+`TestLiveCommandFailureSensed/gemini` (live).
+
+**additionalContext model-visibility — VERIFIED (2026-06-16):** the model echoed
+the injected `hookSpecificOutput.additionalContext` reference code in its visible
+reply (no injection-suspicion). Nothing left live-pending for Gemini.
 
 ### Echo-hook JSON
 
@@ -578,9 +586,13 @@ and report the results so the `VERIFY` annotations in the adapter source and
   trailing `exit code N` in `toolResult.textResultForLlm` (`resultType` is
   `"success"` even on failure; no structured `exitCode`). Adapter parses it; pinned
   by `TestCopilotExitCodeFromResultText` + `TestLiveCommandFailureSensed/copilot`.
-- [ ] **Copilot additionalContext honored** — a `postToolUse` script hook's
-  `{"additionalContext":"..."}` stdout reaches the agent's context window.
-  Confirmed by finding the probe string `TM-PROBE-12345` in the agent transcript.
+- [x] **Copilot additionalContext honored** — VERIFIED live (2026-06-16): a
+  `postToolUse` script hook's `{"additionalContext":"..."}` reaches the model. With
+  **informational** content (tm's real shape — naming a relevant memory) the model
+  surfaces and trusts it; with an **imperative** instruction it flags the hook
+  side-channel as a prompt-injection attempt and declines. Keep advisory content
+  descriptive, not commanding. Verified by one-time probe (live model behavior is
+  non-deterministic — not a CI gate).
 - [ ] **Cursor field names** — `afterShellExecution` and `postToolUseFailure`
   payloads carry `hook_event_name` (snake_case) and `command` (snake_case) as
   the adapter expects. Confirmed by grepping captured payload files.
@@ -598,7 +610,7 @@ and report the results so the `VERIFY` annotations in the adapter source and
   `TestLiveCommandFailureSensed/gemini`.
 - [x] **Claude/Codex failure sensing** — RESOLVED live: both fire `PostToolUse` on
   success only, so `PostToolFailureSensor = no` for both. Re-check by ~2026-08-15.
-- [ ] **Gemini additionalContext model-visibility** — `hookSpecificOutput.additionalContext`
-  in the adapter's `Render` output reaches the model's context window (not
-  user-only). Confirmed by finding probe string `TM-PROBE-GEMINI-12345` in the
-  agent transcript.
+- [x] **Gemini additionalContext model-visibility** — VERIFIED live (2026-06-16):
+  `hookSpecificOutput.additionalContext` reaches the model (it echoed the injected
+  reference code in its visible reply, no injection-suspicion). Verified by
+  one-time probe (live model behavior is non-deterministic — not a CI gate).
