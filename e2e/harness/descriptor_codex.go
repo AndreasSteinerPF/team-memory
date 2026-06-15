@@ -6,7 +6,12 @@ type codexDescriptor struct{}
 
 func (codexDescriptor) Name() string { return "codex" }
 func (codexDescriptor) Capabilities() CapabilitySet {
-	return NewCapabilitySet(CapPreToolBlock, CapPostToolFailureSensor, CapStopNudge, CapPromptSubmit, CapAdvisoryInjection)
+	// No CapPostToolFailureSensor: codex emits no PostToolUse on a failed tool
+	// call (verified headless AND interactive, CLI 0.139.0), so command-failure
+	// sensing cannot fire — see prd.md §10.6. The adapter still parses an
+	// exit_code object if one ever arrives (forward-compat), but the harness does
+	// not deliver one, so the end-to-end capability is absent.
+	return NewCapabilitySet(CapPreToolBlock, CapStopNudge, CapPromptSubmit, CapAdvisoryInjection)
 }
 func (codexDescriptor) FixtureDir() string { return "testdata/codex" }
 
