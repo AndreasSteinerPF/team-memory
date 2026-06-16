@@ -59,9 +59,6 @@ func BuildContext(memories []model.Memory, allObs []model.Observation, p policy.
 	// multiple supersede observations name the same B, the latest substantiated
 	// one wins (matches §8.5's "latest applicable adjustment wins" intuition).
 	for _, o := range sortedByTime(supersedes) {
-		if o.Kind != model.KindSupersede {
-			continue
-		}
 		if o.Supersedes == "" || o.Supersedes == o.Target {
 			continue
 		}

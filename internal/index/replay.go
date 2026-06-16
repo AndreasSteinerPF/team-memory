@@ -85,10 +85,6 @@ func (idx *Index) Update() error {
 	if err != nil {
 		return err
 	}
-	mems, err := idx.src.Memories()
-	if err != nil {
-		return err
-	}
 	byID := make(map[string]model.Observation, len(obs))
 	for _, o := range obs {
 		byID[o.ID] = o
@@ -100,7 +96,36 @@ func (idx *Index) Update() error {
 	if err != nil {
 		return err
 	}
-	ctx := derive.BuildContext(mems, obs, pol)
+
+	// Cross-memory: a supersede observation, or anything on its target that
+	// might substantiate it, can change the obsolete memory's derived state.
+	// Skip the full Memories() load when no supersede observations exist.
+	var ctx derive.Context
+	hasSupersede := false
+	for _, o := range obs {
+		if o.Kind == model.KindSupersede {
+			hasSupersede = true
+			break
+		}
+	}
+	if hasSupersede {
+		mems, err := idx.src.Memories()
+		if err != nil {
+			return err
+		}
+		ctx = derive.BuildContext(mems, obs, pol)
+		// Fan out: when A is already in `affected` and a supersede observation
+		// names B as obsolete via A, B must be re-derived too (substantiation
+		// can flip B from active to superseded, or back).
+		for _, o := range obs {
+			if o.Kind != model.KindSupersede || o.Supersedes == "" {
+				continue
+			}
+			if _, ok := affected[o.Target]; ok {
+				affected[o.Supersedes] = struct{}{}
+			}
+		}
+	}
 
 	tx, err := idx.db.Begin()
 	if err != nil {
