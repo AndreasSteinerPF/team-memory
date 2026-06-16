@@ -170,6 +170,8 @@ func TestDriftMissingFile(t *testing.T) {
 }
 
 func TestOutputCaps(t *testing.T) {
+	// Active is capped at max_results (5); provisional is capped at
+	// max_provisional (2); the two budgets are independent (prd.md §11.3, §11.4).
 	var rows []index.IndexedMemory
 	for _, id := range []string{"a1", "a2", "a3", "a4", "a5", "a6"} {
 		rows = append(rows, mem(id, model.StatusActive, []string{"billing/**"}))
@@ -180,26 +182,34 @@ func TestOutputCaps(t *testing.T) {
 	fi := &fakeIndex{rows: rows}
 	e := New(fi, nil, policy.Default()) // max_results 5, max_provisional 2
 	got, _ := e.Retrieve(Query{Paths: []string{"billing/x.go"}})
-	if len(got) != 5 {
-		t.Fatalf("got %d results, want max_results=5", len(got))
-	}
-	for _, r := range got { // active fills the cap first ⇒ no provisional shown
-		if r.Provisional {
-			t.Fatalf("provisional %s should not appear when active fills the cap", r.Memory.ID)
-		}
-	}
-
-	// With fewer active, provisional fills remaining slots up to max_provisional.
-	fi.rows = append(rows[:3], rows[6:]...) // a1..a3 active + p1..p3 provisional
-	got, _ = e.Retrieve(Query{Paths: []string{"billing/x.go"}})
-	nProv := 0
+	var nActive, nProv int
 	for _, r := range got {
 		if r.Provisional {
 			nProv++
+		} else {
+			nActive++
 		}
 	}
-	if len(got) != 5 || nProv != 2 {
-		t.Fatalf("got %d results (%d provisional), want 5 total with 2 provisional", len(got), nProv)
+	// 6 active are available but capped at 5; 3 provisional available but capped at 2.
+	if nActive != 5 || nProv != 2 || len(got) != 7 {
+		t.Fatalf("got %d results (%d active, %d provisional), want 7 (5 active + 2 provisional)",
+			len(got), nActive, nProv)
+	}
+
+	// With fewer active, active count drops but provisional cap is unchanged.
+	fi.rows = append(rows[:3], rows[6:]...) // a1..a3 active + p1..p3 provisional
+	got, _ = e.Retrieve(Query{Paths: []string{"billing/x.go"}})
+	nActive, nProv = 0, 0
+	for _, r := range got {
+		if r.Provisional {
+			nProv++
+		} else {
+			nActive++
+		}
+	}
+	if nActive != 3 || nProv != 2 || len(got) != 5 {
+		t.Fatalf("got %d results (%d active, %d provisional), want 5 (3 active + 2 provisional)",
+			len(got), nActive, nProv)
 	}
 }
 
@@ -222,6 +232,56 @@ func TestRetrieveCommandChannelSurfacesProvisional(t *testing.T) {
 	}
 	if !res[0].Provisional || res[0].Caution == "" {
 		t.Error("command match is structural — provisional memory must surface caution-framed")
+	}
+}
+
+func TestRetrievalSurfacesProvisionalInAdditionToActive(t *testing.T) {
+	// 6 active + 3 provisional candidates, all matching scope.
+	// Expect: 5 active + 2 provisional = 7 results total (prd.md §11.3, §11.4).
+	var rows []index.IndexedMemory
+	for _, id := range []string{"a1", "a2", "a3", "a4", "a5", "a6"} {
+		rows = append(rows, mem(id, model.StatusActive, []string{"billing/**"}))
+	}
+	for _, id := range []string{"p1", "p2", "p3"} {
+		rows = append(rows, mem(id, model.StatusProvisional, []string{"billing/**"}))
+	}
+	fi := &fakeIndex{rows: rows}
+	e := New(fi, nil, policy.Default())
+	res, err := e.Retrieve(Query{Paths: []string{"billing/x.go"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var active, prov int
+	for _, r := range res {
+		if r.Provisional {
+			prov++
+		} else {
+			active++
+		}
+	}
+	if active != 5 || prov != 2 {
+		t.Fatalf("got %d active + %d provisional, want 5 + 2", active, prov)
+	}
+}
+
+func TestRetrievalExcludesDuplicateAndSuperseded(t *testing.T) {
+	// 1 active + 1 duplicate + 1 superseded, all matching scope.
+	// Expect: only the active result (prd.md §8.2 exclusion).
+	fi := &fakeIndex{rows: []index.IndexedMemory{
+		mem("ok", model.StatusActive, []string{"billing/**"}),
+		mem("dup", model.StatusDuplicate, []string{"billing/**"}),
+		mem("sup", model.StatusSuperseded, []string{"billing/**"}),
+	}}
+	e := New(fi, nil, policy.Default())
+	res, err := e.Retrieve(Query{Paths: []string{"billing/x.go"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res) != 1 {
+		t.Fatalf("got %d results, want 1 (duplicate/superseded excluded)", len(res))
+	}
+	if res[0].Memory.ID != "ok" {
+		t.Fatalf("got %s, want ok", res[0].Memory.ID)
 	}
 }
 

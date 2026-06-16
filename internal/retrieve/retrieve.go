@@ -121,7 +121,8 @@ func (e *Engine) Retrieve(q Query) ([]Result, error) {
 
 	var active, prov []candidate
 	for _, m := range all {
-		if m.Status == model.StatusStale || m.Status == model.StatusRejected {
+		switch m.Status {
+		case model.StatusStale, model.StatusRejected, model.StatusDuplicate, model.StatusSuperseded:
 			continue // excluded from retrieval (prd.md §8.2)
 		}
 		spec, scopeMatch := bestSpecificity(m.EffectiveScope, q.Paths)
@@ -198,8 +199,11 @@ func (e *Engine) annotateDrift(cs []candidate) {
 	}
 }
 
-// cap fills active results first, then provisional up to max_provisional, all
-// within max_results (prd.md §11.3, §11.4).
+// cap surfaces active and provisional candidates with separate budgets
+// (prd.md §11.3, §11.4): up to max_results active, plus up to max_provisional
+// provisional, total at most max_results + max_provisional. Provisional is
+// surfaced *in addition to* active so well-instrumented areas don't starve the
+// validation flywheel.
 func (e *Engine) cap(active, prov []candidate) []Result {
 	maxResults := e.pol.Retrieval.MaxResults
 	maxProv := e.pol.Retrieval.MaxProvisional
@@ -211,13 +215,8 @@ func (e *Engine) cap(active, prov []candidate) []Result {
 		}
 		out = append(out, toResult(c))
 	}
-	slots := maxProv
-	if rem := maxResults - len(out); rem < slots {
-		slots = rem
-	}
-	for i := 0; i < len(prov) && slots > 0; i++ {
+	for i := 0; i < len(prov) && i < maxProv; i++ {
 		out = append(out, toResult(prov[i]))
-		slots--
 	}
 	return out
 }
