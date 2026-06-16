@@ -1,0 +1,21 @@
+id: 01KV84H0XQTPVWVNR65PG1TD2A
+type: constraint
+origin: external
+title: Claude Code Stop hook rejects hookSpecificOutput — render plain text to stdout
+summary: 'Claude Code''s Stop hook JSON schema accepts only top-level fields (continue, suppressOutput, stopReason, decision, reason, systemMessage, terminalSequence, permissionDecision). hookSpecificOutput is valid for PreToolUse, PostToolUse, UserPromptSubmit, and PostToolBatch — but NOT Stop. A Stop hook that emits {"hookSpecificOutput":{...,"additionalContext":"..."}} fails validation: ''Hook JSON output validation failed — (root): Invalid input''.'
+guidance: When extending the claude harness adapter's Render() in internal/harness/claude.go (or adding new advisory channels for Claude Code Stop), emit plain text to stdout for advisory Decisions on Stop — Claude Code surfaces Stop-hook stdout directly. For a block Decision on Stop, use top-level {"decision":"block","reason":"..."} (the only block shape the schema accepts), accepting that it forces a continuation turn. Other event kinds (PreToolUse/PostToolUse/UserPromptSubmit) still use hookSpecificOutput.additionalContext.
+scope:
+    paths:
+        - internal/harness/claude.go
+        - internal/harness/claude_test.go
+        - e2e/harness/descriptor_claude.go
+evidence:
+    - type: test_failure
+      ref: 'Hook JSON output validation failed — (root): Invalid input (Claude Code CLI 2.1.x, 2026-06-16 live dogfooding session)'
+    - type: doc
+      ref: docs/verification/cross-harness.md#claude-code
+actor:
+    kind: agent
+    name: claude-code-dogfooding
+    session_id: dogfood-2026-06-16
+created_at: 2026-06-16T11:54:33.783451Z
