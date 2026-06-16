@@ -7,11 +7,12 @@ import "time"
 type MemoryType string
 
 const (
-	TypeFailedAttempt MemoryType = "failed_attempt"
-	TypeConstraint    MemoryType = "constraint"
-	TypeFragileArea   MemoryType = "fragile_area"
-	TypeStaleDoc      MemoryType = "stale_doc"
-	TypeDecision      MemoryType = "decision"
+	TypeFailedAttempt     MemoryType = "failed_attempt"
+	TypeConstraint        MemoryType = "constraint"
+	TypeFragileArea       MemoryType = "fragile_area"
+	TypeStaleDoc          MemoryType = "stale_doc"
+	TypeDecision          MemoryType = "decision"
+	TypeSuccessfulPattern MemoryType = "successful_pattern" // prd.md §5.2
 )
 
 type ConstraintOrigin string
@@ -24,12 +25,14 @@ const (
 type ObservationKind string
 
 const (
-	KindConfirm     ObservationKind = "confirm"
-	KindContradict  ObservationKind = "contradict"
-	KindAdjustScope ObservationKind = "adjust_scope"
-	KindMarkStale   ObservationKind = "mark_stale"
-	KindApprove     ObservationKind = "approve"
-	KindReject      ObservationKind = "reject"
+	KindConfirm       ObservationKind = "confirm"
+	KindContradict    ObservationKind = "contradict"
+	KindAdjustScope   ObservationKind = "adjust_scope"
+	KindMarkStale     ObservationKind = "mark_stale"
+	KindMarkDuplicate ObservationKind = "mark_duplicate" // prd.md §5.3
+	KindSupersede     ObservationKind = "supersede"      // prd.md §5.3
+	KindApprove       ObservationKind = "approve"
+	KindReject        ObservationKind = "reject"
 )
 
 type ActorKind string
@@ -72,6 +75,8 @@ const (
 	StatusActive      Status = "active"
 	StatusContested   Status = "contested"
 	StatusStale       Status = "stale"
+	StatusDuplicate   Status = "duplicate"   // prd.md §8.2
+	StatusSuperseded  Status = "superseded"  // prd.md §8.2
 	StatusRejected    Status = "rejected"
 )
 
@@ -136,6 +141,8 @@ type Observation struct {
 	Evidence       []Evidence      `yaml:"evidence,omitempty"`
 	CodeContext    *CodeContext    `yaml:"code_context,omitempty"`
 	SuggestedScope *Scope          `yaml:"suggested_scope,omitempty"` // kind=adjust_scope
+	CanonicalID    string          `yaml:"canonical_id,omitempty"`    // kind=mark_duplicate (prd.md §9.2)
+	Supersedes     string          `yaml:"supersedes,omitempty"`      // kind=supersede (prd.md §9.2)
 	SetEnforcement Enforcement     `yaml:"set_enforcement,omitempty"` // kind=approve
 	SetConfidence  Confidence      `yaml:"set_confidence,omitempty"`  // kind=approve
 	Actor          Actor           `yaml:"actor"`

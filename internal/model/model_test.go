@@ -55,3 +55,28 @@ func TestObservationCarriesKindFields(t *testing.T) {
 		t.Fatalf("suggested_scope lost: %+v", out)
 	}
 }
+
+func TestNewConstantsExist(t *testing.T) {
+	if TypeSuccessfulPattern != "successful_pattern" {
+		t.Fatalf("TypeSuccessfulPattern wrong: %q", TypeSuccessfulPattern)
+	}
+	if KindMarkDuplicate != "mark_duplicate" {
+		t.Fatalf("KindMarkDuplicate wrong: %q", KindMarkDuplicate)
+	}
+	if KindSupersede != "supersede" {
+		t.Fatalf("KindSupersede wrong: %q", KindSupersede)
+	}
+	if StatusDuplicate != "duplicate" {
+		t.Fatalf("StatusDuplicate wrong: %q", StatusDuplicate)
+	}
+	if StatusSuperseded != "superseded" {
+		t.Fatalf("StatusSuperseded wrong: %q", StatusSuperseded)
+	}
+}
+
+func TestObservationHasCrossMemoryFields(t *testing.T) {
+	o := Observation{CanonicalID: "abc", Supersedes: "def"}
+	if o.CanonicalID != "abc" || o.Supersedes != "def" {
+		t.Fatal("CanonicalID/Supersedes fields not present or not assignable")
+	}
+}
