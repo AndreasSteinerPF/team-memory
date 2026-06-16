@@ -1,0 +1,41 @@
+memory:
+  id: m1
+  type: decision
+  title: Stale wins over duplicate in the precedence ladder
+  scope:
+    paths: ["docs/**"]
+  code_context:
+    branch: feature/invoice-state
+  actor:
+    kind: agent
+    name: claude-code
+    session_id: session_123
+  created_at: "2026-06-15T10:00:00Z"
+observations:
+  - id: o1
+    target: m1
+    kind: mark_stale
+    code_context:
+      branch: feature/revenue-reporting
+    actor:
+      kind: agent
+      name: codex
+      session_id: session_456
+    created_at: "2026-06-15T11:00:00Z"
+  - id: o2
+    target: m1
+    kind: mark_duplicate
+    canonical_id: m_canon
+    code_context:
+      branch: feature/revenue-reporting
+    actor:
+      kind: agent
+      name: codex
+      session_id: session_789
+    created_at: "2026-06-15T11:20:00Z"
+expected:
+  status: stale
+  risk: low
+  confidence: low
+  enforcement: hint
+  effective_scope: ["docs/**"]

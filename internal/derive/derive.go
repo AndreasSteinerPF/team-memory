@@ -62,9 +62,31 @@ func buildReason(status model.Status, indConf int, obs []model.Observation) stri
 		return "an unresolved contradiction is on record"
 	case model.StatusStale:
 		return "marked stale and not since reconfirmed"
+	case model.StatusDuplicate:
+		if id := latestCanonicalID(obs); id != "" {
+			return "duplicate of " + id
+		}
+		return "marked as a duplicate"
 	case model.StatusRejected:
 		return "rejected by a maintainer"
 	default:
 		return "awaiting independent confirmation"
 	}
+}
+
+// latestCanonicalID returns the canonical_id from the most recent
+// mark_duplicate observation, or "" if none.
+func latestCanonicalID(obs []model.Observation) string {
+	var latest model.Observation
+	found := false
+	for _, o := range obs {
+		if o.Kind != model.KindMarkDuplicate {
+			continue
+		}
+		if !found || o.CreatedAt.After(latest.CreatedAt) {
+			latest = o
+			found = true
+		}
+	}
+	return latest.CanonicalID
 }

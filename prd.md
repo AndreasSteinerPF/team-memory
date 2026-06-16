@@ -268,12 +268,14 @@ Evaluated in precedence order:
 
 1. **rejected** — a human `reject` observation exists. Terminal.
 2. **stale** — a `mark_stale` observation exists with no newer `confirm` or `approve`. Excluded from retrieval; listed by `tm list --stale`.
-3. **contested** — a `contradict` observation exists with no newer `confirm` or `approve`. Dropped from active retrieval; surfaced only as caution (provisional framing), flagged for human attention in `tm status`.
-4. **active** — per the risk tier:
+3. **duplicate** — a `mark_duplicate` observation on this memory has no newer `confirm` or `approve`. Excluded from retrieval; listed by `tm list --duplicate`. The observation carries `canonical_id` pointing at the kept memory; the canonical's status is unaffected.
+4. **superseded** — see §8.5 cross-memory substantiation.
+5. **contested** — a `contradict` observation exists with no newer `confirm` or `approve`. Dropped from active retrieval; surfaced only as caution (provisional framing), flagged for human attention in `tm status`.
+6. **active** — per the risk tier:
    * `low`: active immediately on creation;
    * `medium` / `high`: active once ≥1 *independent* `confirm` exists, or a human `approve` exists;
    * `critical`: active once ≥2 *independent* `confirm`s exist, or a human `approve` exists.
-5. **provisional** — otherwise.
+7. **provisional** — otherwise.
 
 **Independence (default):** an observation is independent if its `actor.session_id` is present and differs from the memory's `actor.session_id`. The stricter `different_session_and_branch` mode additionally requires the observation's `code_context.branch` to differ from the memory's `code_context.branch`; if either branch is absent, this mode degrades to session-only.
 

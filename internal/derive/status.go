@@ -90,6 +90,8 @@ func computeStatus(m model.Memory, obs []model.Observation, risk model.Risk, p p
 		return model.StatusRejected, indConf
 	case unresolved(obs, model.KindMarkStale):
 		return model.StatusStale, indConf
+	case unresolved(obs, model.KindMarkDuplicate):
+		return model.StatusDuplicate, indConf
 	case unresolved(obs, model.KindContradict):
 		return model.StatusContested, indConf
 	case m.Type == model.TypeSuccessfulPattern && indConf == 0 && !existsHumanApprove(obs):

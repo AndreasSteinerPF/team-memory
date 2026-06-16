@@ -141,3 +141,50 @@ func TestSuccessfulPatternStaysProvisionalOnSameSessionConfirm(t *testing.T) {
 		t.Fatalf("successful_pattern after same-session confirm: got %q, want %q", got, model.StatusProvisional)
 	}
 }
+
+func TestMarkDuplicateAutoEffects(t *testing.T) {
+	m := model.Memory{ID: "M1", Type: model.TypeDecision,
+		Actor: model.Actor{Kind: model.ActorAgent, SessionID: "s1"}}
+	obs := []model.Observation{{
+		Kind:        model.KindMarkDuplicate,
+		Target:      "M1",
+		CanonicalID: "M_CANON",
+		Actor:       model.Actor{Kind: model.ActorAgent, SessionID: "s2"},
+		CreatedAt:   time.Unix(100, 0),
+	}}
+	got, _ := computeStatus(m, obs, model.RiskLow, policy.Default())
+	if got != model.StatusDuplicate {
+		t.Fatalf("mark_duplicate on M1: got %q, want %q", got, model.StatusDuplicate)
+	}
+}
+
+func TestMarkDuplicateReversedByLaterConfirm(t *testing.T) {
+	m := model.Memory{ID: "M1", Type: model.TypeDecision,
+		Actor: model.Actor{Kind: model.ActorAgent, SessionID: "s1"}}
+	obs := []model.Observation{
+		{Kind: model.KindMarkDuplicate, CanonicalID: "M_CANON",
+			Actor:     model.Actor{Kind: model.ActorAgent, SessionID: "s2"},
+			CreatedAt: time.Unix(100, 0)},
+		{Kind: model.KindConfirm,
+			Actor:     model.Actor{Kind: model.ActorAgent, SessionID: "s3"},
+			CreatedAt: time.Unix(200, 0)},
+	}
+	got, _ := computeStatus(m, obs, model.RiskLow, policy.Default())
+	if got == model.StatusDuplicate {
+		t.Fatal("later confirm should resolve the mark_duplicate (prd.md §8.2)")
+	}
+}
+
+func TestStalePrecedesOverDuplicate(t *testing.T) {
+	// Status precedence: rejected > stale > duplicate > superseded > contested > active > provisional
+	m := model.Memory{ID: "M1", Type: model.TypeDecision,
+		Actor: model.Actor{Kind: model.ActorAgent, SessionID: "s1"}}
+	obs := []model.Observation{
+		{Kind: model.KindMarkStale, Actor: model.Actor{Kind: model.ActorAgent, SessionID: "s2"}, CreatedAt: time.Unix(50, 0)},
+		{Kind: model.KindMarkDuplicate, CanonicalID: "X", Actor: model.Actor{Kind: model.ActorAgent, SessionID: "s3"}, CreatedAt: time.Unix(60, 0)},
+	}
+	got, _ := computeStatus(m, obs, model.RiskLow, policy.Default())
+	if got != model.StatusStale {
+		t.Fatalf("stale > duplicate precedence: got %q, want %q", got, model.StatusStale)
+	}
+}
