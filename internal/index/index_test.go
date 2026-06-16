@@ -205,6 +205,97 @@ func TestUpdateMatchesReplayAfterNewRecords(t *testing.T) {
 	}
 }
 
+// TestUpdateFansOutOnSupersedeSubstantiation pins the incremental fan-out
+// added in replay.go: when a confirm/approve substantiates a prior supersede
+// observation on A naming B, the incremental Update path must add B to the
+// affected set and re-derive its row, even though B's own observations did
+// not change. Without this, B would stay status=active in the materialized
+// table until the next full Reindex.
+func TestUpdateFansOutOnSupersedeSubstantiation(t *testing.T) {
+	l := newLedger(t)
+
+	idA, err := l.AppendMemory(model.Memory{
+		Type:  model.TypeDecision,
+		Title: "A canonical",
+		Scope: model.Scope{Paths: []string{"docs/**"}},
+		Actor: model.Actor{Kind: model.ActorAgent, Name: "a", SessionID: "s1"},
+	})
+	if err != nil {
+		t.Fatalf("append A: %v", err)
+	}
+	idB, err := l.AppendMemory(model.Memory{
+		Type:  model.TypeDecision,
+		Title: "B obsolete",
+		Scope: model.Scope{Paths: []string{"docs/**"}},
+		Actor: model.Actor{Kind: model.ActorAgent, Name: "a", SessionID: "s1"},
+	})
+	if err != nil {
+		t.Fatalf("append B: %v", err)
+	}
+
+	idx := openIndex(t, dbPath(t), l)
+
+	// File supersede on A naming B; not yet substantiated.
+	if _, err := l.AppendObservation(model.Observation{
+		Target:     idA,
+		Kind:       model.KindSupersede,
+		Supersedes: idB,
+		Summary:    "A replaces B",
+		Actor:      model.Actor{Kind: model.ActorAgent, Name: "a", SessionID: "s1"},
+	}); err != nil {
+		t.Fatalf("append supersede: %v", err)
+	}
+	if err := idx.Update(); err != nil {
+		t.Fatalf("update after supersede: %v", err)
+	}
+	rows, err := idx.All()
+	if err != nil {
+		t.Fatalf("all: %v", err)
+	}
+	for _, m := range rows {
+		if m.ID == idB && m.Status == model.StatusSuperseded {
+			t.Fatal("B should not be superseded before substantiation")
+		}
+	}
+
+	// Independent confirm on A substantiates the supersede in a separate
+	// Update window. The fan-out must add B to affected.
+	if _, err := l.AppendObservation(model.Observation{
+		Target:  idA,
+		Kind:    model.KindConfirm,
+		Summary: "I hit this elsewhere",
+		Actor:   model.Actor{Kind: model.ActorAgent, Name: "b", SessionID: "s2"},
+	}); err != nil {
+		t.Fatalf("append confirm: %v", err)
+	}
+	if err := idx.Update(); err != nil {
+		t.Fatalf("update after confirm: %v", err)
+	}
+
+	full := openIndex(t, dbPath(t), l) // independent full replay
+	gotInc, err := idx.All()
+	if err != nil {
+		t.Fatalf("all inc: %v", err)
+	}
+	gotFull, err := full.All()
+	if err != nil {
+		t.Fatalf("all full: %v", err)
+	}
+	if !reflect.DeepEqual(gotInc, gotFull) {
+		t.Fatalf("incremental != replay after fan-out:\n inc=%+v\nfull=%+v", gotInc, gotFull)
+	}
+
+	var bRow index.IndexedMemory
+	for _, m := range gotInc {
+		if m.ID == idB {
+			bRow = m
+		}
+	}
+	if bRow.Status != model.StatusSuperseded {
+		t.Fatalf("B status after fan-out = %q, want superseded", bRow.Status)
+	}
+}
+
 func TestUpdateIsNoOpWhenLedgerUnchanged(t *testing.T) {
 	l := newLedger(t)
 	if _, err := l.AppendMemory(model.Memory{
@@ -290,10 +381,11 @@ func randomMemory(rng *rand.Rand) model.Memory {
 	return m
 }
 
-func randomObservation(rng *rand.Rand, target string) model.Observation {
+func randomObservation(rng *rand.Rand, target string, memIDs []string) model.Observation {
 	kinds := []model.ObservationKind{
 		model.KindConfirm, model.KindContradict, model.KindAdjustScope,
-		model.KindMarkStale, model.KindApprove, model.KindReject,
+		model.KindMarkStale, model.KindMarkDuplicate, model.KindSupersede,
+		model.KindApprove, model.KindReject,
 	}
 	k := kinds[rng.Intn(len(kinds))]
 	o := model.Observation{
@@ -305,6 +397,21 @@ func randomObservation(rng *rand.Rand, target string) model.Observation {
 			SessionID: fmt.Sprintf("o%d", rng.Intn(100)),
 		},
 	}
+	// pickOtherMem returns a memID other than target, or "" if no such memory
+	// exists. A 1-in-4 chance returns a synthetic ID to exercise BuildContext's
+	// dangling-ref skip path.
+	pickOtherMem := func() string {
+		if rng.Intn(4) == 0 {
+			return fmt.Sprintf("MISS%022d", rng.Intn(1000))
+		}
+		for i := 0; i < len(memIDs); i++ {
+			id := memIDs[rng.Intn(len(memIDs))]
+			if id != target {
+				return id
+			}
+		}
+		return ""
+	}
 	switch k {
 	case model.KindApprove:
 		o.Actor.Kind = model.ActorHuman
@@ -313,6 +420,21 @@ func randomObservation(rng *rand.Rand, target string) model.Observation {
 		o.Actor.Kind = model.ActorHuman
 	case model.KindAdjustScope:
 		o.SuggestedScope = &model.Scope{Paths: []string{"newscope/**"}}
+	case model.KindMarkDuplicate:
+		other := pickOtherMem()
+		if other == "" {
+			// Fall back to a benign kind when no other memory exists yet.
+			o.Kind = model.KindConfirm
+		} else {
+			o.CanonicalID = other
+		}
+	case model.KindSupersede:
+		other := pickOtherMem()
+		if other == "" {
+			o.Kind = model.KindConfirm
+		} else {
+			o.Supersedes = other
+		}
 	}
 	return o
 }
@@ -337,7 +459,7 @@ func TestPropertyIndexEqualsReplay(t *testing.T) {
 					memIDs = append(memIDs, id)
 				} else {
 					target := memIDs[rng.Intn(len(memIDs))]
-					if _, err := l.AppendObservation(randomObservation(rng, target)); err != nil {
+					if _, err := l.AppendObservation(randomObservation(rng, target, memIDs)); err != nil {
 						t.Fatalf("append observation: %v", err)
 					}
 				}
