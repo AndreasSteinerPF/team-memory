@@ -1,45 +1,65 @@
 package cli
 
 import (
+	"encoding/json"
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 )
 
-// installGemini writes Gemini CLI settings (hooks + MCP) and ensures a
-// GEMINI.md TeamMemory section (prd.md §10.6). Gemini reads hooks and mcpServers
-// from .gemini/settings.json.
+// geminiHookSpecs are the hook entries tm installs into .gemini/settings.json.
+// Gemini's group shape — { "matcher": <m>, "hooks": [{type,command}] } — matches
+// claudeHookSpecs' shape, so countHookEntries/addHookEntry (plugin.go) handle it.
+// Tool events (BeforeTool/AfterTool) need a matcher (".*" fires for every tool);
+// the agent-lifecycle events (BeforeAgent/AfterAgent) take none. Confirmed against
+// live `gemini` payloads (hook_event_name BeforeTool/AfterTool, tool_name
+// run_shell_command). (prd.md §10.6)
+var geminiHookSpecs = []hookSpec{
+	{event: "BeforeTool", matcher: ".*", command: "tm check-action --hook --harness gemini"},
+	{event: "AfterTool", matcher: ".*", command: "tm signal --hook --harness gemini"},
+	{event: "BeforeAgent", matcher: "", command: "tm signal --hook --prompt --harness gemini"},
+	{event: "AfterAgent", matcher: "", command: "tm nudge --hook --harness gemini"},
+}
+
+// installGemini merges tm's hooks + MCP server into .gemini/settings.json
+// (merge-safe: existing servers, hooks, and other keys are preserved) and
+// ensures a GEMINI.md TeamMemory section (prd.md §10.6). Gemini reads hooks and
+// mcpServers from .gemini/settings.json.
 func installGemini(repoDir string) error {
 	gdir := filepath.Join(repoDir, ".gemini")
 	if err := os.MkdirAll(gdir, 0o755); err != nil {
 		return err
 	}
-	// Gemini requires each event to hold an array of GROUPS, where every group
-	// carries a nested "hooks" array of {type:"command", command:...}. A flat
-	// [{command:...}] entry is rejected at load ("Discarding invalid hook
-	// definition") and never fires. Tool events (BeforeTool/AfterTool) also need
-	// a matcher (regex compared against the tool name, e.g. run_shell_command);
-	// ".*" fires for every tool and the engine ignores non-actionable ones. The
-	// agent-lifecycle events (BeforeAgent/AfterAgent) take no matcher. Confirmed
-	// against live `gemini` payloads (hook_event_name BeforeTool/AfterTool,
-	// tool_name run_shell_command). (prd.md §10.6)
-	settings := `{
-  "mcpServers": { "teammemory": { "command": "tm", "args": ["mcp"] } },
-  "hooks": {
-    "BeforeTool":  [{ "matcher": ".*", "hooks": [{ "type": "command", "command": "tm check-action --hook --harness gemini" }] }],
-    "AfterTool":   [{ "matcher": ".*", "hooks": [{ "type": "command", "command": "tm signal --hook --harness gemini" }] }],
-    "BeforeAgent": [{ "hooks": [{ "type": "command", "command": "tm signal --hook --prompt --harness gemini" }] }],
-    "AfterAgent":  [{ "hooks": [{ "type": "command", "command": "tm nudge --hook --harness gemini" }] }]
-  }
-}
-`
-	// Unlike the other harnesses' MCP files, .gemini/settings.json is written
-	// wholesale (tm-owned): it carries both tm's hooks and mcpServers as one
-	// unit, so a re-run overwrites any hand-added entries here. Merging it is a
-	// deliberate non-goal (see prd.md §10.6).
-	if err := os.WriteFile(filepath.Join(gdir, "settings.json"), []byte(settings), 0o644); err != nil {
+	settingsPath := filepath.Join(gdir, "settings.json")
+	var settings map[string]any
+	data, err := os.ReadFile(settingsPath)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
+	if err == nil {
+		if err := json.Unmarshal(data, &settings); err != nil {
+			return err
+		}
+	}
+	if settings == nil {
+		settings = map[string]any{}
+	}
+	for _, spec := range geminiHookSpecs {
+		if countHookEntries(settings, spec) == 0 {
+			addHookEntry(settings, spec)
+		}
+	}
+	mergeMCPServer(settings, map[string]any{"command": "tm", "args": []string{"mcp"}})
+	out, err := json.MarshalIndent(settings, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(settingsPath, append(out, '\n'), 0o644); err != nil {
+		return err
+	}
+
 	section := `
 
 # TeamMemory

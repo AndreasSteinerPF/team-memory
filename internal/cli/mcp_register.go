@@ -9,6 +9,23 @@ import (
 	"strings"
 )
 
+// mergeMCPServer adds the teammemory entry to cfg["mcpServers"] when absent,
+// creating the sub-map if needed. Returns true if it modified cfg. Used by both
+// ensureMCPServerJSON (standalone MCP files) and installGemini (combined
+// settings.json).
+func mergeMCPServer(cfg map[string]any, entry map[string]any) bool {
+	servers, _ := cfg["mcpServers"].(map[string]any)
+	if servers == nil {
+		servers = map[string]any{}
+		cfg["mcpServers"] = servers
+	}
+	if _, ok := servers["teammemory"]; ok {
+		return false
+	}
+	servers["teammemory"] = entry
+	return true
+}
+
 // ensureMCPServerJSON registers the teammemory MCP server in a JSON config file
 // (Claude's .mcp.json, Copilot's mcp-config.json, Cursor's mcp.json). It merges:
 // existing servers and other top-level keys are preserved. Returns (true, nil)
@@ -28,15 +45,9 @@ func ensureMCPServerJSON(path string, entry map[string]any) (bool, error) {
 	if cfg == nil {
 		cfg = map[string]any{}
 	}
-	servers, _ := cfg["mcpServers"].(map[string]any)
-	if servers == nil {
-		servers = map[string]any{}
-		cfg["mcpServers"] = servers
-	}
-	if _, ok := servers["teammemory"]; ok {
+	if !mergeMCPServer(cfg, entry) {
 		return false, nil
 	}
-	servers["teammemory"] = entry
 
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return false, err
