@@ -176,3 +176,61 @@ func TestMarkDuplicateCycleWarnsButDoesNotBlock(t *testing.T) {
 		t.Fatalf("B should appear in --duplicate after cycle, got: %s", out)
 	}
 }
+
+// TestMarkDuplicateThreeHopCycleWarns pins multi-hop cycle detection. The
+// one-hop detector caught A↔B; the chain walker must also catch A→B→C→A.
+// Without it, three memories silently disappear from default retrieval with
+// no warning.
+func TestMarkDuplicateThreeHopCycleWarns(t *testing.T) {
+	dir := newGitRepo(t)
+	runTM(t, dir, "", "init")
+
+	propose := func(title string) string {
+		out, _, code := runTM(t, dir, "",
+			"propose", "decision",
+			"--title", title,
+			"--scope", "docs/**",
+			"--session", "s1",
+		)
+		if code != 0 {
+			t.Fatalf("propose %s exit %d: %s", title, code, out)
+		}
+		return parseID(t, out)
+	}
+	idA := propose("A")
+	idB := propose("B")
+	idC := propose("C")
+
+	// A→B and B→C: no cycle yet, no warning.
+	for _, leg := range []struct{ from, to string }{
+		{idA, idB},
+		{idB, idC},
+	} {
+		_, errb, code := runTM(t, dir, "",
+			"observe", leg.from, "mark_duplicate",
+			"--canonical-id", leg.to,
+			"--summary", "chain leg",
+			"--session", "s1",
+		)
+		if code != 0 {
+			t.Fatalf("observe %s->%s exit %d: %s", leg.from, leg.to, code, errb)
+		}
+		if strings.Contains(errb, "duplicate cycle") {
+			t.Fatalf("chain leg %s->%s should not warn yet, got: %s", leg.from, leg.to, errb)
+		}
+	}
+
+	// C→A: closes the 3-cycle. Must warn but not block.
+	_, errb, code := runTM(t, dir, "",
+		"observe", idC, "mark_duplicate",
+		"--canonical-id", idA,
+		"--summary", "closing leg",
+		"--session", "s2",
+	)
+	if code != 0 {
+		t.Fatalf("observe C->A (closing 3-cycle) should not block, exit %d: %s", code, errb)
+	}
+	if !strings.Contains(errb, "duplicate cycle") {
+		t.Fatalf("3-cycle closing leg must warn on stderr, got: %s", errb)
+	}
+}

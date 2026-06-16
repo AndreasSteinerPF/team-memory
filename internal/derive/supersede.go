@@ -79,27 +79,56 @@ func BuildContext(memories []model.Memory, allObs []model.Observation, p policy.
 	return ctx
 }
 
-// HasCycleBackTo reports whether b has an observation of `kind`
-// (mark_duplicate or supersede) whose cross-memory reference points back at
-// a. Used by the CLI and MCP observe surfaces to warn (but not block) when
-// filing an observation would close a one-hop cycle (prd.md §8.2). The
-// resolved/unresolved state of the prior observation is intentionally
-// ignored: a cycle is still worth surfacing even if the earlier link was
-// later confirmed.
+// HasCycleBackTo reports whether walking the canonical/supersedes chain from
+// b would reach a transitively. When the caller is about to file
+// "a mark_duplicate --canonical-id=b" or "a supersede --supersedes=b" (i.e.
+// adding the arc a→b), a true return means the new observation would close
+// a cycle of any length (a → b → ... → a). Used by the CLI and MCP observe
+// surfaces to warn (but not block) on cycles (prd.md §8.2).
+//
+// The resolved/unresolved state of intermediate observations is intentionally
+// ignored — a cycle is still worth surfacing even if some legs were later
+// confirmed.
+//
+// For mark_duplicate, the chain walks outgoing canonical_id arcs: node X's
+// successor is the canonical_id of the latest mark_duplicate observation
+// whose target is X. For supersede, the chain walks the "is superseded by"
+// direction: node X's successor is the target of any supersede observation
+// whose `supersedes` field names X (i.e. the memory that supersedes X).
 func HasCycleBackTo(obs []model.Observation, a, b string, kind model.ObservationKind) bool {
-	for _, o := range obs {
-		if o.Target != b || o.Kind != kind {
-			continue
+	successors := func(node string) []string {
+		var next []string
+		for _, o := range obs {
+			if o.Kind != kind {
+				continue
+			}
+			switch kind {
+			case model.KindMarkDuplicate:
+				if o.Target == node && o.CanonicalID != "" {
+					next = append(next, o.CanonicalID)
+				}
+			case model.KindSupersede:
+				if o.Supersedes == node && o.Target != "" {
+					next = append(next, o.Target)
+				}
+			}
 		}
-		var ref string
-		switch kind {
-		case model.KindMarkDuplicate:
-			ref = o.CanonicalID
-		case model.KindSupersede:
-			ref = o.Supersedes
-		}
-		if ref == a {
-			return true
+		return next
+	}
+
+	visited := map[string]bool{b: true}
+	queue := []string{b}
+	for len(queue) > 0 {
+		node := queue[0]
+		queue = queue[1:]
+		for _, n := range successors(node) {
+			if n == a {
+				return true
+			}
+			if !visited[n] {
+				visited[n] = true
+				queue = append(queue, n)
+			}
 		}
 	}
 	return false

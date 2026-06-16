@@ -307,6 +307,8 @@ Evaluated in precedence order:
 
 **Supersession substantiation (cross-memory).** A `supersede` observation is filed on the new canonical A and names the obsolete memory B in its `supersedes` field. The relationship is **pending** until either (a) a human `approve` observation lands on A after the supersede observation, or (b) a later **independent** `confirm` observation lands on A. On substantiation, B transitions to status `superseded` (precedence allowing — `rejected`/`stale`/`duplicate` on B still win). The rule mirrors `adjust_scope`-broadening substantiation above; see `internal/derive/supersede.go` for the implementation. Pending supersede claims are visible in `tm show A` and `tm list --pending-supersede`.
 
+**Cross-memory cycle handling.** Both `mark_duplicate` and `supersede` create directed cross-memory links (B duplicates A; A supersedes B). The `tm observe` surfaces walk the existing canonical/supersedes chain at file time and **warn** (don't block) when a new observation would close a cycle of any length (A→B→A, A→B→C→A, etc.) — the operator may be deliberately consolidating, but should know they are about to hide every memory in the chain from default retrieval. The cycle warning is purely advisory; the observation is still appended, and derived state still computes (no infinite recursion — `BuildContext` walks each chain at most once via a visited set).
+
 ### 8.6 Anchor Drift (v1, cheap version)
 
 At `check_action` time, for each anchored path: does the path still exist, and has the file changed since the memory's anchored commit (`git log --oneline <commit>.. -- <path> | wc -l`)?
