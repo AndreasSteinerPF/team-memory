@@ -1,0 +1,56 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "command": "tm signal --hook",
+            "type": "command"
+          }
+        ],
+        "matcher": "Edit|Write|MultiEdit|Bash"
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "command": "tm check-action --hook",
+            "type": "command"
+          }
+        ],
+        "matcher": "Edit|Write|MultiEdit|Bash"
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "command": "tm brief",
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "command": "tm nudge --hook",
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "command": "tm signal --hook --prompt",
+            "type": "command"
+          }
+        ]
+      }
+    ]
+  }
+}

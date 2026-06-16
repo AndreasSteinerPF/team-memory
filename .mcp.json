@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "teammemory": {
+      "args": [
+        "mcp"
+      ],
+      "command": "tm"
+    }
+  }
+}
