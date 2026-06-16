@@ -231,17 +231,9 @@ Use for ad-hoc queries when you know what to look for by keyword. For edit-time 
 // --- tm_propose ---
 
 // proposeToolDescription is the tm_propose tool description (prd.md §10.3).
-// It is a named const so tests can assert its wording.
-const proposeToolDescription = `Record durable, future-action-relevant project judgment in TeamMemory. Call ONLY for:
-- Non-obvious failures: approaches tried and failed that a future agent would try again.
-- Hidden constraints: rules on how work must be done here that are not written down.
-- Fragile areas: paths where changes frequently break non-obvious things.
-- Stale docs: outdated or misleading documentation with a pointer to what supersedes it.
-- Undocumented decisions: choices that change future agent work and exist nowhere else.
-
-Do NOT call for: session state ("task in progress"), trivia, code facts derivable from the repo ("this function validates invoices"), things already in CLAUDE.md/AGENTS.md, or system/OS/host-specific facts (a flag that differs per OS, "python" vs "python3", path separators, local toolchain versions) — memories are team-shared and repo-scoped, so a machine-specific fact would be wrong for part of the team.
-
-Memories earn trust through independent confirmation — redundant proposals are noise. If a similar memory may already exist, use tm_search first.`
+// Sourced from internal/model so MCP, `tm brief`, and `tm export` share one
+// canonical guidance string. Kept as a named var so tests can assert wording.
+var proposeToolDescription = model.MemoryWorthyGuidance
 
 type proposeArgs struct {
 	Type     string   `json:"type" jsonschema:"Memory type: failed_attempt|constraint|fragile_area|stale_doc|decision"`

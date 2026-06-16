@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/AndreasSteinerPF/team-memory/internal/index"
+	"github.com/AndreasSteinerPF/team-memory/internal/model"
 )
 
 const (
@@ -29,7 +30,7 @@ func Instructions(flavor string) string {
 	} else {
 		b.WriteString("- Before editing files, call the `tm_check_action` MCP tool (or `tm check-action --path <file>`) with the paths you are about to change.\n")
 	}
-	b.WriteString("- When you discover durable project judgment — a non-obvious failure, a hidden constraint, a fragile area, a stale doc, or an undocumented decision — record it with `tm_propose`. Do not record session state, trivia, or facts derivable from the code.\n")
+	fmt.Fprintf(&b, "- When you discover durable project judgment — %s — record it with `tm_propose`. Do not record session state, trivia, or facts derivable from the code.\n", model.MemoryWorthyShortForm)
 	b.WriteString("- When your work bears on a memory shown to you, react with `tm_observe`: `confirm` with evidence, `contradict` with evidence, `adjust_scope`, or `mark_stale`.\n")
 	return b.String()
 }
