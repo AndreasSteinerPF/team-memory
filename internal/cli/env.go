@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/AndreasSteinerPF/team-memory/internal/acks"
 	"github.com/AndreasSteinerPF/team-memory/internal/git"
@@ -58,6 +59,18 @@ func openEnv(g *globalOpts) (*env, error) {
 	if data, perr := led.Policy(); perr == nil {
 		if p, lerr := policy.Load(data); lerr == nil {
 			pol = p
+		}
+	}
+	// Install a push-result recorder so every Sync (foreground or background)
+	// reflects its outcome in .git/tm/push_failure.json (spec §3.3 / prd.md §7.1).
+	if store, perr := git.OpenPushFailureStore(gitDir); perr == nil {
+		led.OnPushResult = func(remote, stderr string, err error) {
+			if err == nil {
+				_ = store.Clear()
+				return
+			}
+			kind := git.ClassifyPushStderr(stderr)
+			_ = store.Record(remote, kind, stderr, time.Now().UTC())
 		}
 	}
 	return &env{
