@@ -1,6 +1,7 @@
 package cli_test
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -37,5 +38,24 @@ func TestInstallGeminiPreservesExistingBrief(t *testing.T) {
 	}
 	if !strings.Contains(string(got), "# TeamMemory") {
 		t.Error("TeamMemory section not appended")
+	}
+}
+
+func TestInitWritesMCPJSON(t *testing.T) {
+	repo := initRepo(t) // default (claude) init
+	data, err := os.ReadFile(filepath.Join(repo, ".mcp.json"))
+	if err != nil {
+		t.Fatalf("read .mcp.json: %v", err)
+	}
+	var cfg struct {
+		MCPServers map[string]struct {
+			Command string `json:"command"`
+		} `json:"mcpServers"`
+	}
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if srv, ok := cfg.MCPServers["teammemory"]; !ok || srv.Command != "tm" {
+		t.Errorf("teammemory not registered in .mcp.json: %+v", cfg.MCPServers)
 	}
 }
