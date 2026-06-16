@@ -491,6 +491,48 @@ func TestAdjustScopeAcceptsCommands(t *testing.T) {
 	}
 }
 
+// TestServerWithoutLedgerDegradesGracefully covers the case where the MCP
+// server starts in a repo without an initialized ledger — the common scenario
+// once a harness (Codex, Claude Code, etc.) has registered the `teammemory`
+// MCP server globally and the user opens a new session in an unrelated repo.
+//
+// The server must start cleanly (so the harness doesn't show a failing-server
+// warning) and each tool must return a clear, actionable error directing the
+// user to run `tm init`.
+func TestServerWithoutLedgerDegradesGracefully(t *testing.T) {
+	ctx := context.Background()
+
+	// Zero-value Deps simulates "no ledger initialized": no Ledger, Index,
+	// Engine, or AckStore. The server must still construct and serve.
+	session := startServer(t, ctx, Deps{})
+
+	tools := []struct {
+		name string
+		args map[string]any
+	}{
+		{"tm_status", map[string]any{}},
+		{"tm_search", map[string]any{"query": "anything"}},
+		{"tm_propose", map[string]any{"type": "decision", "title": "x", "session": "s1"}},
+		{"tm_observe", map[string]any{"memory_id": "01ZZZZZZZZZZZZZZZZZZZZZZZZZ", "kind": "confirm", "session": "s1"}},
+		{"tm_check_action", map[string]any{"paths": []string{"foo.go"}}},
+	}
+	for _, tc := range tools {
+		res, err := session.CallTool(ctx, &sdkmcp.CallToolParams{Name: tc.name, Arguments: tc.args})
+		if err != nil {
+			t.Errorf("%s: transport error (server should serve even without ledger): %v", tc.name, err)
+			continue
+		}
+		if !res.IsError {
+			t.Errorf("%s: expected IsError=true when ledger is uninitialized, got success:\n%s", tc.name, resultText(res))
+			continue
+		}
+		text := resultText(res)
+		if !strings.Contains(text, "tm init") {
+			t.Errorf("%s: error message should direct user to `tm init`, got: %s", tc.name, text)
+		}
+	}
+}
+
 func TestProposeDescriptionWarnsAgainstSystemSpecific(t *testing.T) {
 	desc := proposeToolDescription
 	for _, want := range []string{"OS", "machine"} {

@@ -107,6 +107,28 @@ func textResult(text string) *sdkmcp.CallToolResult {
 	}
 }
 
+// notInitialized reports whether the server lacks an initialized ledger. The
+// CLI calls New with zero-value Deps when openEnv fails so the MCP server can
+// still serve (a harness that registers `tm mcp` globally — Codex stores MCP
+// servers in ~/.codex/config.toml — would otherwise show a failing-server
+// warning in every unrelated repo). When this is true, each tool returns an
+// IsError result directing the user to `tm init` rather than crashing on a
+// nil dependency.
+func (s *Server) notInitialized() bool {
+	return s.deps.Ledger == nil
+}
+
+// notInitResult is the shared IsError response used by every tool when the
+// ledger isn't initialized.
+func notInitResult() *sdkmcp.CallToolResult {
+	return &sdkmcp.CallToolResult{
+		IsError: true,
+		Content: []sdkmcp.Content{&sdkmcp.TextContent{
+			Text: "TeamMemory is not initialized in this repo — run `tm init` first.",
+		}},
+	}
+}
+
 // --- tm_status ---
 
 type statusArgs struct{}
@@ -118,6 +140,9 @@ func (s *Server) addStatusTool(srv *sdkmcp.Server) {
 
 Use this to understand the health and size of the ledger before planning work.`,
 	}, func(ctx context.Context, req *sdkmcp.CallToolRequest, args statusArgs) (*sdkmcp.CallToolResult, any, error) {
+		if s.notInitialized() {
+			return notInitResult(), nil, nil
+		}
 		rows, err := s.deps.Index.All()
 		if err != nil {
 			return nil, nil, err
@@ -171,6 +196,9 @@ func (s *Server) addSearchTool(srv *sdkmcp.Server) {
 
 Use for ad-hoc queries when you know what to look for by keyword. For edit-time context (before touching a specific file), prefer tm_check_action with target paths — it applies scope matching and ranking.`,
 	}, func(ctx context.Context, req *sdkmcp.CallToolRequest, args searchArgs) (*sdkmcp.CallToolResult, any, error) {
+		if s.notInitialized() {
+			return notInitResult(), nil, nil
+		}
 		q := retrieve.FTSQuery(args.Query)
 		if q == "" {
 			return textResult("No results.\n"), nil, nil
@@ -232,6 +260,9 @@ func (s *Server) addProposeTool(srv *sdkmcp.Server) {
 		Name:        "tm_propose",
 		Description: proposeToolDescription,
 	}, func(ctx context.Context, req *sdkmcp.CallToolRequest, args proposeArgs) (*sdkmcp.CallToolResult, any, error) {
+		if s.notInitialized() {
+			return notInitResult(), nil, nil
+		}
 		mt := model.MemoryType(args.Type)
 		switch mt {
 		case model.TypeFailedAttempt, model.TypeConstraint, model.TypeFragileArea, model.TypeStaleDoc, model.TypeDecision:
@@ -303,6 +334,9 @@ func (s *Server) addObserveTool(srv *sdkmcp.Server) {
 
 Always include evidence when observing. Observations without evidence are less useful.`,
 	}, func(ctx context.Context, req *sdkmcp.CallToolRequest, args observeArgs) (*sdkmcp.CallToolResult, any, error) {
+		if s.notInitialized() {
+			return notInitResult(), nil, nil
+		}
 		kind := model.ObservationKind(args.Kind)
 		switch kind {
 		case model.KindConfirm, model.KindContradict, model.KindAdjustScope, model.KindMarkStale:
@@ -401,6 +435,9 @@ Returns:
 
 The PreToolUse hook handles edit-time delivery automatically in Claude Code; use this tool for pre-task planning and voluntary checks in other agents.`,
 	}, func(ctx context.Context, req *sdkmcp.CallToolRequest, args checkActionArgs) (*sdkmcp.CallToolResult, any, error) {
+		if s.notInitialized() {
+			return notInitResult(), nil, nil
+		}
 		results, err := s.deps.Engine.Retrieve(retrieve.Query{
 			Paths:           args.Paths,
 			Command:         args.Command,

@@ -422,6 +422,8 @@ The nudge journal is local state under `.git/tm/nudge`, never a ledger record �
 
 Sync is not an MCP tool — it is automatic (Section 7.4).
 
+**Uninitialized-repo degradation.** Several harnesses register MCP servers in a location outside any single repo (Codex's `~/.codex/config.toml`, Copilot's `~/.copilot/mcp-config.json`), and even repo-local registrations (`.mcp.json`, `.cursor/mcp.json`) follow the user into branches and worktrees where `tm init` may simply never have been run. `tm mcp` must therefore start cleanly when there is no ledger — exiting non-zero would surface as a broken MCP server in every unrelated session. The server still registers all five tools and serves the MCP handshake; each tool call returns an `IsError` result whose text directs the user to run `tm init`. This matches `tm brief`'s session-hook-safety posture: never fail a session because tm isn't set up here.
+
 ### 10.4 Other Agents (Cursor, Codex, Continue)
 
 Same MCP server. As of 2026, Codex CLI, Copilot CLI, Cursor, Gemini CLI, and Continue CLI all support session-start hooks with context injection; `tm brief --format <tool>` emits the briefing in each tool's envelope (setup snippets in the README), so the session-start instruction path works everywhere. `tm export` still generates instruction blocks for `AGENTS.md` and `.cursor/rules` — including usage preambles for the three verbs — as a fallback for surfaces without hooks (e.g. IDE extensions). Projections are clearly marked generated artifacts.

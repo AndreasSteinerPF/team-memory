@@ -1,0 +1,14 @@
+# `tm mcp` must start cleanly in a repo where the ledger isn't initialized.
+# Once a harness has registered the `teammemory` MCP server globally (Codex
+# stores MCP servers in ~/.codex/config.toml; Claude Code stores them in
+# .mcp.json), every session — including ones in repos the user never ran
+# `tm init` in — spawns `tm mcp`. The server must serve degraded (each tool
+# returns an actionable IsError pointing to `tm init`) instead of exiting
+# non-zero, so the harness doesn't show a failing-server warning in every
+# unrelated repo.
+#
+# Empty stdin closes immediately; the stdio MCP loop reads EOF and exits 0.
+# The historical bug was that openEnv's "no ledger" error short-circuited
+# the command before the server ever started, returning exit 1.
+exec tm mcp
+! stderr 'no ledger'
