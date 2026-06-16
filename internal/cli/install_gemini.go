@@ -51,6 +51,8 @@ func installGemini(repoDir string) error {
 			addHookEntry(settings, spec)
 		}
 	}
+	// Return ignored: settings.json is always rewritten below for the hooks, so
+	// there is no "nothing changed" short-circuit (unlike the standalone MCP files).
 	mergeMCPServer(settings, map[string]any{"command": "tm", "args": []string{"mcp"}})
 	out, err := json.MarshalIndent(settings, "", "  ")
 	if err != nil {
