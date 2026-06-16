@@ -29,6 +29,14 @@ type Ledger struct {
 	// can deterministically simulate a lost push race (see sync_retry_test.go);
 	// it is nil on every production path.
 	pushFn func(remote string) error
+
+	// OnPushResult, when non-nil, is invoked after every push attempt (including
+	// the background pushes from propose/observe via the CLI). It receives the
+	// remote, the push command's stderr (best-effort extraction from the wrapped
+	// error message), and the error itself (nil on success). The CLI installs
+	// this hook in openEnv to record outcomes into .git/tm/push_failure.json
+	// (spec §3.3 / prd.md §7.1).
+	OnPushResult func(remote, stderr string, err error)
 }
 
 // Open returns a ledger handle for branch within the git repository at repoDir.

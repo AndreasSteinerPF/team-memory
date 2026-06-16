@@ -113,11 +113,36 @@ func (l *Ledger) result(action string, merged bool) SyncResult {
 }
 
 // doPush performs the real push unless a test has installed a pushFn seam.
+// After the attempt (success or failure), it invokes OnPushResult if set so the
+// CLI can record the outcome under .git/tm/push_failure.json (spec §3.3).
 func (l *Ledger) doPush(remote string) error {
+	var err error
 	if l.pushFn != nil {
-		return l.pushFn(remote)
+		err = l.pushFn(remote)
+	} else {
+		err = l.push(remote)
 	}
-	return l.push(remote)
+	if l.OnPushResult != nil {
+		l.OnPushResult(remote, extractPushStderr(err), err)
+	}
+	return err
+}
+
+// extractPushStderr pulls the stderr portion out of the wrapped error produced
+// by git.Runner.Run. The wrapper formats errors as
+// "git <args>: <exit-err>: <stderr>" so the stderr is everything after the
+// second ": " separator. If the format does not match (or err is nil), the full
+// error text is returned (or an empty string for nil).
+func extractPushStderr(err error) string {
+	if err == nil {
+		return ""
+	}
+	msg := err.Error()
+	parts := strings.SplitN(msg, ": ", 3)
+	if len(parts) == 3 {
+		return parts[2]
+	}
+	return msg
 }
 
 func (l *Ledger) push(remote string) error {
