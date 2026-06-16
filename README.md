@@ -285,15 +285,17 @@ Every agent reads the same ledger; what differs is the delivery guarantee:
 
 | Agent | Hook enforcement (edit + command) | Session briefing | Near-moment nudges | Voluntary verbs (MCP) | Static fallback |
 |---|:---:|:---:|:---:|:---:|:---:|
-| Claude Code | ✅ (`PreToolUse` hook) | ✅ | ✅ | ✅ | ✅ |
-| Codex CLI | — | ✅ | ✅ | ✅ | ✅ |
-| Continue CLI | — | ✅ | ✅ | ✅ | ✅ |
-| Copilot CLI | — | ✅ | ✅ | ✅ | ✅ |
-| Cursor | — | ✅ | ✅ | ✅ | ✅ (`.cursor/rules`) |
-| Gemini CLI | — | ✅ | ✅ | ✅ | ✅ |
+| Claude Code | ✅ | ✅ | ✅ † | ✅ | ✅ |
+| Codex CLI | ✅ | ✅ | ✅ † | ✅ | ✅ |
+| Continue CLI | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Copilot CLI | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Cursor | ✅ | ✅ | ✅ | ✅ | ✅ (`.cursor/rules`) |
+| Gemini CLI | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Other MCP / hook-less | — | — | — | ✅ | ✅ (only path) |
 
-Only Claude Code enforces `requirement` memories deterministically (the `PreToolUse` hook blocks a matching edit or Bash command until acked). Every other agent gets the session-start briefing and the voluntary verbs over MCP — same knowledge, but `check_action` is a voluntary call rather than a guaranteed one.
+> † The **fail→fix→pass** nudge detector does not fire on Claude Code or Codex: both run `PostToolUse` only on tool *success*, so a failed command is never observed. Every other nudge detector — reverted change, repeated edit churn on one path, user redirected mid-edit, surfaced-but-unobserved memory, anchor drift — works on both. (See `prd.md §10.6`.)
+
+Every hook-capable agent enforces `requirement` memories deterministically: `tm init --harness <name>` installs a pre-tool hook — Claude Code's `PreToolUse` and the equivalent on Codex, Copilot, Cursor, and Gemini (Continue reuses Claude Code's hook schema) — that **blocks** a matching edit or Bash command until it's acked, rendering the deny in each harness's native hook format. Only genuinely hook-less agents fall back to a voluntary `check_action` over MCP — same knowledge, but a voluntary call rather than a guaranteed one.
 
 The near-moment nudge engine is harness-neutral: a thin adapter maps each tool's post-tool, prompt, and turn-end events onto the same `tm signal` / `tm nudge` verbs, so Codex, Copilot, Cursor, and Gemini get the same propose/observe nudges as Claude Code. `tm init --harness <name>` wires the per-tool hooks (event names differ; the engine and anti-spam budget do not).
 
