@@ -6,6 +6,50 @@
 All notable changes to TeamMemory are documented here. The format is based on
 [Keep a Changelog], and this project adheres to [Semantic Versioning].
 
+## [0.3.0] - 2026-06-16
+
+The "MCP everywhere, merge-safely" release. `tm init` now registers the
+`teammemory` MCP server **automatically for all five harnesses** instead of
+printing manual instructions for some of them — and every write merges into
+existing config rather than clobbering it, so re-running is safe.
+
+### Added
+
+- **Automatic MCP registration for every harness.** `tm init` (default `claude`)
+  registers the `teammemory` MCP server in the repo-root `.mcp.json`;
+  `tm init --harness {codex,copilot,cursor,gemini}` registers it in that agent's
+  MCP config — Codex appends an `[mcp_servers.teammemory]` table to
+  `~/.codex/config.toml`, Copilot merges `~/.copilot/mcp-config.json`, Cursor
+  merges `.cursor/mcp.json`, and Gemini merges `.gemini/settings.json`. Previously
+  Claude/Codex/Copilot only *printed* manual setup snippets. Codex and Copilot
+  write into the user's home directory because that is where those CLIs read MCP
+  config; every other artifact stays repo-local. (`prd.md §10.6`)
+- **Merge-safe, idempotent registration.** Registration reads existing config and
+  inserts only the `teammemory` entry — existing MCP servers, hooks, and other
+  top-level keys are preserved, and re-running `tm init` is a no-op. Two new
+  helpers (`ensureMCPServerJSON` for JSON configs, `ensureCodexMCP` for Codex
+  TOML) back this; the packaging-tier E2E suite asserts each harness's MCP target
+  with an isolated `$HOME`. (`prd.md §10.6`)
+
+### Changed
+
+- **`tm doctor`** MCP-registration remediation now points at `tm init` (which
+  performs the registration) instead of a manual JSON snippet. (`prd.md §10.5`)
+- **Cursor and Gemini MCP writes are now merge-safe.** `tm init --harness cursor`
+  and `--harness gemini` previously overwrote `.cursor/mcp.json` /
+  `.gemini/settings.json` wholesale, discarding any hand-added servers, hooks, or
+  keys; both now merge. (`prd.md §10.6`)
+- Cross-harness enforcement docs and the live-behavior test tier expanded:
+  requirement-blocking is live-verified on Copilot, Cursor, and Gemini, and the
+  README enforcement table is aligned with the `prd.md §10.6` capability matrix.
+
+### Fixed
+
+- **Codex path-scoped blocking.** The Codex adapter now parses the `apply_patch`
+  tool's file path from the hook payload, so path-scoped `requirement` memories
+  correctly block matching Codex edits (previously the path wasn't extracted, so
+  path scopes didn't match). (`prd.md §10.6`)
+
 ## [0.2.0] - 2026-06-16
 
 The cross-harness + ambient-nudging release. v0.1.x was Claude-only with
@@ -133,6 +177,7 @@ dogfooding on real repositories.
 - **Acceptance tests** — flagship lifecycle demo, trap-repo retrieval benchmark,
   two-clone concurrent-sync convergence, and hook latency budget.
 
+[0.3.0]: https://github.com/AndreasSteinerPF/team-memory/releases/tag/v0.3.0
 [0.2.0]: https://github.com/AndreasSteinerPF/team-memory/releases/tag/v0.2.0
 [0.1.1]: https://github.com/AndreasSteinerPF/team-memory/releases/tag/v0.1.1
 [0.1.0]: https://github.com/AndreasSteinerPF/team-memory/releases/tag/v0.1.0
