@@ -35,14 +35,21 @@ func (copilotDescriptor) AdvisoryContext(out []byte) string {
 }
 
 func (copilotDescriptor) Packaging() []PackagingExpectation {
-	return []PackagingExpectation{{
-		Path: ".github/hooks/teammemory.json",
-		Contains: []string{
-			"preToolUse", "postToolUse", "errorOccurred", "agentStop", `"bash"`, `"powershell"`,
-			"tm check-action --hook --harness copilot",
-			"tm signal --hook --harness copilot",
-			"tm nudge --hook --harness copilot",
-			"tm signal --hook --prompt --harness copilot",
+	return []PackagingExpectation{
+		{
+			Path: ".github/hooks/teammemory.json",
+			Contains: []string{
+				"preToolUse", "postToolUse", "errorOccurred", "agentStop", `"bash"`, `"powershell"`,
+				"tm check-action --hook --harness copilot",
+				"tm signal --hook --harness copilot",
+				"tm nudge --hook --harness copilot",
+				"tm signal --hook --prompt --harness copilot",
+			},
 		},
-	}}
+		{
+			Path:     ".copilot/mcp-config.json",
+			Home:     true,
+			Contains: []string{"teammemory", `"type": "local"`, `"command": "tm"`},
+		},
+	}
 }

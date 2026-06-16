@@ -17,6 +17,11 @@ func TestPackaging(t *testing.T) {
 		d := GetMust(name)
 		t.Run(name, func(t *testing.T) {
 			repo := t.TempDir()
+			home := t.TempDir()
+			// Isolate $HOME so codex/copilot MCP writes never touch the real home
+			// dir. os.UserHomeDir reads HOME on unix, USERPROFILE on Windows.
+			t.Setenv("HOME", home)
+			t.Setenv("USERPROFILE", home)
 			for _, args := range [][]string{
 				{"init", "-q", "-b", "main"},
 				{"config", "user.email", "tm@example.com"},
@@ -41,7 +46,11 @@ func TestPackaging(t *testing.T) {
 				t.Fatalf("init exit %d: %s", code, errb.String())
 			}
 			for _, exp := range d.Packaging() {
-				data, err := os.ReadFile(filepath.Join(repo, filepath.FromSlash(exp.Path)))
+				base := repo
+				if exp.Home {
+					base = home
+				}
+				data, err := os.ReadFile(filepath.Join(base, filepath.FromSlash(exp.Path)))
 				if err != nil {
 					t.Fatalf("missing %s: %v", exp.Path, err)
 				}
