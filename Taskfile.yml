@@ -29,6 +29,12 @@ tasks:
   test:harness:live:codex:
     desc: 'Codex live firing (needs TM_CODEX_LIVE_REPO scaffolded + trusted once via `codex`)'
     cmds: ['go test -tags harness_live ./e2e/harness/ -run TestLive/codex -v']
+  setup:codex-block:
+    desc: 'Scaffold the codex requirement-block repo (set TM_CODEX_BLOCK_REPO; then trust it once via `codex`)'
+    cmds: ['go test -tags harness_live ./e2e/harness/ -run TestSetupCodexBlockRepo -v']
+  test:harness:live:block:codex:
+    desc: 'Codex requirement-block (needs TM_CODEX_BLOCK_REPO scaffolded + trusted once via `codex`)'
+    cmds: ['go test -tags harness_live ./e2e/harness/ -run TestLiveCodexRequirementBlock -v']
   capture:
     desc: 'Re-capture fixtures for all harnesses'
     env: { TM_CAPTURE_DATE: { sh: 'date -u +%F' } }

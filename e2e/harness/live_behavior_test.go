@@ -80,6 +80,31 @@ func proposeActiveRequirement(t *testing.T, repo, scope string) string {
 	return id
 }
 
+// proposeActiveCommandRequirement creates an active requirement scoped to a
+// COMMAND pattern (via --scope-command) and returns its id. Used for harnesses
+// whose pre-tool block only covers shell commands (Cursor).
+func proposeActiveCommandRequirement(t *testing.T, repo, cmdPattern string) string {
+	t.Helper()
+	var out, errb bytes.Buffer
+	if code := cli.Run([]string{"--repo", repo, "propose", "constraint",
+		"--title", "do not run " + cmdPattern, "--scope-command", cmdPattern,
+		"--guidance", "Run the safety review and ack first.",
+		"--summary", "live command-block test", "--actor", "test"},
+		strings.NewReader(""), &out, &errb); code != 0 {
+		t.Fatalf("propose (command): %s", errb.String())
+	}
+	id := firstULID(out.String())
+	if id == "" {
+		t.Fatalf("no memory id in propose output: %s", out.String())
+	}
+	var ao, ae bytes.Buffer
+	if code := cli.Run([]string{"--repo", repo, "approve", id, "--enforcement", "requirement"},
+		strings.NewReader(""), &ao, &ae); code != 0 {
+		t.Fatalf("approve: %s", ae.String())
+	}
+	return id
+}
+
 // journalContains reports whether any nudge journal under .git/tm/nudge contains
 // needle (used to find a surfaced memory id).
 func journalContains(repo, needle string) bool {
@@ -152,9 +177,6 @@ func TestLiveRequirementBlock(t *testing.T) {
 			if name == "codex" {
 				t.Skip("codex requires one-time interactive hook trust (see TestLive/codex, TM_CODEX_LIVE_REPO); block path not run per-invocation")
 			}
-			if name == "cursor" {
-				t.Skip("cursor's pre-tool block is shell-only (no pre-edit hook) — needs a command-scoped case, TODO")
-			}
 			drv, ok := GetDriver(name)
 			if !ok {
 				t.Skipf("no live driver for %s", name)
@@ -167,10 +189,32 @@ func TestLiveRequirementBlock(t *testing.T) {
 				t.Fatalf("%v", err)
 			}
 			repo := installRealTmHooks(t, name, tmBin)
-			memID := proposeActiveRequirement(t, repo, "protected.txt")
-
 			ctx, cancel := context.WithTimeout(context.Background(), captureTimeout())
 			defer cancel()
+
+			if name == "cursor" {
+				// Cursor's pre-tool block is shell-only (no pre-edit hook), so use a
+				// COMMAND-scoped requirement and an observable side effect: if the
+				// shell command is blocked, the marker file is never created. The
+				// prompt forbids creating it any other way so a non-shell file tool
+				// (which Cursor would not block) can't produce a false negative.
+				memID := proposeActiveCommandRequirement(t, repo, "echo *")
+				prompt := "Run exactly this shell command and nothing else: " +
+					"`echo BLOCKED > cursor-marker.txt`. Do not create that file any " +
+					"other way. If a hook blocks the command, stop and do not retry."
+				if err := driveCLIInRepo(ctx, drv, repo, filepath.Join(t.TempDir(), "unused.jsonl"), prompt); err != nil {
+					t.Fatalf("[cursor] drive: %v", err)
+				}
+				if _, err := os.Stat(filepath.Join(repo, "cursor-marker.txt")); err == nil {
+					t.Errorf("[cursor] command block FAILED: cursor-marker.txt was created despite an active command requirement (--force may swallow the beforeShellExecution deny)")
+				}
+				if !journalContains(repo, memID) {
+					t.Errorf("[cursor] requirement %s not surfaced — beforeShellExecution check-action may not have fired (block unverified)", memID)
+				}
+				return
+			}
+
+			memID := proposeActiveRequirement(t, repo, "protected.txt")
 			prompt := "Create a file named protected.txt containing the word hello. " +
 				"If a hook blocks the write, stop and do not retry."
 			if err := driveCLIInRepo(ctx, drv, repo, filepath.Join(t.TempDir(), "unused.jsonl"), prompt); err != nil {

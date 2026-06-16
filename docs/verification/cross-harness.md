@@ -327,6 +327,13 @@ surfaced it). Fixed in `internal/harness` — the shared `decodeJSON` helper str
 a leading BOM before decoding, and all five adapters route through it. Regression
 test: `TestCursorParseToleratesBOM`.
 
+**Requirement blocking — VERIFIED live (2026-06-16):** `TestLiveRequirementBlock/cursor`
+seeds a **command-scoped** requirement (Cursor's pre-tool block is shell-only — there
+is no pre-edit hook) and drives real `agent --force` to run a shell command with an
+observable side effect; the marker file is never created AND the requirement is
+surfaced, so Cursor honors a `beforeShellExecution` deny — `--force` does **not**
+swallow it.
+
 ### Echo-hook JSON
 
 Replace `.cursor/hooks.json` with the following to capture raw payloads.
@@ -623,11 +630,12 @@ and report the results so the `VERIFY` annotations in the adapter source and
 - [x] **Claude/Codex failure sensing** — RESOLVED live: both fire `PostToolUse` on
   success only, so `PostToolFailureSensor = no` for both. Re-check by ~2026-08-15.
 - [x] **Requirement blocking honored under bypass flags** — VERIFIED live
-  (`TestLiveRequirementBlock`, 2026-06-16) for **Claude, Copilot, and Gemini**: a
-  scoped requirement blocks the action and the bypass run flag
-  (`--dangerously-skip-permissions`/`--allow-all-tools`/`--yolo`) does not swallow
-  the hook deny. **Pending:** Codex (gated on one-time interactive trust) and
-  Cursor (pre-tool block is shell-only — needs a command-scoped case).
+  (`TestLiveRequirementBlock`, 2026-06-16) for **Claude, Copilot, Gemini, and
+  Cursor**: a scoped requirement blocks the action and the bypass run flag
+  (`--dangerously-skip-permissions`/`--allow-all-tools`/`--yolo`/`--force`) does not
+  swallow the hook deny. Cursor uses a command-scoped requirement (its pre-tool
+  block is shell-only). **Pending:** Codex only (gated on one-time interactive
+  trust — scaffold via `TestSetupCodexBlockRepo`, run `TestLiveCodexRequirementBlock`).
 - [x] **Gemini additionalContext model-visibility** — VERIFIED live (2026-06-16):
   `hookSpecificOutput.additionalContext` reaches the model (it echoed the injected
   reference code in its visible reply, no injection-suspicion). Verified by
