@@ -400,7 +400,12 @@ Always include evidence when observing. Observations without evidence are less u
 		if kind == model.KindAdjustScope {
 			o.SuggestedScope = &model.Scope{Paths: args.Scope, Commands: args.Commands}
 		}
-		var warning string
+		var warnings []string
+		appendWarn := func(w string) {
+			if w != "" {
+				warnings = append(warnings, w)
+			}
+		}
 		if kind == model.KindMarkDuplicate {
 			if args.CanonicalID == "" {
 				return &sdkmcp.CallToolResult{
@@ -422,7 +427,13 @@ Always include evidence when observing. Observations without evidence are less u
 					Content: []sdkmcp.Content{&sdkmcp.TextContent{Text: fmt.Sprintf("canonical_id memory %s not found", args.CanonicalID)}},
 				}, nil, nil
 			}
-			warning = warnNonActiveMCP(s, args.CanonicalID)
+			if cycle, err := detectCycleMCP(s, args.MemoryID, args.CanonicalID, model.KindMarkDuplicate); err != nil {
+				return nil, nil, err
+			} else if cycle {
+				appendWarn(fmt.Sprintf("[warning: %s is already marked as a duplicate of %s — your observation would close a duplicate cycle. Both memories will be hidden from default retrieval]", args.CanonicalID, args.MemoryID))
+			}
+			appendWarn(warnNonActiveMCP(s, args.CanonicalID))
+			appendWarn(warnNonActiveMCP(s, args.MemoryID))
 			o.CanonicalID = args.CanonicalID
 		}
 		if kind == model.KindSupersede {
@@ -446,7 +457,13 @@ Always include evidence when observing. Observations without evidence are less u
 					Content: []sdkmcp.Content{&sdkmcp.TextContent{Text: fmt.Sprintf("supersedes memory %s not found", args.Supersedes)}},
 				}, nil, nil
 			}
-			warning = warnNonActiveMCP(s, args.Supersedes)
+			if cycle, err := detectCycleMCP(s, args.MemoryID, args.Supersedes, model.KindSupersede); err != nil {
+				return nil, nil, err
+			} else if cycle {
+				appendWarn(fmt.Sprintf("[warning: %s already has a supersede observation naming %s — your observation would close a supersede cycle. Both memories may end up hidden from default retrieval if both claims substantiate]", args.Supersedes, args.MemoryID))
+			}
+			appendWarn(warnNonActiveMCP(s, args.Supersedes))
+			appendWarn(warnNonActiveMCP(s, args.MemoryID))
 			o.Supersedes = args.Supersedes
 		}
 
@@ -477,11 +494,42 @@ Always include evidence when observing. Observations without evidence are less u
 		fmt.Fprintln(&b, args.MemoryID)
 		fmt.Fprintln(&b, stateStr(st.Status, st.Risk, st.Confidence, st.Enforcement))
 		fmt.Fprintf(&b, "reason: %s\n", st.Reason)
-		if warning != "" {
-			fmt.Fprintln(&b, warning)
+		for _, w := range warnings {
+			fmt.Fprintln(&b, w)
 		}
 		return textResult(b.String()), nil, nil
 	})
+}
+
+// detectCycleMCP reports whether b has an unresolved observation of `kind`
+// pointing back at a. Mirrors cli.detectCycle for the MCP tool path; see
+// internal/cli/observe.go for the rationale.
+func detectCycleMCP(s *Server, a, b string, kind model.ObservationKind) (bool, error) {
+	obs, err := s.deps.Ledger.Observations()
+	if err != nil {
+		return false, err
+	}
+	var latest *model.Observation
+	for i := range obs {
+		o := &obs[i]
+		if o.Target != b || o.Kind != kind {
+			continue
+		}
+		var ref string
+		switch kind {
+		case model.KindMarkDuplicate:
+			ref = o.CanonicalID
+		case model.KindSupersede:
+			ref = o.Supersedes
+		}
+		if ref != a {
+			continue
+		}
+		if latest == nil || o.CreatedAt.After(latest.CreatedAt) {
+			latest = o
+		}
+	}
+	return latest != nil, nil
 }
 
 // warnNonActiveMCP returns a non-empty warning line if id refers to a memory

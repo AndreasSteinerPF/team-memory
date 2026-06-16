@@ -61,7 +61,15 @@ func newObserveCmd(g *globalOpts) *cobra.Command {
 				} else if !ok {
 					return fmt.Errorf("canonical-id memory %s not found", canonicalID)
 				}
+				if cycle, err := detectCycle(e, target, canonicalID, model.KindMarkDuplicate); err != nil {
+					return err
+				} else if cycle {
+					fmt.Fprintf(cmd.ErrOrStderr(),
+						"Note: %s is already marked as a duplicate of %s — your observation would close a duplicate cycle. Both memories will be hidden from default retrieval.\n",
+						canonicalID, target)
+				}
 				warnIfNonActive(cmd, e, canonicalID)
+				warnIfNonActive(cmd, e, target)
 				o.CanonicalID = canonicalID
 			}
 			if kind == model.KindSupersede {
@@ -76,7 +84,15 @@ func newObserveCmd(g *globalOpts) *cobra.Command {
 				} else if !ok {
 					return fmt.Errorf("supersedes memory %s not found", supersedes)
 				}
+				if cycle, err := detectCycle(e, target, supersedes, model.KindSupersede); err != nil {
+					return err
+				} else if cycle {
+					fmt.Fprintf(cmd.ErrOrStderr(),
+						"Note: %s already has a supersede observation naming %s — your observation would close a supersede cycle. Both memories may end up hidden from default retrieval if both claims substantiate.\n",
+						supersedes, target)
+				}
 				warnIfNonActive(cmd, e, supersedes)
+				warnIfNonActive(cmd, e, target)
 				o.Supersedes = supersedes
 			}
 			if ctxBranch != "" || len(ctxPaths) > 0 || len(ctxCommands) > 0 {
@@ -130,6 +146,39 @@ func warnIfNonActive(cmd *cobra.Command, e *env, id string) {
 			"Note: referenced memory %s is currently %s — proceeding, but verify this is intentional.\n",
 			id, st)
 	}
+}
+
+// detectCycle reports whether b has an unresolved observation of `kind`
+// pointing back at a. Used for one-hop cycle detection on mark_duplicate /
+// supersede: filing M1->M2 when M2->M1 already exists would close a two-step
+// cycle (prd.md §8.2, §8.5). Warn-not-block — the operator may be deliberately
+// consolidating, but they should see the loop before committing it.
+func detectCycle(e *env, a, b string, kind model.ObservationKind) (bool, error) {
+	obs, err := e.led.Observations()
+	if err != nil {
+		return false, err
+	}
+	var latest *model.Observation
+	for i := range obs {
+		o := &obs[i]
+		if o.Target != b || o.Kind != kind {
+			continue
+		}
+		var ref string
+		switch kind {
+		case model.KindMarkDuplicate:
+			ref = o.CanonicalID
+		case model.KindSupersede:
+			ref = o.Supersedes
+		}
+		if ref != a {
+			continue
+		}
+		if latest == nil || o.CreatedAt.After(latest.CreatedAt) {
+			latest = o
+		}
+	}
+	return latest != nil, nil
 }
 
 // printTargetState re-derives a memory from its full observation set and prints
