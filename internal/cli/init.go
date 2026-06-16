@@ -120,6 +120,6 @@ func printSetup(w io.Writer, repoDir, remote string) {
 		fmt.Fprintln(w, "teammemory MCP server already registered in .mcp.json.")
 	}
 	if remote != "" {
-		fmt.Fprintf(w, "  • Ledger remote stored as git config tm.remote=%s; sync and background fetch/push use it.\n", remote)
+		fmt.Fprintf(w, "Ledger remote stored as git config tm.remote=%s; sync and background fetch/push use it.\n", remote)
 	}
 }
