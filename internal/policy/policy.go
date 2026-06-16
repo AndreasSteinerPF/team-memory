@@ -76,11 +76,12 @@ type Nudge struct {
 func Default() Policy {
 	return Policy{
 		BaseRisk: map[model.MemoryType]model.Risk{
-			model.TypeStaleDoc:      model.RiskLow,
-			model.TypeDecision:      model.RiskLow,
-			model.TypeFailedAttempt: model.RiskMedium,
-			model.TypeFragileArea:   model.RiskMedium,
-			model.TypeConstraint:    model.RiskMedium, // origin=external escalates to high in derive
+			model.TypeStaleDoc:          model.RiskLow,
+			model.TypeDecision:          model.RiskLow,
+			model.TypeSuccessfulPattern: model.RiskLow, // prd.md §8.1
+			model.TypeFailedAttempt:     model.RiskMedium,
+			model.TypeFragileArea:       model.RiskMedium,
+			model.TypeConstraint:        model.RiskMedium, // origin=external escalates to high in derive
 		},
 		Escalators: Escalators{
 			BroadScopeBump: true,

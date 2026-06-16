@@ -131,3 +131,14 @@ func TestDefaultInjectConfig(t *testing.T) {
 		t.Errorf("Inject.AdvisoryMaxPerSession = %d, want 5", Default().Inject.AdvisoryMaxPerSession)
 	}
 }
+
+func TestDefaultPolicyHasSuccessfulPatternRisk(t *testing.T) {
+	p := Default()
+	got, ok := p.BaseRisk[model.TypeSuccessfulPattern]
+	if !ok {
+		t.Fatal("BaseRisk missing successful_pattern")
+	}
+	if got != model.RiskLow {
+		t.Fatalf("successful_pattern base risk: got %q, want %q", got, model.RiskLow)
+	}
+}

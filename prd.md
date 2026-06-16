@@ -218,6 +218,7 @@ Default `policy.yaml`:
 base_risk:
   stale_doc: low
   decision: low
+  successful_pattern: low   # gated by type-specific activation rule (§8.2)
   failed_attempt: medium
   fragile_area: medium
   constraint: medium    # origin: external escalates to high
