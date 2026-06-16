@@ -258,6 +258,28 @@ func TestProposeTool(t *testing.T) {
 	}
 }
 
+// TestProposeAcceptsSuccessfulPattern guards the MCP propose validator: a
+// type=successful_pattern proposal (prd.md §5.2) must not be rejected as
+// unknown. The activation gate (§8.2) — not the surface — controls promotion.
+func TestProposeAcceptsSuccessfulPattern(t *testing.T) {
+	ctx := context.Background()
+	_, d, cleanup := testEnv(t)
+	defer cleanup()
+
+	session := startServer(t, ctx, d)
+
+	res := callTool(t, ctx, session, "tm_propose", map[string]any{
+		"type":    "successful_pattern",
+		"title":   "use migration test harness for billing rollbacks",
+		"scope":   []string{"billing/migrations/**"},
+		"session": "s1",
+		"actor":   "test",
+	})
+	if res.IsError {
+		t.Fatalf("tm_propose rejected successful_pattern, got error: %s", resultText(res))
+	}
+}
+
 func TestObserveTool(t *testing.T) {
 	ctx := context.Background()
 	_, d, cleanup := testEnv(t)

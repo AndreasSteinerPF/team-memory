@@ -17,12 +17,12 @@ func newProposeCmd(g *globalOpts) *cobra.Command {
 	var scope, scopeCommands, evidence, anchors, ctxPaths []string
 	cmd := &cobra.Command{
 		Use:   "propose <type>",
-		Short: "Create a memory (type: failed_attempt|constraint|fragile_area|stale_doc|decision)",
+		Short: "Create a memory (type: failed_attempt|constraint|fragile_area|stale_doc|decision|successful_pattern)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			mt := model.MemoryType(args[0])
 			if !validType(mt) {
-				return fmt.Errorf("unknown type %q (want failed_attempt|constraint|fragile_area|stale_doc|decision)", args[0])
+				return fmt.Errorf("unknown type %q (want failed_attempt|constraint|fragile_area|stale_doc|decision|successful_pattern)", args[0])
 			}
 			e, err := openEnv(g)
 			if err != nil {
@@ -90,7 +90,8 @@ func newProposeCmd(g *globalOpts) *cobra.Command {
 
 func validType(t model.MemoryType) bool {
 	switch t {
-	case model.TypeFailedAttempt, model.TypeConstraint, model.TypeFragileArea, model.TypeStaleDoc, model.TypeDecision:
+	case model.TypeFailedAttempt, model.TypeConstraint, model.TypeFragileArea,
+		model.TypeStaleDoc, model.TypeDecision, model.TypeSuccessfulPattern:
 		return true
 	}
 	return false

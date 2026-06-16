@@ -236,8 +236,8 @@ Use for ad-hoc queries when you know what to look for by keyword. For edit-time 
 var proposeToolDescription = model.MemoryWorthyGuidance
 
 type proposeArgs struct {
-	Type     string   `json:"type" jsonschema:"Memory type: failed_attempt|constraint|fragile_area|stale_doc|decision"`
-	Title    string   `json:"title" jsonschema:"Short title (required). Memory-worthy: non-obvious failures, hidden constraints, fragile areas, stale docs, undocumented decisions affecting future work. NOT memory-worthy: session state, trivia, or facts derivable from the repo."`
+	Type     string   `json:"type" jsonschema:"Memory type: failed_attempt|constraint|fragile_area|stale_doc|decision|successful_pattern"`
+	Title    string   `json:"title" jsonschema:"Short title (required). Memory-worthy: non-obvious failures, hidden constraints, fragile areas, stale docs, undocumented decisions, and successful patterns affecting future work. NOT memory-worthy: session state, trivia, or facts derivable from the repo."`
 	Summary  string   `json:"summary,omitempty" jsonschema:"What happened or what was discovered."`
 	Guidance string   `json:"guidance,omitempty" jsonschema:"What a future agent should do when it encounters this situation."`
 	Scope    []string `json:"scope,omitempty" jsonschema:"Path globs this memory applies to (e.g. billing/migrations/**)."`
@@ -257,12 +257,13 @@ func (s *Server) addProposeTool(srv *sdkmcp.Server) {
 		}
 		mt := model.MemoryType(args.Type)
 		switch mt {
-		case model.TypeFailedAttempt, model.TypeConstraint, model.TypeFragileArea, model.TypeStaleDoc, model.TypeDecision:
+		case model.TypeFailedAttempt, model.TypeConstraint, model.TypeFragileArea,
+			model.TypeStaleDoc, model.TypeDecision, model.TypeSuccessfulPattern:
 		default:
 			return &sdkmcp.CallToolResult{
 				IsError: true,
 				Content: []sdkmcp.Content{&sdkmcp.TextContent{
-					Text: fmt.Sprintf("unknown type %q: must be failed_attempt|constraint|fragile_area|stale_doc|decision", args.Type),
+					Text: fmt.Sprintf("unknown type %q: must be failed_attempt|constraint|fragile_area|stale_doc|decision|successful_pattern", args.Type),
 				}},
 			}, nil, nil
 		}
