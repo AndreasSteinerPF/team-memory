@@ -209,7 +209,13 @@ forward-compat). Pinned by `harness.TestCopilotExitCodeFromResultText` (unit) an
 hook's `additionalContext` reaches the model. Informational advisory content (tm's
 real shape) is surfaced and trusted; an imperative instruction is flagged as a
 prompt-injection attempt and declined — so keep injected advisory content
-descriptive. Nothing left live-pending for Copilot.
+descriptive.
+
+**Requirement blocking — VERIFIED live (2026-06-16):** `TestLiveRequirementBlock`
+seeds a path-scoped requirement and drives real `copilot --allow-all-tools`; the
+protected file stays unwritten AND the requirement is surfaced in the journal, so
+Copilot honors a `preToolUse` deny — the `--allow-all-tools` bypass flag does
+**not** swallow it. Nothing left live-pending for Copilot.
 
 ### Echo-hook JSON
 
@@ -455,7 +461,13 @@ PGID: 3172"`) — present only on a non-zero exit; a successful command's
 
 **additionalContext model-visibility — VERIFIED (2026-06-16):** the model echoed
 the injected `hookSpecificOutput.additionalContext` reference code in its visible
-reply (no injection-suspicion). Nothing left live-pending for Gemini.
+reply (no injection-suspicion).
+
+**Requirement blocking — VERIFIED live (2026-06-16):** `TestLiveRequirementBlock`
+seeds a path-scoped requirement and drives real `gemini --yolo`; the protected
+file stays unwritten AND the requirement is surfaced in the journal, so Gemini
+honors a `BeforeTool` deny — `--yolo` auto-approval does **not** override it.
+Nothing left live-pending for Gemini.
 
 ### Echo-hook JSON
 
@@ -610,6 +622,12 @@ and report the results so the `VERIFY` annotations in the adapter source and
   `TestLiveCommandFailureSensed/gemini`.
 - [x] **Claude/Codex failure sensing** — RESOLVED live: both fire `PostToolUse` on
   success only, so `PostToolFailureSensor = no` for both. Re-check by ~2026-08-15.
+- [x] **Requirement blocking honored under bypass flags** — VERIFIED live
+  (`TestLiveRequirementBlock`, 2026-06-16) for **Claude, Copilot, and Gemini**: a
+  scoped requirement blocks the action and the bypass run flag
+  (`--dangerously-skip-permissions`/`--allow-all-tools`/`--yolo`) does not swallow
+  the hook deny. **Pending:** Codex (gated on one-time interactive trust) and
+  Cursor (pre-tool block is shell-only — needs a command-scoped case).
 - [x] **Gemini additionalContext model-visibility** — VERIFIED live (2026-06-16):
   `hookSpecificOutput.additionalContext` reaches the model (it echoed the injected
   reference code in its visible reply, no injection-suspicion). Verified by

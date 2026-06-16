@@ -127,41 +127,63 @@ func journalRecordedOutcome(repo string) bool {
 	return false
 }
 
-// TestLiveRequirementBlock drives the real Claude CLI against a repo with an
-// active requirement scoped to a path, and asserts the flagship feature works
-// end-to-end: the protected file is NOT written (the PreToolUse hook blocked it),
-// AND the check-action hook recorded the requirement as surfaced (positive proof
-// the hook fired — rules out "claude errored before attempting the write").
-// Claude-only: it is the harness with deterministic PreToolUse enforcement.
+// TestLiveRequirementBlock drives each real CLI against a repo with an active
+// requirement scoped to a path, and asserts the flagship feature works
+// end-to-end: the protected file is NOT written (the pre-tool hook blocked it),
+// AND the check-action hook recorded the requirement as surfaced. The two
+// assertions together are decisive — file-absent alone could be a model that
+// declined to write; the surfaced record proves the hook fired and returned the
+// deny, so file-absent then means the harness HONORED it. This is what catches a
+// harness whose permission-bypass run flag (--yolo / --allow-all-tools /
+// --force / --dangerously-skip-permissions) silently swallows a hook deny.
+//
+// Capability-gated on CapPreToolBlock. Codex is skipped (its block shares the
+// one-time-interactive-trust gate of TestLive/codex). Cursor is skipped here:
+// its pre-tool block is shell-only (no pre-edit hook), so a file-write block
+// does not apply — it needs a command-scoped case (see TODO below).
 func TestLiveRequirementBlock(t *testing.T) {
-	const name = "claude"
-	drv, ok := GetDriver(name)
-	if !ok {
-		t.Skipf("no live driver for %s", name)
-	}
-	if err := requireCLI(drv); err != nil {
-		t.Fatalf("%v", err)
-	}
-	tmBin, err := buildTm(t.TempDir())
-	if err != nil {
-		t.Fatalf("%v", err)
-	}
-	repo := installRealTmHooks(t, name, tmBin)
-	memID := proposeActiveRequirement(t, repo, "protected.txt")
+	for _, name := range DescriptorNames() {
+		name := name
+		t.Run(name, func(t *testing.T) {
+			d, _ := GetDescriptor(name)
+			if !d.Capabilities().Has(CapPreToolBlock) {
+				t.Skipf("%s: PreToolBlock not supported", name)
+			}
+			if name == "codex" {
+				t.Skip("codex requires one-time interactive hook trust (see TestLive/codex, TM_CODEX_LIVE_REPO); block path not run per-invocation")
+			}
+			if name == "cursor" {
+				t.Skip("cursor's pre-tool block is shell-only (no pre-edit hook) — needs a command-scoped case, TODO")
+			}
+			drv, ok := GetDriver(name)
+			if !ok {
+				t.Skipf("no live driver for %s", name)
+			}
+			if err := requireCLI(drv); err != nil {
+				t.Fatalf("%v", err)
+			}
+			tmBin, err := buildTm(t.TempDir())
+			if err != nil {
+				t.Fatalf("%v", err)
+			}
+			repo := installRealTmHooks(t, name, tmBin)
+			memID := proposeActiveRequirement(t, repo, "protected.txt")
 
-	ctx, cancel := context.WithTimeout(context.Background(), captureTimeout())
-	defer cancel()
-	prompt := "Create a file named protected.txt containing the word hello. " +
-		"If a hook blocks the write, stop and do not retry."
-	if err := driveCLIInRepo(ctx, drv, repo, filepath.Join(t.TempDir(), "unused.jsonl"), prompt); err != nil {
-		t.Fatalf("[%s] drive: %v", name, err)
-	}
+			ctx, cancel := context.WithTimeout(context.Background(), captureTimeout())
+			defer cancel()
+			prompt := "Create a file named protected.txt containing the word hello. " +
+				"If a hook blocks the write, stop and do not retry."
+			if err := driveCLIInRepo(ctx, drv, repo, filepath.Join(t.TempDir(), "unused.jsonl"), prompt); err != nil {
+				t.Fatalf("[%s] drive: %v", name, err)
+			}
 
-	if _, err := os.Stat(filepath.Join(repo, "protected.txt")); err == nil {
-		t.Errorf("requirement block FAILED: protected.txt was written despite an active requirement")
-	}
-	if !journalContains(repo, memID) {
-		t.Errorf("no surfaced record for requirement %s — the check-action hook may not have fired (block unverified)", memID)
+			if _, err := os.Stat(filepath.Join(repo, "protected.txt")); err == nil {
+				t.Errorf("[%s] requirement block FAILED: protected.txt was written despite an active requirement (the harness may ignore hook denies under its bypass flag)", name)
+			}
+			if !journalContains(repo, memID) {
+				t.Errorf("[%s] no surfaced record for requirement %s — the check-action hook may not have fired (block unverified)", name, memID)
+			}
+		})
 	}
 }
 
