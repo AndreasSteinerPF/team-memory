@@ -38,7 +38,8 @@ memory you were shown, tm_observe to confirm or contradict it (with evidence).
 	if err := os.WriteFile(filepath.Join(cdir, "rules", "teammemory.mdc"), []byte(rule), 0o644); err != nil {
 		return err
 	}
-	mcp := `{ "mcpServers": { "teammemory": { "type": "stdio", "command": "tm", "args": ["mcp"] } } }
-`
-	return os.WriteFile(filepath.Join(cdir, "mcp.json"), []byte(mcp), 0o644)
+	if _, err := ensureMCPServerJSON(filepath.Join(cdir, "mcp.json"), map[string]any{"type": "stdio", "command": "tm", "args": []string{"mcp"}}); err != nil {
+		return err
+	}
+	return nil
 }
