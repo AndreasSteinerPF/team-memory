@@ -103,6 +103,21 @@ func TestEnsureCodexMCP_AppendsAndIdempotent(t *testing.T) {
 	}
 }
 
+func TestEnsureCodexMCP_EmptyFileNoLeadingBlank(t *testing.T) {
+	path := filepath.Join(t.TempDir(), ".codex", "config.toml")
+	added, err := ensureCodexMCP(path)
+	if err != nil {
+		t.Fatalf("ensureCodexMCP: %v", err)
+	}
+	if !added {
+		t.Fatal("added = false, want true")
+	}
+	got := string(mustRead(t, path))
+	if !strings.HasPrefix(got, "[mcp_servers.teammemory]") {
+		t.Errorf("appended block must not start with a blank line; got:\n%q", got)
+	}
+}
+
 func mustRead(t *testing.T, path string) []byte {
 	t.Helper()
 	data, err := os.ReadFile(path)

@@ -2,6 +2,8 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,7 +16,11 @@ import (
 // present. Mirrors installClaudeCodeHooks' read-merge-write pattern (plugin.go).
 func ensureMCPServerJSON(path string, entry map[string]any) (bool, error) {
 	var cfg map[string]any
-	if data, err := os.ReadFile(path); err == nil {
+	data, err := os.ReadFile(path)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return false, err
+	}
+	if err == nil {
 		if err := json.Unmarshal(data, &cfg); err != nil {
 			return false, err
 		}
@@ -52,7 +58,11 @@ func ensureMCPServerJSON(path string, entry map[string]any) (bool, error) {
 // table header was already present.
 func ensureCodexMCP(configPath string) (bool, error) {
 	var content string
-	if data, err := os.ReadFile(configPath); err == nil {
+	data, err := os.ReadFile(configPath)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return false, err
+	}
+	if err == nil {
 		content = string(data)
 	}
 	if strings.Contains(content, "[mcp_servers.teammemory]") {
