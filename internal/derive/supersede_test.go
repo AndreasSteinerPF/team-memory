@@ -115,24 +115,19 @@ func TestHasCycleBackToNoCycle(t *testing.T) {
 	}
 }
 
-// HasCycleBackTo: two-hop supersede cycle (A supersedes B, B supersedes C;
-// filing C supersedes A closes the 3-cycle).
+// HasCycleBackTo: two-hop supersede cycle. Existing arcs: A supersedes B
+// (obs target=A, supersedes=B → B is superseded by A → arc B→A in the
+// supersession graph) and B supersedes C (arc C→B). Filing "C supersede
+// --supersedes=A" creates arc A→C, closing the 3-cycle A→C→B→A. Caller
+// passes (a=target=C, b=supersedes=A).
 func TestHasCycleBackToTwoHopSupersede(t *testing.T) {
 	obs := []model.Observation{
-		{Target: "A", Kind: model.KindSupersede, Supersedes: "B"}, // A supersedes B
-		{Target: "B", Kind: model.KindSupersede, Supersedes: "C"}, // B supersedes C
+		{Target: "A", Kind: model.KindSupersede, Supersedes: "B"}, // B→A
+		{Target: "B", Kind: model.KindSupersede, Supersedes: "C"}, // C→B
 	}
-	// Filing "C supersede --supersedes=A": call HasCycleBackTo(obs, "C", "A", ...).
-	// For supersede the chain walks "is superseded by". A is superseded by ?
-	// Look for obs with Supersedes=A — none. Hmm, so this test exposes the
-	// direction: when filing "C supersede --supersedes=A", we're saying A is
-	// now superseded by C. The chain we walk is "starting from C, who is C
-	// superseded by?" — look for obs with Supersedes=C. obs[1] has Supersedes=C,
-	// Target=B → so C is superseded by B. Walk to B. B is superseded by? obs[0]
-	// has Supersedes=B, Target=A → B is superseded by A. Walk to A. A==a? Yes,
-	// cycle.
-	if !HasCycleBackTo(obs, "A", "C", model.KindSupersede) {
-		t.Fatal("expected cycle on 3-step supersede chain")
+	// Walker starts at a=C, walks "is superseded by" forward: C→B→A. A==target=A.
+	if !HasCycleBackTo(obs, "C", "A", model.KindSupersede) {
+		t.Fatal("expected cycle on 3-step supersede chain (C→B→A)")
 	}
 }
 

@@ -79,23 +79,35 @@ func BuildContext(memories []model.Memory, allObs []model.Observation, p policy.
 	return ctx
 }
 
-// HasCycleBackTo reports whether walking the canonical/supersedes chain from
-// b would reach a transitively. When the caller is about to file
-// "a mark_duplicate --canonical-id=b" or "a supersede --supersedes=b" (i.e.
-// adding the arc a→b), a true return means the new observation would close
-// a cycle of any length (a → b → ... → a). Used by the CLI and MCP observe
-// surfaces to warn (but not block) on cycles (prd.md §8.2).
+// HasCycleBackTo reports whether the existing canonical/supersedes graph
+// already contains a path that, combined with the new observation about to
+// be filed, would form a cycle. Used by the CLI and MCP observe surfaces to
+// warn (but not block) on cycles of any length (prd.md §8.5).
 //
-// The resolved/unresolved state of intermediate observations is intentionally
+// Callers pass (a, b) = (target, cross-memory-ref) of the *new* observation:
+//   - mark_duplicate: a is the duplicate, b is the canonical_id.
+//     The new arc points a → b (a duplicates b). Cycle iff a path
+//     b → ... → a already exists. We walk from b looking for a, following
+//     "X is a duplicate of Y" arcs (obs target → canonical_id).
+//   - supersede: a is the new canonical, b is the supersedes (obsolete).
+//     The new arc points b → a (b is superseded by a). Cycle iff a path
+//     a → ... → b already exists. We walk from a looking for b, following
+//     "X is superseded by Y" arcs (obs supersedes → target).
+//
+// Resolved/unresolved state of intermediate observations is intentionally
 // ignored — a cycle is still worth surfacing even if some legs were later
 // confirmed.
-//
-// For mark_duplicate, the chain walks outgoing canonical_id arcs: node X's
-// successor is the canonical_id of the latest mark_duplicate observation
-// whose target is X. For supersede, the chain walks the "is superseded by"
-// direction: node X's successor is the target of any supersede observation
-// whose `supersedes` field names X (i.e. the memory that supersedes X).
 func HasCycleBackTo(obs []model.Observation, a, b string, kind model.ObservationKind) bool {
+	var start, target string
+	switch kind {
+	case model.KindMarkDuplicate:
+		start, target = b, a
+	case model.KindSupersede:
+		start, target = a, b
+	default:
+		return false
+	}
+
 	successors := func(node string) []string {
 		var next []string
 		for _, o := range obs {
@@ -116,13 +128,13 @@ func HasCycleBackTo(obs []model.Observation, a, b string, kind model.Observation
 		return next
 	}
 
-	visited := map[string]bool{b: true}
-	queue := []string{b}
+	visited := map[string]bool{start: true}
+	queue := []string{start}
 	for len(queue) > 0 {
 		node := queue[0]
 		queue = queue[1:]
 		for _, n := range successors(node) {
-			if n == a {
+			if n == target {
 				return true
 			}
 			if !visited[n] {
