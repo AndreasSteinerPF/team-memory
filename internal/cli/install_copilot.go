@@ -7,11 +7,9 @@ import (
 	"path/filepath"
 )
 
-// installCopilot writes Copilot CLI repo hook artifacts and prints the
-// user-scope MCP config the user must add by hand (prd.md §10.6).
-// The MCP config lives in the user's home (~/.copilot/mcp-config.json), not the
-// repo, so init prints the snippet rather than writing into $HOME.
-func installCopilot(repoDir string, out io.Writer) error {
+// installCopilot writes Copilot CLI repo hook artifacts and registers the
+// teammemory MCP server in <homeDir>/.copilot/mcp-config.json (prd.md §10.6).
+func installCopilot(repoDir, homeDir string, out io.Writer) error {
 	dir := filepath.Join(repoDir, ".github", "hooks")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
@@ -34,7 +32,15 @@ func installCopilot(repoDir string, out io.Writer) error {
 	if err := os.WriteFile(filepath.Join(dir, "teammemory.json"), []byte(hooks), 0o644); err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "Copilot MCP: add to ~/.copilot/mcp-config.json →")
-	fmt.Fprintln(out, `  {"mcpServers":{"teammemory":{"type":"local","command":"tm","args":["mcp"]}}}`)
+	mcpPath := filepath.Join(homeDir, ".copilot", "mcp-config.json")
+	added, err := ensureMCPServerJSON(mcpPath, map[string]any{"type": "local", "command": "tm", "args": []string{"mcp"}})
+	if err != nil {
+		return err
+	}
+	if added {
+		fmt.Fprintf(out, "Registered teammemory MCP server in %s.\n", mcpPath)
+	} else {
+		fmt.Fprintf(out, "teammemory MCP server already registered in %s.\n", mcpPath)
+	}
 	return nil
 }
