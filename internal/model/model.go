@@ -80,6 +80,18 @@ const (
 	StatusRejected    Status = "rejected"
 )
 
+// IsNonActive reports whether s is one of the statuses excluded from
+// retrieval — useful for cross-memory reference checks (mark_duplicate /
+// supersede), where pointing at a non-active row may still be intentional
+// but warrants a warning. (prd.md §8.2, §11.4.)
+func (s Status) IsNonActive() bool {
+	switch s {
+	case StatusRejected, StatusStale, StatusDuplicate, StatusSuperseded:
+		return true
+	}
+	return false
+}
+
 // Scope is a set of path globs and command patterns the memory applies to.
 type Scope struct {
 	Paths    []string `yaml:"paths"`

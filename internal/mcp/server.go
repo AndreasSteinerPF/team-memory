@@ -489,19 +489,12 @@ Always include evidence when observing. Observations without evidence are less u
 // reference may still be intentional, so we surface the warning in the tool
 // result text instead of blocking the observation (prd.md §8.2, §9.2).
 func warnNonActiveMCP(s *Server, id string) string {
-	rows, err := s.deps.Index.All()
-	if err != nil {
+	st, ok, err := s.deps.Index.Status(id)
+	if err != nil || !ok {
 		return ""
 	}
-	for _, r := range rows {
-		if r.ID != id {
-			continue
-		}
-		switch r.Status {
-		case model.StatusRejected, model.StatusStale, model.StatusDuplicate, model.StatusSuperseded:
-			return fmt.Sprintf("[warning: referenced memory %s is currently %s — proceeding, but verify this is intentional]", id, r.Status)
-		}
-		return ""
+	if st.IsNonActive() {
+		return fmt.Sprintf("[warning: referenced memory %s is currently %s — proceeding, but verify this is intentional]", id, st)
 	}
 	return ""
 }

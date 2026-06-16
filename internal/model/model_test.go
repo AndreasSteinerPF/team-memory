@@ -80,3 +80,23 @@ func TestObservationHasCrossMemoryFields(t *testing.T) {
 		t.Fatal("CanonicalID/Supersedes fields not present or not assignable")
 	}
 }
+
+func TestStatusIsNonActive(t *testing.T) {
+	cases := []struct {
+		s    Status
+		want bool
+	}{
+		{StatusProvisional, false},
+		{StatusActive, false},
+		{StatusContested, false},
+		{StatusStale, true},
+		{StatusDuplicate, true},
+		{StatusSuperseded, true},
+		{StatusRejected, true},
+	}
+	for _, c := range cases {
+		if got := c.s.IsNonActive(); got != c.want {
+			t.Errorf("Status(%q).IsNonActive() = %v, want %v", c.s, got, c.want)
+		}
+	}
+}

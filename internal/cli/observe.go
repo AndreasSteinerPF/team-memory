@@ -121,21 +121,14 @@ func validAgentKind(k model.ObservationKind) bool {
 // may still be intentional (e.g. consolidating duplicates against a
 // to-be-staled canonical) so we warn instead of blocking.
 func warnIfNonActive(cmd *cobra.Command, e *env, id string) {
-	rows, err := e.idx.All()
-	if err != nil {
+	st, ok, err := e.idx.Status(id)
+	if err != nil || !ok {
 		return
 	}
-	for _, r := range rows {
-		if r.ID != id {
-			continue
-		}
-		switch r.Status {
-		case model.StatusRejected, model.StatusStale, model.StatusDuplicate, model.StatusSuperseded:
-			fmt.Fprintf(cmd.ErrOrStderr(),
-				"Note: referenced memory %s is currently %s — proceeding, but verify this is intentional.\n",
-				id, r.Status)
-		}
-		return
+	if st.IsNonActive() {
+		fmt.Fprintf(cmd.ErrOrStderr(),
+			"Note: referenced memory %s is currently %s — proceeding, but verify this is intentional.\n",
+			id, st)
 	}
 }
 

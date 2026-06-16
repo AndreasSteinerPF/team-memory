@@ -466,6 +466,52 @@ func TestIndexStoresEffectiveCommands(t *testing.T) {
 	}
 }
 
+func TestStatusByID(t *testing.T) {
+	l := newLedger(t)
+	id, err := l.AppendMemory(model.Memory{
+		Type:  model.TypeDecision,
+		Title: "decision row",
+		Scope: model.Scope{Paths: []string{"src/**"}},
+		Actor: model.Actor{Kind: model.ActorAgent, Name: "a", SessionID: "s"},
+	})
+	if err != nil {
+		t.Fatalf("append: %v", err)
+	}
+	idx := openIndex(t, dbPath(t), l)
+
+	// Happy path: existing row returns its materialized status.
+	st, ok, err := idx.Status(id)
+	if err != nil {
+		t.Fatalf("status(existing): %v", err)
+	}
+	if !ok {
+		t.Fatalf("status(existing) ok = false, want true")
+	}
+	if st == "" {
+		t.Fatalf("status(existing) returned empty status")
+	}
+	// Must agree with the full materialized row.
+	all, err := idx.All()
+	if err != nil {
+		t.Fatalf("all: %v", err)
+	}
+	if len(all) != 1 || all[0].Status != st {
+		t.Fatalf("Status(id)=%q, All()[0].Status=%q", st, all[0].Status)
+	}
+
+	// Not-found path: returns ("", false, nil).
+	st2, ok, err := idx.Status("does-not-exist")
+	if err != nil {
+		t.Fatalf("status(missing): unexpected error: %v", err)
+	}
+	if ok {
+		t.Fatalf("status(missing) ok = true, want false")
+	}
+	if st2 != "" {
+		t.Fatalf("status(missing) = %q, want empty", st2)
+	}
+}
+
 func TestAutoRebuildOnSchemaVersionMismatch(t *testing.T) {
 	l := newLedger(t)
 	id, err := l.AppendMemory(model.Memory{

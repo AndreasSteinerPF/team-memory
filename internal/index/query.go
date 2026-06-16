@@ -1,6 +1,7 @@
 package index
 
 import (
+	"database/sql"
 	"encoding/json"
 	"time"
 
@@ -74,6 +75,22 @@ FROM memories ORDER BY id`)
 		out = append(out, im)
 	}
 	return out, rows.Err()
+}
+
+// Status returns the materialized status of the memory with id. The bool is
+// false (and Status is empty) if no such row exists. An O(1) primary-key
+// lookup — preferred over All() when only one row's state is needed (e.g.
+// the cross-memory warn helpers for mark_duplicate / supersede).
+func (idx *Index) Status(id string) (model.Status, bool, error) {
+	var s string
+	err := idx.db.QueryRow(`SELECT status FROM memories WHERE id = ?`, id).Scan(&s)
+	if err == sql.ErrNoRows {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	return model.Status(s), true, nil
 }
 
 // SearchIDs returns the IDs of memories whose title, summary, or guidance match
