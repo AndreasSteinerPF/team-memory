@@ -501,35 +501,15 @@ Always include evidence when observing. Observations without evidence are less u
 	})
 }
 
-// detectCycleMCP reports whether b has an unresolved observation of `kind`
-// pointing back at a. Mirrors cli.detectCycle for the MCP tool path; see
-// internal/cli/observe.go for the rationale.
+// detectCycleMCP reports whether b has an observation of `kind` pointing back
+// at a. Mirrors cli.detectCycle for the MCP tool path; both delegate to
+// derive.HasCycleBackTo so the logic cannot drift.
 func detectCycleMCP(s *Server, a, b string, kind model.ObservationKind) (bool, error) {
 	obs, err := s.deps.Ledger.Observations()
 	if err != nil {
 		return false, err
 	}
-	var latest *model.Observation
-	for i := range obs {
-		o := &obs[i]
-		if o.Target != b || o.Kind != kind {
-			continue
-		}
-		var ref string
-		switch kind {
-		case model.KindMarkDuplicate:
-			ref = o.CanonicalID
-		case model.KindSupersede:
-			ref = o.Supersedes
-		}
-		if ref != a {
-			continue
-		}
-		if latest == nil || o.CreatedAt.After(latest.CreatedAt) {
-			latest = o
-		}
-	}
-	return latest != nil, nil
+	return derive.HasCycleBackTo(obs, a, b, kind), nil
 }
 
 // warnNonActiveMCP returns a non-empty warning line if id refers to a memory

@@ -20,7 +20,7 @@ import (
 // schemaVersion is bumped whenever the table layout or derivation semantics
 // change in a way that invalidates an existing index. A stored value other than
 // this triggers an automatic rebuild on Open.
-const schemaVersion = "3" // v3 adds the effective_commands column (command scopes)
+const schemaVersion = "4" // v4: adds duplicate/superseded statuses + cross-memory derivation
 
 const (
 	metaSchemaVersion = "schema_version"

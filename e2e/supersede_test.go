@@ -227,3 +227,63 @@ func TestSupersedeOnStaleARevivedCascade(t *testing.T) {
 		t.Fatalf("B's reason should name A as canonical, got: %s", out)
 	}
 }
+
+// TestSupersedeCycleWarnsButDoesNotBlock pins the warn-not-block contract for
+// one-hop supersede cycles (prd.md §8.2, §8.5). Propose A and B; file
+// supersede on A naming B (A supersedes B); then file supersede on B naming A
+// (B supersedes A). The second observation closes a cycle: the CLI must
+// succeed (exit 0) and emit a stderr warning naming "supersede cycle".
+func TestSupersedeCycleWarnsButDoesNotBlock(t *testing.T) {
+	dir := newGitRepo(t)
+	runTM(t, dir, "", "init")
+
+	out, _, code := runTM(t, dir, "",
+		"propose", "decision",
+		"--title", "A first",
+		"--scope", "docs/**",
+		"--session", "s1",
+	)
+	if code != 0 {
+		t.Fatalf("propose A exit %d: %s", code, out)
+	}
+	idA := parseID(t, out)
+
+	out, _, code = runTM(t, dir, "",
+		"propose", "decision",
+		"--title", "B second",
+		"--scope", "docs/**",
+		"--session", "s1",
+	)
+	if code != 0 {
+		t.Fatalf("propose B exit %d: %s", code, out)
+	}
+	idB := parseID(t, out)
+
+	// First leg: file supersede on A naming B (A supersedes B). No cycle.
+	out, errb, code := runTM(t, dir, "",
+		"observe", idA, "supersede",
+		"--supersedes", idB,
+		"--summary", "A supersedes B",
+		"--session", "s1",
+	)
+	if code != 0 {
+		t.Fatalf("observe A supersedes B exit %d: %s / %s", code, out, errb)
+	}
+	if strings.Contains(errb, "supersede cycle") {
+		t.Fatalf("first leg must not emit a cycle warning, got: %s", errb)
+	}
+
+	// Second leg: file supersede on B naming A (B supersedes A). Closes the cycle.
+	out, errb, code = runTM(t, dir, "",
+		"observe", idB, "supersede",
+		"--supersedes", idA,
+		"--summary", "B supersedes A",
+		"--session", "s2",
+	)
+	if code != 0 {
+		t.Fatalf("observe B supersedes A exit %d (cycle should warn, not block): stdout=%s stderr=%s", code, out, errb)
+	}
+	if !strings.Contains(errb, "supersede cycle") {
+		t.Fatalf("cycle warning missing from stderr, got: %s", errb)
+	}
+}

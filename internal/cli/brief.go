@@ -82,7 +82,7 @@ func buildBrief(e *env) (string, error) {
 		counts[model.StatusActive], counts[model.StatusProvisional], counts[model.StatusContested])
 	b.WriteString("- Relevant memories are injected automatically when you edit matching files (PreToolUse hook). For multi-file planning — or if this agent has no TeamMemory edit hook — call the tm_check_action MCP tool with the target paths first.\n")
 	fmt.Fprintf(&b, "- Record durable project judgment with tm_propose when you discover %s. Never record session state, trivia, facts derivable from the code, or system/OS-specific details (per-OS flags, interpreter names, local toolchain versions) — memories are shared across the whole team.\n", model.MemoryWorthyShortForm)
-	b.WriteString("- When your work bears on a memory you were shown, react with tm_observe: confirm with evidence, contradict with evidence, adjust_scope, or mark_stale.\n")
+	b.WriteString("- When your work bears on a memory you were shown, react with tm_observe: confirm with evidence, contradict with evidence, adjust_scope, mark_stale, mark_duplicate (point at the canonical), or supersede (file on the new canonical, name the obsolete one).\n")
 	if counts[model.StatusProvisional] > 0 {
 		b.WriteString("- Provisional memories await independent validation; if your work touches their scope, your confirmation or contradiction matters.\n")
 	}

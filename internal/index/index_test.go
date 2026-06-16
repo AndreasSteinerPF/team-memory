@@ -688,7 +688,7 @@ func TestAutoRebuildOnSchemaVersionMismatch(t *testing.T) {
 	if err := verify.QueryRow(`SELECT value FROM meta WHERE key = 'schema_version'`).Scan(&v); err != nil {
 		t.Fatalf("read version: %v", err)
 	}
-	if v != "3" {
-		t.Fatalf("schema_version = %q after rebuild, want \"3\"", v)
+	if v != "4" {
+		t.Fatalf("schema_version = %q after rebuild, want \"4\"", v)
 	}
 }

@@ -103,3 +103,76 @@ func TestMarkDuplicateFlow(t *testing.T) {
 		t.Fatalf("B's duplicate should be resolved by a later confirm, got: %s", out)
 	}
 }
+
+// TestMarkDuplicateCycleWarnsButDoesNotBlock pins the warn-not-block contract
+// for one-hop duplicate cycles (prd.md §8.2). Propose A and B; mark A as a
+// duplicate of B (A->B); then mark B as a duplicate of A (B->A). The second
+// observation closes a cycle: the CLI must succeed (exit 0), emit a stderr
+// warning naming "duplicate cycle", and end with both memories in
+// `tm list --duplicate`.
+func TestMarkDuplicateCycleWarnsButDoesNotBlock(t *testing.T) {
+	dir := newGitRepo(t)
+	runTM(t, dir, "", "init")
+
+	out, _, code := runTM(t, dir, "",
+		"propose", "decision",
+		"--title", "A first",
+		"--scope", "docs/**",
+		"--session", "s1",
+	)
+	if code != 0 {
+		t.Fatalf("propose A exit %d: %s", code, out)
+	}
+	idA := parseID(t, out)
+
+	out, _, code = runTM(t, dir, "",
+		"propose", "decision",
+		"--title", "B second",
+		"--scope", "docs/**",
+		"--session", "s1",
+	)
+	if code != 0 {
+		t.Fatalf("propose B exit %d: %s", code, out)
+	}
+	idB := parseID(t, out)
+
+	// First leg: A is a duplicate of B (A -> B). No cycle yet.
+	out, errb, code := runTM(t, dir, "",
+		"observe", idA, "mark_duplicate",
+		"--canonical-id", idB,
+		"--summary", "A duplicates B",
+		"--session", "s1",
+	)
+	if code != 0 {
+		t.Fatalf("observe A->B exit %d: %s / %s", code, out, errb)
+	}
+	if strings.Contains(errb, "duplicate cycle") {
+		t.Fatalf("first leg must not emit a cycle warning, got: %s", errb)
+	}
+
+	// Second leg: B is a duplicate of A (B -> A). Closes the cycle.
+	out, errb, code = runTM(t, dir, "",
+		"observe", idB, "mark_duplicate",
+		"--canonical-id", idA,
+		"--summary", "B duplicates A",
+		"--session", "s2",
+	)
+	if code != 0 {
+		t.Fatalf("observe B->A exit %d (cycle should warn, not block): stdout=%s stderr=%s", code, out, errb)
+	}
+	if !strings.Contains(errb, "duplicate cycle") {
+		t.Fatalf("cycle warning missing from stderr, got: %s", errb)
+	}
+
+	// Both memories appear in --duplicate after the cycle.
+	out, _, code = runTM(t, dir, "", "list", "--duplicate")
+	if code != 0 {
+		t.Fatalf("list --duplicate exit %d: %s", code, out)
+	}
+	if !strings.Contains(out, idA) {
+		t.Fatalf("A should appear in --duplicate after cycle, got: %s", out)
+	}
+	if !strings.Contains(out, idB) {
+		t.Fatalf("B should appear in --duplicate after cycle, got: %s", out)
+	}
+}

@@ -1,8 +1,11 @@
 package cli
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/AndreasSteinerPF/team-memory/internal/model"
 )
 
 // installCursor writes Cursor hook + rule + MCP artifacts (prd.md §10.6).
@@ -26,15 +29,16 @@ func installCursor(repoDir string) error {
 	if err := os.WriteFile(filepath.Join(cdir, "hooks.json"), []byte(hooks), 0o644); err != nil {
 		return err
 	}
-	rule := `---
+	rule := fmt.Sprintf(`---
 alwaysApply: true
 ---
-# TeamMemory
+# TeamMemory v2
 Before risky work, the PreToolUse hook surfaces relevant memories. When you
-discover a non-obvious failure, hidden constraint, fragile area, stale doc, or
-undocumented decision, record it with tm_propose. When your work bears on a
-memory you were shown, tm_observe to confirm or contradict it (with evidence).
-`
+discover %s, record it with tm_propose. When your work bears on a memory you
+were shown, react with tm_observe: confirm with evidence, contradict with
+evidence, adjust_scope, mark_stale, mark_duplicate (point at the canonical), or
+supersede (file on the new canonical, name the obsolete one).
+`, model.MemoryWorthyShortForm)
 	if err := os.WriteFile(filepath.Join(cdir, "rules", "teammemory.mdc"), []byte(rule), 0o644); err != nil {
 		return err
 	}

@@ -148,37 +148,18 @@ func warnIfNonActive(cmd *cobra.Command, e *env, id string) {
 	}
 }
 
-// detectCycle reports whether b has an unresolved observation of `kind`
-// pointing back at a. Used for one-hop cycle detection on mark_duplicate /
-// supersede: filing M1->M2 when M2->M1 already exists would close a two-step
-// cycle (prd.md §8.2, §8.5). Warn-not-block — the operator may be deliberately
-// consolidating, but they should see the loop before committing it.
+// detectCycle reports whether b has an observation of `kind` pointing back at
+// a. Used for one-hop cycle detection on mark_duplicate / supersede: filing
+// M1->M2 when M2->M1 already exists would close a two-step cycle (prd.md §8.2,
+// §8.5). Warn-not-block — the operator may be deliberately consolidating, but
+// they should see the loop before committing it. Thin wrapper around
+// derive.HasCycleBackTo that handles ledger access.
 func detectCycle(e *env, a, b string, kind model.ObservationKind) (bool, error) {
 	obs, err := e.led.Observations()
 	if err != nil {
 		return false, err
 	}
-	var latest *model.Observation
-	for i := range obs {
-		o := &obs[i]
-		if o.Target != b || o.Kind != kind {
-			continue
-		}
-		var ref string
-		switch kind {
-		case model.KindMarkDuplicate:
-			ref = o.CanonicalID
-		case model.KindSupersede:
-			ref = o.Supersedes
-		}
-		if ref != a {
-			continue
-		}
-		if latest == nil || o.CreatedAt.After(latest.CreatedAt) {
-			latest = o
-		}
-	}
-	return latest != nil, nil
+	return derive.HasCycleBackTo(obs, a, b, kind), nil
 }
 
 // printTargetState re-derives a memory from its full observation set and prints

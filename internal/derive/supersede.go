@@ -79,6 +79,32 @@ func BuildContext(memories []model.Memory, allObs []model.Observation, p policy.
 	return ctx
 }
 
+// HasCycleBackTo reports whether b has an observation of `kind`
+// (mark_duplicate or supersede) whose cross-memory reference points back at
+// a. Used by the CLI and MCP observe surfaces to warn (but not block) when
+// filing an observation would close a one-hop cycle (prd.md §8.2). The
+// resolved/unresolved state of the prior observation is intentionally
+// ignored: a cycle is still worth surfacing even if the earlier link was
+// later confirmed.
+func HasCycleBackTo(obs []model.Observation, a, b string, kind model.ObservationKind) bool {
+	for _, o := range obs {
+		if o.Target != b || o.Kind != kind {
+			continue
+		}
+		var ref string
+		switch kind {
+		case model.KindMarkDuplicate:
+			ref = o.CanonicalID
+		case model.KindSupersede:
+			ref = o.Supersedes
+		}
+		if ref == a {
+			return true
+		}
+	}
+	return false
+}
+
 // supersedeSubstantiated mirrors broadeningSubstantiated (scope.go) but reads
 // "later observations on A" rather than "later observations on the same memory
 // as the adjust_scope." See prd.md §8.5.

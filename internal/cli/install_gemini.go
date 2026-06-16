@@ -3,10 +3,13 @@ package cli
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/AndreasSteinerPF/team-memory/internal/model"
 )
 
 // geminiHookSpecs are the hook entries tm installs into .gemini/settings.json.
@@ -62,15 +65,15 @@ func installGemini(repoDir string) error {
 		return err
 	}
 
-	section := `
+	section := fmt.Sprintf(`
 
-# TeamMemory
-When you discover a non-obvious failure, hidden constraint, fragile area, stale
-doc, or undocumented decision, record it with tm_propose. When your work bears
-on a memory you were shown, tm_observe to confirm or contradict it (with
-evidence).
-`
-	return ensureSection(filepath.Join(repoDir, "GEMINI.md"), "# TeamMemory", section)
+# TeamMemory v2
+When you discover %s, record it with tm_propose. When your work bears on a
+memory you were shown, react with tm_observe: confirm with evidence, contradict
+with evidence, adjust_scope, mark_stale, mark_duplicate (point at the
+canonical), or supersede (file on the new canonical, name the obsolete one).
+`, model.MemoryWorthyShortForm)
+	return ensureSection(filepath.Join(repoDir, "GEMINI.md"), "# TeamMemory v2", section)
 }
 
 // ensureSection adds body to the file at path, never clobbering existing
