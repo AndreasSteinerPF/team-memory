@@ -11,17 +11,17 @@ import (
 )
 
 func newObserveCmd(g *globalOpts) *cobra.Command {
-	var summary, actor, session, ctxBranch string
+	var summary, actor, session, ctxBranch, canonicalID, supersedes string
 	var evidence, scope, scopeCommand, ctxPaths, ctxCommands []string
 	cmd := &cobra.Command{
 		Use:   "observe <memory-id> <kind>",
-		Short: "Add an observation (kind: confirm|contradict|adjust_scope|mark_stale)",
+		Short: "Add an observation (kind: confirm|contradict|adjust_scope|mark_stale|mark_duplicate|supersede)",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			target := args[0]
 			kind := model.ObservationKind(args[1])
 			if !validAgentKind(kind) {
-				return fmt.Errorf("unknown or human-only kind %q (use confirm|contradict|adjust_scope|mark_stale)", args[1])
+				return fmt.Errorf("unknown or human-only kind %q (use confirm|contradict|adjust_scope|mark_stale|mark_duplicate|supersede)", args[1])
 			}
 			e, err := openEnv(g)
 			if err != nil {
@@ -49,6 +49,36 @@ func newObserveCmd(g *globalOpts) *cobra.Command {
 				}
 				o.SuggestedScope = &model.Scope{Paths: scope, Commands: scopeCommand}
 			}
+			if kind == model.KindMarkDuplicate {
+				if canonicalID == "" {
+					return fmt.Errorf("mark_duplicate requires --canonical-id")
+				}
+				if canonicalID == target {
+					return fmt.Errorf("mark_duplicate canonical-id cannot equal target")
+				}
+				if _, ok, err := e.led.Memory(canonicalID); err != nil {
+					return err
+				} else if !ok {
+					return fmt.Errorf("canonical-id memory %s not found", canonicalID)
+				}
+				warnIfNonActive(cmd, e, canonicalID)
+				o.CanonicalID = canonicalID
+			}
+			if kind == model.KindSupersede {
+				if supersedes == "" {
+					return fmt.Errorf("supersede requires --supersedes")
+				}
+				if supersedes == target {
+					return fmt.Errorf("supersedes cannot equal target (file the observation on the new canonical, naming the obsolete one in --supersedes)")
+				}
+				if _, ok, err := e.led.Memory(supersedes); err != nil {
+					return err
+				} else if !ok {
+					return fmt.Errorf("supersedes memory %s not found", supersedes)
+				}
+				warnIfNonActive(cmd, e, supersedes)
+				o.Supersedes = supersedes
+			}
 			if ctxBranch != "" || len(ctxPaths) > 0 || len(ctxCommands) > 0 {
 				o.CodeContext = &model.CodeContext{Branch: ctxBranch, Paths: ctxPaths, Commands: ctxCommands}
 			}
@@ -72,15 +102,41 @@ func newObserveCmd(g *globalOpts) *cobra.Command {
 	cmd.Flags().StringArrayVar(&ctxPaths, "ctx-path", nil, "code-context path (repeatable)")
 	cmd.Flags().StringArrayVar(&scopeCommand, "scope-command", nil, "suggested command pattern for adjust_scope (repeatable)")
 	cmd.Flags().StringArrayVar(&ctxCommands, "ctx-command", nil, "code-context command you ran (repeatable; substantiates command broadening)")
+	cmd.Flags().StringVar(&canonicalID, "canonical-id", "", "canonical memory ID for kind=mark_duplicate (required when kind is mark_duplicate)")
+	cmd.Flags().StringVar(&supersedes, "supersedes", "", "obsolete memory ID for kind=supersede (required when kind is supersede; file the observation on the new canonical and name the obsolete one here)")
 	return cmd
 }
 
 func validAgentKind(k model.ObservationKind) bool {
 	switch k {
-	case model.KindConfirm, model.KindContradict, model.KindAdjustScope, model.KindMarkStale:
+	case model.KindConfirm, model.KindContradict, model.KindAdjustScope,
+		model.KindMarkStale, model.KindMarkDuplicate, model.KindSupersede:
 		return true
 	}
 	return false
+}
+
+// warnIfNonActive prints a stderr warning if id refers to a memory that is
+// currently rejected/stale/duplicate/superseded — the cross-memory reference
+// may still be intentional (e.g. consolidating duplicates against a
+// to-be-staled canonical) so we warn instead of blocking.
+func warnIfNonActive(cmd *cobra.Command, e *env, id string) {
+	rows, err := e.idx.All()
+	if err != nil {
+		return
+	}
+	for _, r := range rows {
+		if r.ID != id {
+			continue
+		}
+		switch r.Status {
+		case model.StatusRejected, model.StatusStale, model.StatusDuplicate, model.StatusSuperseded:
+			fmt.Fprintf(cmd.ErrOrStderr(),
+				"Note: referenced memory %s is currently %s — proceeding, but verify this is intentional.\n",
+				id, r.Status)
+		}
+		return
+	}
 }
 
 // printTargetState re-derives a memory from its full observation set and prints

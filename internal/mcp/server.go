@@ -305,14 +305,16 @@ func (s *Server) addProposeTool(srv *sdkmcp.Server) {
 // --- tm_observe ---
 
 type observeArgs struct {
-	MemoryID string   `json:"memory_id" jsonschema:"ID of the memory to observe (the ULID from tm_propose or tm_search output)."`
-	Kind     string   `json:"kind" jsonschema:"Observation kind: confirm|contradict|adjust_scope|mark_stale"`
-	Summary  string   `json:"summary,omitempty" jsonschema:"What you observed, with enough detail to be useful evidence."`
-	Evidence []string `json:"evidence,omitempty" jsonschema:"Evidence as type:ref pairs (e.g. test_failure:logs/rollback.log). Include evidence whenever possible."`
-	Scope    []string `json:"scope,omitempty" jsonschema:"Suggested scope globs for adjust_scope (required if kind=adjust_scope and no commands)."`
-	Commands []string `json:"commands,omitempty" jsonschema:"Suggested command patterns for adjust_scope (use instead of or alongside scope when correcting a command-scoped memory)."`
-	Session  string   `json:"session,omitempty" jsonschema:"Your session ID for independence tracking. Use $CLAUDE_SESSION_ID."`
-	Actor    string   `json:"actor,omitempty" jsonschema:"Name of the observing agent."`
+	MemoryID    string   `json:"memory_id" jsonschema:"ID of the memory to observe (the ULID from tm_propose or tm_search output). For mark_duplicate this is the duplicate; for supersede this is the NEW canonical."`
+	Kind        string   `json:"kind" jsonschema:"Observation kind: confirm|contradict|adjust_scope|mark_stale|mark_duplicate|supersede"`
+	Summary     string   `json:"summary,omitempty" jsonschema:"What you observed, with enough detail to be useful evidence."`
+	Evidence    []string `json:"evidence,omitempty" jsonschema:"Evidence as type:ref pairs (e.g. test_failure:logs/rollback.log). Include evidence whenever possible."`
+	Scope       []string `json:"scope,omitempty" jsonschema:"Suggested scope globs for adjust_scope (required if kind=adjust_scope and no commands)."`
+	Commands    []string `json:"commands,omitempty" jsonschema:"Suggested command patterns for adjust_scope (use instead of or alongside scope when correcting a command-scoped memory)."`
+	CanonicalID string   `json:"canonical_id,omitempty" jsonschema:"Canonical memory ID for kind=mark_duplicate (required). The memory_id is the duplicate; canonical_id is the kept one."`
+	Supersedes  string   `json:"supersedes,omitempty" jsonschema:"Obsolete memory ID for kind=supersede (required). File the observation on the new canonical (memory_id), naming the obsolete one here."`
+	Session     string   `json:"session,omitempty" jsonschema:"Your session ID for independence tracking. Use $CLAUDE_SESSION_ID."`
+	Actor       string   `json:"actor,omitempty" jsonschema:"Name of the observing agent."`
 }
 
 func (s *Server) addObserveTool(srv *sdkmcp.Server) {
@@ -324,6 +326,8 @@ func (s *Server) addObserveTool(srv *sdkmcp.Server) {
 - contradict: you found evidence the memory is wrong — include evidence. Contradictions immediately move the memory to contested and lower its confidence.
 - adjust_scope: the lesson is right but the scope is too broad or too narrow — provide the corrected paths in the scope field and/or command patterns in the commands field.
 - mark_stale: the code or situation this memory describes no longer exists.
+- mark_duplicate: this memory (memory_id) is a duplicate of canonical_id. The duplicate becomes status duplicate; the canonical is unaffected.
+- supersede: this memory (memory_id) is the NEW canonical and supersedes the older one named in supersedes. The relationship is pending until you (or another session) independently confirm memory_id, or a maintainer approves it.
 
 Always include evidence when observing. Observations without evidence are less useful.`,
 	}, func(ctx context.Context, req *sdkmcp.CallToolRequest, args observeArgs) (*sdkmcp.CallToolResult, any, error) {
@@ -332,12 +336,13 @@ Always include evidence when observing. Observations without evidence are less u
 		}
 		kind := model.ObservationKind(args.Kind)
 		switch kind {
-		case model.KindConfirm, model.KindContradict, model.KindAdjustScope, model.KindMarkStale:
+		case model.KindConfirm, model.KindContradict, model.KindAdjustScope, model.KindMarkStale,
+			model.KindMarkDuplicate, model.KindSupersede:
 		default:
 			return &sdkmcp.CallToolResult{
 				IsError: true,
 				Content: []sdkmcp.Content{&sdkmcp.TextContent{
-					Text: fmt.Sprintf("unknown kind %q: must be confirm|contradict|adjust_scope|mark_stale", args.Kind),
+					Text: fmt.Sprintf("unknown kind %q: must be confirm|contradict|adjust_scope|mark_stale|mark_duplicate|supersede", args.Kind),
 				}},
 			}, nil, nil
 		}
@@ -377,6 +382,55 @@ Always include evidence when observing. Observations without evidence are less u
 		if kind == model.KindAdjustScope {
 			o.SuggestedScope = &model.Scope{Paths: args.Scope, Commands: args.Commands}
 		}
+		var warning string
+		if kind == model.KindMarkDuplicate {
+			if args.CanonicalID == "" {
+				return &sdkmcp.CallToolResult{
+					IsError: true,
+					Content: []sdkmcp.Content{&sdkmcp.TextContent{Text: "mark_duplicate requires canonical_id"}},
+				}, nil, nil
+			}
+			if args.CanonicalID == args.MemoryID {
+				return &sdkmcp.CallToolResult{
+					IsError: true,
+					Content: []sdkmcp.Content{&sdkmcp.TextContent{Text: "mark_duplicate canonical_id cannot equal memory_id"}},
+				}, nil, nil
+			}
+			if _, ok, err := s.deps.Ledger.Memory(args.CanonicalID); err != nil {
+				return nil, nil, err
+			} else if !ok {
+				return &sdkmcp.CallToolResult{
+					IsError: true,
+					Content: []sdkmcp.Content{&sdkmcp.TextContent{Text: fmt.Sprintf("canonical_id memory %s not found", args.CanonicalID)}},
+				}, nil, nil
+			}
+			warning = warnNonActiveMCP(s, args.CanonicalID)
+			o.CanonicalID = args.CanonicalID
+		}
+		if kind == model.KindSupersede {
+			if args.Supersedes == "" {
+				return &sdkmcp.CallToolResult{
+					IsError: true,
+					Content: []sdkmcp.Content{&sdkmcp.TextContent{Text: "supersede requires supersedes"}},
+				}, nil, nil
+			}
+			if args.Supersedes == args.MemoryID {
+				return &sdkmcp.CallToolResult{
+					IsError: true,
+					Content: []sdkmcp.Content{&sdkmcp.TextContent{Text: "supersede: 'supersedes' cannot equal memory_id (file on the NEW canonical)"}},
+				}, nil, nil
+			}
+			if _, ok, err := s.deps.Ledger.Memory(args.Supersedes); err != nil {
+				return nil, nil, err
+			} else if !ok {
+				return &sdkmcp.CallToolResult{
+					IsError: true,
+					Content: []sdkmcp.Content{&sdkmcp.TextContent{Text: fmt.Sprintf("supersedes memory %s not found", args.Supersedes)}},
+				}, nil, nil
+			}
+			warning = warnNonActiveMCP(s, args.Supersedes)
+			o.Supersedes = args.Supersedes
+		}
 
 		if _, err := s.deps.Ledger.AppendObservation(o); err != nil {
 			return nil, nil, err
@@ -405,8 +459,33 @@ Always include evidence when observing. Observations without evidence are less u
 		fmt.Fprintln(&b, args.MemoryID)
 		fmt.Fprintln(&b, stateStr(st.Status, st.Risk, st.Confidence, st.Enforcement))
 		fmt.Fprintf(&b, "reason: %s\n", st.Reason)
+		if warning != "" {
+			fmt.Fprintln(&b, warning)
+		}
 		return textResult(b.String()), nil, nil
 	})
+}
+
+// warnNonActiveMCP returns a non-empty warning line if id refers to a memory
+// that is currently rejected/stale/duplicate/superseded. The cross-memory
+// reference may still be intentional, so we surface the warning in the tool
+// result text instead of blocking the observation (prd.md §8.2, §9.2).
+func warnNonActiveMCP(s *Server, id string) string {
+	rows, err := s.deps.Index.All()
+	if err != nil {
+		return ""
+	}
+	for _, r := range rows {
+		if r.ID != id {
+			continue
+		}
+		switch r.Status {
+		case model.StatusRejected, model.StatusStale, model.StatusDuplicate, model.StatusSuperseded:
+			return fmt.Sprintf("[warning: referenced memory %s is currently %s — proceeding, but verify this is intentional]", id, r.Status)
+		}
+		return ""
+	}
+	return ""
 }
 
 // --- tm_check_action ---

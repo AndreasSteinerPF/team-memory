@@ -358,6 +358,172 @@ func TestObserveTool(t *testing.T) {
 	}
 }
 
+// TestObserveToolMarkDuplicateAndSupersede exercises the new observation kinds
+// (prd.md §5.3, §9.2) on the MCP surface: the validator must accept them,
+// require their respective cross-memory field, reject self-references, reject
+// references to non-existent memories, and surface a warning (not an error)
+// when the referenced memory is in a non-active state.
+func TestObserveToolMarkDuplicateAndSupersede(t *testing.T) {
+	ctx := context.Background()
+	_, d, cleanup := testEnv(t)
+	defer cleanup()
+
+	// Two memories: A (canonical) and B (would-be duplicate / older).
+	idA, err := d.Ledger.AppendMemory(model.Memory{
+		Type:  model.TypeDecision,
+		Title: "canonical decision",
+		Scope: model.Scope{Paths: []string{"**"}},
+		Actor: model.Actor{Kind: model.ActorAgent, Name: "test", SessionID: "s1"},
+	})
+	if err != nil {
+		t.Fatalf("AppendMemory A: %v", err)
+	}
+	idB, err := d.Ledger.AppendMemory(model.Memory{
+		Type:  model.TypeDecision,
+		Title: "duplicate decision",
+		Scope: model.Scope{Paths: []string{"**"}},
+		Actor: model.Actor{Kind: model.ActorAgent, Name: "test", SessionID: "s1"},
+	})
+	if err != nil {
+		t.Fatalf("AppendMemory B: %v", err)
+	}
+	if err := d.Index.Update(); err != nil {
+		t.Fatalf("idx.Update: %v", err)
+	}
+
+	session := startServer(t, ctx, d)
+
+	// mark_duplicate without canonical_id is an error.
+	res, err := session.CallTool(ctx, &sdkmcp.CallToolParams{
+		Name: "tm_observe",
+		Arguments: map[string]any{
+			"memory_id": idB,
+			"kind":      "mark_duplicate",
+			"session":   "s2",
+		},
+	})
+	if err != nil {
+		t.Fatalf("transport error: %v", err)
+	}
+	if !res.IsError {
+		t.Fatalf("expected IsError=true for mark_duplicate without canonical_id, got: %s", resultText(res))
+	}
+
+	// mark_duplicate with self-reference is an error.
+	res, err = session.CallTool(ctx, &sdkmcp.CallToolParams{
+		Name: "tm_observe",
+		Arguments: map[string]any{
+			"memory_id":    idB,
+			"kind":         "mark_duplicate",
+			"canonical_id": idB,
+			"session":      "s2",
+		},
+	})
+	if err != nil {
+		t.Fatalf("transport error: %v", err)
+	}
+	if !res.IsError {
+		t.Fatalf("expected IsError=true for self-referential mark_duplicate, got: %s", resultText(res))
+	}
+
+	// mark_duplicate referencing an unknown canonical is an error.
+	res, err = session.CallTool(ctx, &sdkmcp.CallToolParams{
+		Name: "tm_observe",
+		Arguments: map[string]any{
+			"memory_id":    idB,
+			"kind":         "mark_duplicate",
+			"canonical_id": "01ZZZZZZZZZZZZZZZZZZZZZZZZZ",
+			"session":      "s2",
+		},
+	})
+	if err != nil {
+		t.Fatalf("transport error: %v", err)
+	}
+	if !res.IsError {
+		t.Fatalf("expected IsError=true for unknown canonical_id, got: %s", resultText(res))
+	}
+
+	// Happy path: mark B as duplicate of A.
+	ok := callTool(t, ctx, session, "tm_observe", map[string]any{
+		"memory_id":    idB,
+		"kind":         "mark_duplicate",
+		"canonical_id": idA,
+		"summary":      "B duplicates A",
+		"session":      "s2",
+		"actor":        "test",
+	})
+	okText := resultText(ok)
+	if !strings.Contains(okText, "status: duplicate") {
+		t.Fatalf("mark_duplicate should derive status duplicate, got:\n%s", okText)
+	}
+
+	// Ledger now has a mark_duplicate observation with CanonicalID set.
+	obs, err := d.Ledger.Observations()
+	if err != nil {
+		t.Fatalf("Observations: %v", err)
+	}
+	var found bool
+	for _, o := range obs {
+		if o.Target == idB && o.Kind == model.KindMarkDuplicate && o.CanonicalID == idA {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected a mark_duplicate observation with canonical_id=%s on %s, got %+v", idA, idB, obs)
+	}
+
+	// supersede without supersedes is an error.
+	res, err = session.CallTool(ctx, &sdkmcp.CallToolParams{
+		Name: "tm_observe",
+		Arguments: map[string]any{
+			"memory_id": idA,
+			"kind":      "supersede",
+			"session":   "s2",
+		},
+	})
+	if err != nil {
+		t.Fatalf("transport error: %v", err)
+	}
+	if !res.IsError {
+		t.Fatalf("expected IsError=true for supersede without supersedes, got: %s", resultText(res))
+	}
+
+	// supersede with self-reference is an error.
+	res, err = session.CallTool(ctx, &sdkmcp.CallToolParams{
+		Name: "tm_observe",
+		Arguments: map[string]any{
+			"memory_id":  idA,
+			"kind":       "supersede",
+			"supersedes": idA,
+			"session":    "s2",
+		},
+	})
+	if err != nil {
+		t.Fatalf("transport error: %v", err)
+	}
+	if !res.IsError {
+		t.Fatalf("expected IsError=true for self-referential supersede, got: %s", resultText(res))
+	}
+
+	// Happy path: A (new canonical) supersedes B (now a duplicate).
+	// B is currently status=duplicate (non-active) so we expect a warning line.
+	ok = callTool(t, ctx, session, "tm_observe", map[string]any{
+		"memory_id":  idA,
+		"kind":       "supersede",
+		"supersedes": idB,
+		"summary":    "A supersedes B",
+		"session":    "s2",
+		"actor":      "test",
+	})
+	okText = resultText(ok)
+	if !strings.Contains(okText, "[warning:") {
+		t.Fatalf("supersede referencing a non-active memory should surface a warning, got:\n%s", okText)
+	}
+	if !strings.Contains(okText, "duplicate") {
+		t.Fatalf("warning should name B's current status (duplicate), got:\n%s", okText)
+	}
+}
+
 func TestCheckActionTool(t *testing.T) {
 	ctx := context.Background()
 	_, d, cleanup := testEnv(t)

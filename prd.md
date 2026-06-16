@@ -423,7 +423,7 @@ The nudge journal is local state under `.git/tm/nudge`, never a ledger record �
 
 1. `tm_check_action` — input: action description, paths, optional `command` (matched against memory `scope.commands`), optional provisional mode. Output: active memories, strongly-related provisional memories (capped, caution-framed), drift annotations, requested observations. For pre-task planning; the hook covers edit time.
 2. `tm_propose` — create a memory. Tool description constrains usage to durable, future-action-relevant project judgment and enumerates memory-worthy events (non-obvious failure, hidden constraint, stale doc, fragile area, undocumented decision, successful pattern) and non-events (session state, trivia, code facts derivable from the repo, system/OS-specific facts). Accepts path globs via `scope` and command patterns via `commands` (e.g. `pytest *`).
-3. `tm_observe` — add `confirm` / `contradict` / `adjust_scope` / `mark_stale` with evidence. Tool description: observe when your work bears on a memory you were shown — confirmation with evidence, contradiction with evidence, scope correction, or staleness. `adjust_scope` accepts `scope` (path globs), `commands` (command patterns), or both.
+3. `tm_observe` — add `confirm` / `contradict` / `adjust_scope` / `mark_stale` / `mark_duplicate` / `supersede` with evidence. Tool description: observe when your work bears on a memory you were shown — confirmation with evidence, contradiction with evidence, scope correction, staleness, or a cross-memory relationship. `adjust_scope` accepts `scope` (path globs), `commands` (command patterns), or both. `mark_duplicate` is filed on the duplicate (`memory_id`) and names the kept memory in `canonical_id`. `supersede` is filed on the NEW canonical (`memory_id`) and names the obsolete memory in `supersedes`; the relationship is pending until independently confirmed or a maintainer approves it (§8.5). Both reject self-references and references to non-existent memories, and surface a warning (not an error) when the referenced memory is in a non-active state (rejected/stale/duplicate/superseded).
 4. `tm_search` — lexical search over the ledger.
 5. `tm_status` — counts of active/provisional/contested/stale, pending human items, sync state.
 
@@ -448,7 +448,8 @@ tm signal        # record nudge signals from a PostToolUse event, or a prompt ma
 tm nudge         # emit at most one near-moment nudge from a Stop event (--hook; --harness)
 tm brief         # session-start briefing for agent hooks (live counts + instructions)
 tm propose       # create a memory record
-tm observe       # add an observation record
+tm observe       # add an observation: confirm|contradict|adjust_scope|mark_stale|
+                 # mark_duplicate (--canonical-id) | supersede (--supersedes)
 tm ack           # session-scoped requirement acknowledgment (local-only)
 tm approve       # human: activate / raise enforcement or confidence
 tm reject        # human: kill a memory
