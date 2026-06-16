@@ -97,32 +97,48 @@ func (idx *Index) Update() error {
 		return err
 	}
 
-	// Cross-memory: a supersede observation, or anything on its target that
-	// might substantiate it, can change the obsolete memory's derived state.
-	// Skip the full Memories() load when no supersede observations exist.
+	// Cross-memory: supersede and mark_duplicate observations, plus anything on
+	// the canonical that might substantiate them OR change the canonical's
+	// alive-ness (reject, mark_stale), can change the obsolete memory's derived
+	// state. Skip the full Memories() load when no cross-memory observations
+	// exist.
 	var ctx derive.Context
-	hasSupersede := false
+	hasCrossMemory := false
 	for _, o := range obs {
-		if o.Kind == model.KindSupersede {
-			hasSupersede = true
+		if o.Kind == model.KindSupersede || o.Kind == model.KindMarkDuplicate {
+			hasCrossMemory = true
 			break
 		}
 	}
-	if hasSupersede {
+	if hasCrossMemory {
 		mems, err := idx.src.Memories()
 		if err != nil {
 			return err
 		}
 		ctx = derive.BuildContext(mems, obs, pol)
-		// Fan out: when A is already in `affected` and a supersede observation
-		// names B as obsolete via A, B must be re-derived too (substantiation
-		// can flip B from active to superseded, or back).
+		// Fan out: when A is already in `affected`, any memory B that points at
+		// A via supersede or mark_duplicate must be re-derived too —
+		// substantiation can flip B's status, and (post-R-N2) A losing
+		// alive-ness reverts B from duplicate/superseded.
 		for _, o := range obs {
-			if o.Kind != model.KindSupersede || o.Supersedes == "" {
-				continue
-			}
-			if _, ok := affected[o.Target]; ok {
-				affected[o.Supersedes] = struct{}{}
+			switch o.Kind {
+			case model.KindSupersede:
+				if o.Supersedes == "" {
+					continue
+				}
+				if _, ok := affected[o.Target]; ok {
+					affected[o.Supersedes] = struct{}{}
+				}
+			case model.KindMarkDuplicate:
+				if o.CanonicalID == "" {
+					continue
+				}
+				// If A's row is being re-derived (e.g. a reject or mark_stale
+				// just landed on it), B's status can revert under the new
+				// orphan-revival rule (prd.md §8.5).
+				if _, ok := affected[o.CanonicalID]; ok {
+					affected[o.Target] = struct{}{}
+				}
 			}
 		}
 	}

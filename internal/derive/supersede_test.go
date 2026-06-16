@@ -61,6 +61,64 @@ func TestBuildContextSupersededByIndependentConfirmOnA(t *testing.T) {
 	}
 }
 
+// TestBuildContextSkipsSupersedeWhenCanonicalRejected pins R-N2 orphan revival:
+// when canonical A is rejected, the supersede claim against B does not
+// substantiate (B is not in SupersededBy) and is not pending either — the claim
+// is moot until A is revived or a fresh supersede is filed on a different A.
+func TestBuildContextSkipsSupersedeWhenCanonicalRejected(t *testing.T) {
+	a := model.Memory{ID: "A", Type: model.TypeDecision,
+		Actor: model.Actor{Kind: model.ActorAgent, SessionID: "s1"}}
+	b := model.Memory{ID: "B", Type: model.TypeDecision,
+		Actor: model.Actor{Kind: model.ActorAgent, SessionID: "s2"}}
+	obs := []model.Observation{
+		{ID: "O1", Target: "A", Kind: model.KindSupersede, Supersedes: "B",
+			Actor: model.Actor{Kind: model.ActorAgent, SessionID: "s3"}, CreatedAt: time.Unix(100, 0)},
+		// Independent confirm would normally substantiate, but A is rejected.
+		{ID: "O2", Target: "A", Kind: model.KindConfirm,
+			Actor: model.Actor{Kind: model.ActorAgent, SessionID: "s4"}, CreatedAt: time.Unix(150, 0)},
+		{ID: "O3", Target: "A", Kind: model.KindReject,
+			Actor: model.Actor{Kind: model.ActorHuman, Name: "alice"}, CreatedAt: time.Unix(200, 0)},
+	}
+	ctx := BuildContext([]model.Memory{a, b}, obs, policy.Default())
+	if _, ok := ctx.SupersededBy["B"]; ok {
+		t.Fatal("rejected canonical must not substantiate supersede")
+	}
+	if got := ctx.PendingSupersedeFor("B"); len(got) != 0 {
+		t.Fatalf("rejected canonical: supersede should not be pending either, got %d", len(got))
+	}
+	if ctx.Alive["A"] {
+		t.Fatal("rejected canonical should not be Alive")
+	}
+}
+
+// TestBuildContextSkipsSupersedeWhenCanonicalStale pins R-N2 for the unresolved
+// mark_stale case: even if a confirm previously substantiated the supersede,
+// an unresolved mark_stale on A reverts B (A is not alive, supersede is moot).
+func TestBuildContextSkipsSupersedeWhenCanonicalStale(t *testing.T) {
+	a := model.Memory{ID: "A", Type: model.TypeDecision,
+		Actor: model.Actor{Kind: model.ActorAgent, SessionID: "s1"}}
+	b := model.Memory{ID: "B", Type: model.TypeDecision,
+		Actor: model.Actor{Kind: model.ActorAgent, SessionID: "s2"}}
+	obs := []model.Observation{
+		{ID: "O1", Target: "A", Kind: model.KindSupersede, Supersedes: "B",
+			Actor: model.Actor{Kind: model.ActorAgent, SessionID: "s3"}, CreatedAt: time.Unix(100, 0)},
+		{ID: "O2", Target: "A", Kind: model.KindConfirm,
+			Actor: model.Actor{Kind: model.ActorAgent, SessionID: "s4"}, CreatedAt: time.Unix(150, 0)},
+		{ID: "O3", Target: "A", Kind: model.KindMarkStale,
+			Actor: model.Actor{Kind: model.ActorAgent, SessionID: "s5"}, CreatedAt: time.Unix(200, 0)},
+	}
+	ctx := BuildContext([]model.Memory{a, b}, obs, policy.Default())
+	if _, ok := ctx.SupersededBy["B"]; ok {
+		t.Fatal("stale canonical must not substantiate supersede")
+	}
+	if got := ctx.PendingSupersedeFor("B"); len(got) != 0 {
+		t.Fatalf("stale canonical: supersede should not be pending, got %d", len(got))
+	}
+	if ctx.Alive["A"] {
+		t.Fatal("canonical under unresolved mark_stale should not be Alive")
+	}
+}
+
 func TestBuildContextSelfReferenceIgnored(t *testing.T) {
 	a := model.Memory{ID: "A", Type: model.TypeDecision,
 		Actor: model.Actor{Kind: model.ActorAgent, SessionID: "s1"}}

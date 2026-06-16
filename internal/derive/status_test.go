@@ -213,6 +213,27 @@ func TestSupersededPrecedesContested(t *testing.T) {
 	}
 }
 
+// TestMarkDuplicateRevertsWhenCanonicalNotAlive pins R-N2 orphan revival
+// (prd.md §8.5) at the per-memory derive layer: a memory with an unresolved
+// mark_duplicate naming a non-alive canonical must NOT report status=duplicate.
+// Real callers compute Alive via BuildContext; tests pass it directly.
+func TestMarkDuplicateRevertsWhenCanonicalNotAlive(t *testing.T) {
+	m := model.Memory{ID: "M1", Type: model.TypeDecision,
+		Actor: model.Actor{Kind: model.ActorAgent, SessionID: "s1"}}
+	obs := []model.Observation{{
+		Kind:        model.KindMarkDuplicate,
+		Target:      "M1",
+		CanonicalID: "C",
+		Actor:       model.Actor{Kind: model.ActorAgent, SessionID: "s2"},
+		CreatedAt:   time.Unix(100, 0),
+	}}
+	ctx := Context{Alive: map[string]bool{"C": false, "M1": true}}
+	got, _ := computeStatusWithContext(m, obs, model.RiskLow, policy.Default(), ctx)
+	if got == model.StatusDuplicate {
+		t.Fatalf("non-alive canonical must revert duplicate (got %q)", got)
+	}
+}
+
 func TestStalePrecedesSuperseded(t *testing.T) {
 	m := model.Memory{ID: "B", Type: model.TypeDecision,
 		Actor: model.Actor{Kind: model.ActorAgent, SessionID: "s1"}}

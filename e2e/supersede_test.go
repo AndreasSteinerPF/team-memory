@@ -287,3 +287,65 @@ func TestSupersedeCycleWarnsButDoesNotBlock(t *testing.T) {
 		t.Fatalf("cycle warning missing from stderr, got: %s", errb)
 	}
 }
+
+// TestSupersedeRevertedWhenCanonicalRejected pins R-N2 orphan revival
+// (prd.md §8.5): once B is superseded by A, rejecting A reverts B from
+// status=superseded back to its un-orphaned status.
+func TestSupersedeRevertedWhenCanonicalRejected(t *testing.T) {
+	dir := newGitRepo(t)
+	runTM(t, dir, "", "init")
+
+	propose := func(title string) string {
+		out, _, code := runTM(t, dir, "",
+			"propose", "decision",
+			"--title", title,
+			"--scope", "docs/**",
+			"--session", "s1",
+		)
+		if code != 0 {
+			t.Fatalf("propose %s exit %d: %s", title, code, out)
+		}
+		return parseID(t, out)
+	}
+	idA := propose("A canonical")
+	idB := propose("B obsolete")
+
+	// Supersede on A naming B.
+	if _, errb, code := runTM(t, dir, "",
+		"observe", idA, "supersede",
+		"--supersedes", idB,
+		"--summary", "A replaces B",
+		"--session", "s1",
+	); code != 0 {
+		t.Fatalf("supersede exit %d: %s", code, errb)
+	}
+	// Independent confirm on A substantiates.
+	if _, errb, code := runTM(t, dir, "",
+		"observe", idA, "confirm",
+		"--summary", "I hit this elsewhere",
+		"--session", "s2",
+	); code != 0 {
+		t.Fatalf("confirm exit %d: %s", code, errb)
+	}
+	out, _, code := runTM(t, dir, "", "show", idB)
+	if code != 0 {
+		t.Fatalf("show B exit %d: %s", code, out)
+	}
+	if !strings.Contains(out, "status: superseded") {
+		t.Fatalf("B should be superseded before reject, got: %s", out)
+	}
+
+	// Reject A. Under orphan revival, B reverts.
+	if _, errb, code := runTM(t, dir, "",
+		"reject", idA, "--summary", "A is wrong",
+	); code != 0 {
+		t.Fatalf("reject A exit %d: %s", code, errb)
+	}
+	out, _, code = runTM(t, dir, "", "show", idB)
+	if code != 0 {
+		t.Fatalf("show B exit %d: %s", code, out)
+	}
+	if strings.Contains(out, "status: superseded") {
+		t.Fatalf("B should revert from superseded after canonical A is rejected, got: %s", out)
+	}
+}

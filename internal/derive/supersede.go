@@ -17,6 +17,24 @@ type Context struct {
 	// pendingByTarget is the set of supersede observations that exist but
 	// have not been substantiated, keyed by the *superseded* (obsolete) memory ID.
 	pendingByTarget map[string][]model.Observation
+
+	// Alive maps memory ID to whether the memory is locally "alive" — not
+	// rejected, not under an unresolved mark_stale. Used to gate cross-memory
+	// effects: a mark_duplicate or supersede claim against a non-alive
+	// canonical does not produce the duplicate/superseded status on the
+	// obsolete memory (prd.md §8.5 — orphan revival). Nil for back-compat
+	// (zero Context) — callers treat nil as "assume alive."
+	Alive map[string]bool
+}
+
+// canonicalAlive reports whether memory id is alive for cross-memory effect
+// purposes. Returns true when the Context has no Alive map (zero-context
+// back-compat) or when the id is recorded as alive.
+func (c Context) canonicalAlive(id string) bool {
+	if c.Alive == nil {
+		return true
+	}
+	return c.Alive[id]
 }
 
 // PendingSupersedeFor returns supersede observations naming b in `supersedes`
@@ -34,15 +52,20 @@ func BuildContext(memories []model.Memory, allObs []model.Observation, p policy.
 		pendingByTarget: make(map[string][]model.Observation),
 	}
 
-	// Fast path: nearly every ledger has zero supersede observations, so
-	// avoid the O(N log N) sort over all observations in the hook hot path.
+	// Fast path: nearly every ledger has zero cross-memory observations, so
+	// avoid the O(N log N) sort and Alive-map build in the hook hot path.
+	hasCrossMemory := false
 	var supersedes []model.Observation
 	for _, o := range allObs {
-		if o.Kind == model.KindSupersede {
+		switch o.Kind {
+		case model.KindMarkDuplicate:
+			hasCrossMemory = true
+		case model.KindSupersede:
+			hasCrossMemory = true
 			supersedes = append(supersedes, o)
 		}
 	}
-	if len(supersedes) == 0 {
+	if !hasCrossMemory {
 		return ctx
 	}
 
@@ -54,6 +77,16 @@ func BuildContext(memories []model.Memory, allObs []model.Observation, p policy.
 	for _, o := range allObs {
 		obsByTarget[o.Target] = append(obsByTarget[o.Target], o)
 	}
+
+	// Build the Alive map for orphan-revival (prd.md §8.5): a memory is alive
+	// iff it has no reject and no unresolved mark_stale. Cross-memory effects
+	// (mark_duplicate, supersede) only propagate from alive canonicals.
+	alive := make(map[string]bool, len(memByID))
+	for id := range memByID {
+		obs := obsByTarget[id]
+		alive[id] = !existsKind(obs, model.KindReject) && !unresolved(obs, model.KindMarkStale)
+	}
+	ctx.Alive = alive
 
 	// Process supersede observations in chronological order so that, if
 	// multiple supersede observations name the same B, the latest substantiated
@@ -68,6 +101,13 @@ func BuildContext(memories []model.Memory, allObs []model.Observation, p policy.
 		}
 		if _, exists := memByID[o.Supersedes]; !exists {
 			continue // the obsolete memory isn't in the ledger
+		}
+		if !alive[a.ID] {
+			// Canonical is not alive — the supersede claim is moot. B reverts
+			// to its un-superseded status; not even pending (the operator
+			// needs to revive A or file a fresh supersede on a different
+			// canonical). See prd.md §8.5 — orphan revival.
+			continue
 		}
 		if supersedeSubstantiated(o, a, obsByTarget[a.ID], p) {
 			ctx.SupersededBy[o.Supersedes] = a.ID

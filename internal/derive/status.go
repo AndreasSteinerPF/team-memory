@@ -96,7 +96,10 @@ func computeStatusWithContext(m model.Memory, obs []model.Observation, risk mode
 		return model.StatusRejected, indConf
 	case unresolved(obs, model.KindMarkStale):
 		return model.StatusStale, indConf
-	case unresolved(obs, model.KindMarkDuplicate):
+	case unresolved(obs, model.KindMarkDuplicate) && ctx.canonicalAlive(latestCanonicalID(obs)):
+		// Orphan revival (prd.md §8.5): if the named canonical is itself
+		// rejected or under an unresolved mark_stale, this duplicate claim is
+		// moot — fall through so B can revert to its un-orphaned status.
 		return model.StatusDuplicate, indConf
 	case isSuperseded:
 		return model.StatusSuperseded, indConf

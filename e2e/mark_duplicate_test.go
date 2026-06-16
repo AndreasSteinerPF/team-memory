@@ -234,3 +234,57 @@ func TestMarkDuplicateThreeHopCycleWarns(t *testing.T) {
 		t.Fatalf("3-cycle closing leg must warn on stderr, got: %s", errb)
 	}
 }
+
+// TestMarkDuplicateRevertedWhenCanonicalRejected pins R-N2 orphan revival
+// (prd.md §8.5): when the canonical is rejected, the duplicate memory
+// reverts from status=duplicate to its un-orphaned status.
+func TestMarkDuplicateRevertedWhenCanonicalRejected(t *testing.T) {
+	dir := newGitRepo(t)
+	runTM(t, dir, "", "init")
+
+	propose := func(title string) string {
+		out, _, code := runTM(t, dir, "",
+			"propose", "decision",
+			"--title", title,
+			"--scope", "docs/**",
+			"--session", "s1",
+		)
+		if code != 0 {
+			t.Fatalf("propose %s exit %d: %s", title, code, out)
+		}
+		return parseID(t, out)
+	}
+	idA := propose("A canonical")
+	idB := propose("B duplicate")
+
+	// Mark B as a duplicate of A.
+	if _, errb, code := runTM(t, dir, "",
+		"observe", idB, "mark_duplicate",
+		"--canonical-id", idA,
+		"--summary", "B duplicates A",
+		"--session", "s1",
+	); code != 0 {
+		t.Fatalf("mark_duplicate exit %d: %s", code, errb)
+	}
+	out, _, code := runTM(t, dir, "", "show", idB)
+	if code != 0 {
+		t.Fatalf("show B exit %d: %s", code, out)
+	}
+	if !strings.Contains(out, "status: duplicate") {
+		t.Fatalf("B should be duplicate before reject, got: %s", out)
+	}
+
+	// Reject A. Under orphan revival, B should revert.
+	if _, errb, code := runTM(t, dir, "",
+		"reject", idA, "--summary", "A is wrong",
+	); code != 0 {
+		t.Fatalf("reject A exit %d: %s", code, errb)
+	}
+	out, _, code = runTM(t, dir, "", "show", idB)
+	if code != 0 {
+		t.Fatalf("show B exit %d: %s", code, out)
+	}
+	if strings.Contains(out, "status: duplicate") {
+		t.Fatalf("B should revert from duplicate after canonical A is rejected, got: %s", out)
+	}
+}
