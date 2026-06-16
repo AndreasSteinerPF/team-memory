@@ -1,1 +1,1 @@
-{"session_id":"e2e-session","tool_name":"Edit","tool_input":{"file_path":"{{REPO}}/internal/index/x.go"}}
+{"session_id":"e2e-session","tool_name":"apply_patch","tool_input":{"command":"*** Begin Patch\n*** Update File: internal/index/x.go\n+// edit\n*** End Patch\n"}}

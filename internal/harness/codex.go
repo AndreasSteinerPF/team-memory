@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"strings"
 )
 
 func init() { register(codex{}) }
@@ -33,15 +34,43 @@ func (codex) Parse(kind EventKind, r io.Reader) (Event, error) {
 	if err := decodeJSON(r, &raw); err != nil {
 		return Event{}, err
 	}
-	ev := Event{
-		Kind: kind, SessionID: raw.SessionID, ToolName: raw.ToolName,
-		Command: raw.ToolInput.Command, FilePath: raw.ToolInput.FilePath,
+	ev := Event{Kind: kind, SessionID: raw.SessionID, ToolName: raw.ToolName}
+	if raw.ToolName == "apply_patch" {
+		// Codex's file-edit tool. The edited path is NOT in a tool_input.file_path
+		// field — it lives inside the patch text at tool_input.command, in a
+		// "*** Add/Update/Delete File: <path>" header (verified live, codex/gpt-5.5,
+		// 2026-06-16). Extract it so the path-scoped engine (requirement block,
+		// advisory injection) matches; this is an EDIT, not a shell command, so it
+		// must not populate Command (which would record a bogus command outcome and
+		// skip path matching). See prd.md §10.6.
+		ev.FilePath = applyPatchFilePath(raw.ToolInput.Command)
+	} else {
+		ev.Command = raw.ToolInput.Command
+		ev.FilePath = raw.ToolInput.FilePath
 	}
-	if kind == PostTool && raw.ToolInput.Command != "" {
+	if kind == PostTool && ev.Command != "" {
 		ev.HasOutcome = true
 		ev.Failed = codexCommandFailed(raw.ToolResponse)
 	}
 	return ev, nil
+}
+
+// applyPatchFilePath returns the first file path named in a codex apply_patch
+// patch body (the lines "*** Add File: <p>" / "*** Update File: <p>" /
+// "*** Delete File: <p>"), or "" if none. Paths are repo-relative as codex emits
+// them. NOTE: a single patch may touch several files; this returns the first,
+// which covers the common one-file-per-call case — a multi-file patch only
+// matches path rules against its first file (Event carries a single path).
+func applyPatchFilePath(patch string) string {
+	for _, line := range strings.Split(patch, "\n") {
+		line = strings.TrimSpace(line)
+		for _, marker := range []string{"*** Add File:", "*** Update File:", "*** Delete File:"} {
+			if rest, ok := strings.CutPrefix(line, marker); ok {
+				return strings.TrimSpace(rest)
+			}
+		}
+	}
+	return ""
 }
 
 // codexCommandFailed reports a non-zero exit only when tool_response is a JSON

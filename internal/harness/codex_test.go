@@ -35,6 +35,40 @@ func TestCodexParsePostToolStringResponse(t *testing.T) {
 	}
 }
 
+// TestCodexParseApplyPatchExtractsPath uses the REAL apply_patch payload (codex
+// gpt-5.5, 2026-06-16): the edited path lives in the patch text at
+// tool_input.command ("*** Add File: <path>"), not a file_path field. The adapter
+// must surface it as FilePath (an EDIT) so path-scoped requirements/advisories
+// match — and must NOT record it as a command (which broke codex file blocking).
+func TestCodexParseApplyPatchExtractsPath(t *testing.T) {
+	a, _ := harness.Get("codex")
+	in := `{"session_id":"s1","tool_name":"apply_patch","tool_input":{"command":"*** Begin Patch\n*** Add File: billing/migrations/m.sql\n+-- v1\n*** End Patch\n"}}`
+	ev, err := a.Parse(harness.PreTool, strings.NewReader(in))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ev.FilePath != "billing/migrations/m.sql" {
+		t.Errorf("FilePath = %q, want billing/migrations/m.sql", ev.FilePath)
+	}
+	if ev.Command != "" || ev.HasOutcome {
+		t.Errorf("apply_patch must be an edit, not a command outcome: %+v", ev)
+	}
+}
+
+// TestCodexParseApplyPatchUpdateAndDelete covers the Update/Delete File headers.
+func TestCodexParseApplyPatchUpdateAndDelete(t *testing.T) {
+	a, _ := harness.Get("codex")
+	for _, tc := range []struct{ in, want string }{
+		{`{"tool_name":"apply_patch","tool_input":{"command":"*** Begin Patch\n*** Update File: internal/index/x.go\n*** End Patch\n"}}`, "internal/index/x.go"},
+		{`{"tool_name":"apply_patch","tool_input":{"command":"*** Begin Patch\n*** Delete File: old/legacy.go\n*** End Patch\n"}}`, "old/legacy.go"},
+	} {
+		ev, _ := a.Parse(harness.PreTool, strings.NewReader(tc.in))
+		if ev.FilePath != tc.want {
+			t.Errorf("FilePath = %q, want %q", ev.FilePath, tc.want)
+		}
+	}
+}
+
 func TestCodexRenderPreToolBlock(t *testing.T) {
 	a, _ := harness.Get("codex")
 	var b bytes.Buffer

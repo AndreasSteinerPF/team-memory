@@ -72,6 +72,19 @@ this version, which is why the per-run-temp-repo `TestLive/codex` can't fire and
 is skipped/gated on a pre-trusted repo. See the manual recipe at the end of this
 section.)
 
+**Requirement blocking — VERIFIED live (2026-06-16):** `TestLiveCodexRequirementBlock`
+(gated on a trusted `TM_CODEX_BLOCK_REPO`) drives real `codex exec` against an
+active path-scoped requirement; the protected file stays unwritten AND the
+requirement is surfaced, so codex honors a `PreToolUse` deny — even under
+`--dangerously-bypass-approvals-and-sandbox`. This took two fixes the test
+uncovered: (a) codex's file-edit tool is **`apply_patch`**, and the edited path is
+inside the patch text at `tool_input.command` (`*** Add/Update/Delete File:
+<path>`), not a `file_path` field — `codex.go` now parses it (previously the patch
+blob was mis-read as a *command*, so no path matched and codex file-edit blocking
+silently no-opped); (b) `check-action` now resolves a repo-relative hook path
+against the repo root (codex emits relative `apply_patch` paths) via the shared
+`relPath` helper. Unit-pinned by `TestCodexParseApplyPatchExtractsPath`.
+
 **Codex live wire-shape findings (correcting the docs-based assumptions):**
 - Shell tool reports `tool_name: "Bash"` with the command at `tool_input.command`
   (so the `^(Bash|apply_patch)$` matcher is correct).
@@ -630,12 +643,13 @@ and report the results so the `VERIFY` annotations in the adapter source and
 - [x] **Claude/Codex failure sensing** — RESOLVED live: both fire `PostToolUse` on
   success only, so `PostToolFailureSensor = no` for both. Re-check by ~2026-08-15.
 - [x] **Requirement blocking honored under bypass flags** — VERIFIED live
-  (`TestLiveRequirementBlock`, 2026-06-16) for **Claude, Copilot, Gemini, and
-  Cursor**: a scoped requirement blocks the action and the bypass run flag
-  (`--dangerously-skip-permissions`/`--allow-all-tools`/`--yolo`/`--force`) does not
-  swallow the hook deny. Cursor uses a command-scoped requirement (its pre-tool
-  block is shell-only). **Pending:** Codex only (gated on one-time interactive
-  trust — scaffold via `TestSetupCodexBlockRepo`, run `TestLiveCodexRequirementBlock`).
+  (2026-06-16) for **all five harnesses**: a scoped requirement blocks the action
+  and the bypass run flag (`--dangerously-skip-permissions`/`--allow-all-tools`/
+  `--yolo`/`--force`/`--dangerously-bypass-approvals-and-sandbox`) does not swallow
+  the hook deny. Cursor uses a command-scoped requirement (pre-tool block is
+  shell-only). Codex (`TestLiveCodexRequirementBlock`, gated on one-time trust)
+  needed the `apply_patch` path-extraction + `check-action` relative-path fixes
+  above. `TestLiveRequirementBlock` covers Claude/Copilot/Gemini/Cursor.
 - [x] **Gemini additionalContext model-visibility** — VERIFIED live (2026-06-16):
   `hookSpecificOutput.additionalContext` reaches the model (it echoed the injected
   reference code in its visible reply, no injection-suspicion). Verified by

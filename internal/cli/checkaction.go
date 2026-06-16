@@ -149,13 +149,12 @@ func runHook(cmd *cobra.Command, e *env, a harness.Adapter) error {
 	var q retrieve.Query
 	switch {
 	case ev.FilePath != "":
-		rel := ev.FilePath
-		if abs, err := filepath.Abs(rel); err == nil {
-			if r, err := filepath.Rel(e.repoDir, abs); err == nil {
-				rel = filepath.ToSlash(r)
-			}
-		}
-		q.Paths = []string{rel}
+		// relPath (signal.go) resolves an absolute OR repo-relative path to a
+		// forward-slash repo path, falling back to the path as-is when it can't be
+		// made repo-relative against the process CWD. Codex emits repo-relative
+		// apply_patch paths, so the inline filepath.Abs here (which resolves against
+		// CWD, not the repo) mis-handled them — reuse the robust helper.
+		q.Paths = []string{relPath(e, ev.FilePath)}
 	case ev.Command != "":
 		q.Command = ev.Command
 	default:
