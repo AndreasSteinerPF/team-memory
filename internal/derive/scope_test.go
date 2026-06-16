@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/AndreasSteinerPF/team-memory/internal/model"
+	"github.com/AndreasSteinerPF/team-memory/internal/policy"
 )
 
 func tm(sec int) time.Time { return time.Date(2026, 6, 15, 10, 0, sec, 0, time.UTC) }
@@ -80,7 +81,7 @@ func TestEffectiveScopeNarrowsImmediately(t *testing.T) {
 		Actor:          model.Actor{SessionID: "s2"},
 		CreatedAt:      tm(1),
 	}}
-	got := effectiveScope(m, obs)
+	got := effectiveScope(m, obs, policy.Default())
 	if len(got.Paths) != 1 || got.Paths[0] != "billing/migrations/manual/**" {
 		t.Fatalf("narrowing should apply immediately, got %v", got.Paths)
 	}
@@ -119,7 +120,7 @@ func TestEffectiveScopeNarrowsCommands(t *testing.T) {
 		Actor:          model.Actor{SessionID: "s2"},
 		CreatedAt:      time.Date(2026, 6, 13, 11, 0, 0, 0, time.UTC),
 	}
-	got := effectiveScope(m, []model.Observation{adj})
+	got := effectiveScope(m, []model.Observation{adj}, policy.Default())
 	if len(got.Commands) != 1 || got.Commands[0] != "assistant jira create *" {
 		t.Fatalf("effective commands = %v, want [assistant jira create *] (narrowing applies immediately)", got.Commands)
 	}
@@ -139,7 +140,7 @@ func TestEffectiveScopeBroadensCommandsWithConfirmEvidence(t *testing.T) {
 	}
 
 	// Unsubstantiated broadening does not apply.
-	if got := effectiveScope(m, []model.Observation{adj}); len(got.Commands) != 1 || got.Commands[0] != "assistant jira create *" {
+	if got := effectiveScope(m, []model.Observation{adj}, policy.Default()); len(got.Commands) != 1 || got.Commands[0] != "assistant jira create *" {
 		t.Errorf("unsubstantiated command broadening should NOT apply, got %v", got.Commands)
 	}
 
@@ -151,7 +152,7 @@ func TestEffectiveScopeBroadensCommandsWithConfirmEvidence(t *testing.T) {
 		CodeContext: &model.CodeContext{Commands: []string{"assistant billing list"}},
 		CreatedAt:   time.Date(2026, 6, 15, 10, 2, 0, 0, time.UTC),
 	}
-	if got := effectiveScope(m, []model.Observation{adj, confirm}); len(got.Commands) != 1 || got.Commands[0] != "assistant *" {
+	if got := effectiveScope(m, []model.Observation{adj, confirm}, policy.Default()); len(got.Commands) != 1 || got.Commands[0] != "assistant *" {
 		t.Errorf("substantiated command broadening should apply, got %v", got.Commands)
 	}
 }
@@ -170,7 +171,7 @@ func TestEffectiveScopeBroadeningNeedsSubstantiation(t *testing.T) {
 	}
 
 	// Unsubstantiated broadening does not apply.
-	if got := effectiveScope(m, []model.Observation{adjust}); got.Paths[0] != "billing/migrations/**" {
+	if got := effectiveScope(m, []model.Observation{adjust}, policy.Default()); got.Paths[0] != "billing/migrations/**" {
 		t.Errorf("unsubstantiated broadening should NOT apply, got %v", got.Paths)
 	}
 
@@ -181,7 +182,51 @@ func TestEffectiveScopeBroadeningNeedsSubstantiation(t *testing.T) {
 		CodeContext: &model.CodeContext{Paths: []string{"billing/reports/q1.go"}},
 		CreatedAt:   tm(2),
 	}
-	if got := effectiveScope(m, []model.Observation{adjust, confirm}); got.Paths[0] != "billing/**" {
+	if got := effectiveScope(m, []model.Observation{adjust, confirm}, policy.Default()); got.Paths[0] != "billing/**" {
 		t.Errorf("substantiated broadening should apply, got %v", got.Paths)
+	}
+}
+
+// TestBroadeningRespectsPolicyIndependenceMode verifies that
+// broadeningSubstantiated reads the independence mode from policy.Policy
+// rather than hardcoding "different_session". Under the stricter
+// "different_session_and_branch" mode, a confirm from a different session but
+// the SAME branch as the memory is no longer counted as independent, so a
+// broadening that would substantiate under "different_session" stays pending.
+func TestBroadeningRespectsPolicyIndependenceMode(t *testing.T) {
+	m := model.Memory{
+		Scope:       model.Scope{Paths: []string{"billing/migrations/**"}},
+		Actor:       model.Actor{SessionID: "s1"},
+		CodeContext: &model.CodeContext{Branch: "main"},
+		CreatedAt:   tm(0),
+	}
+	adjust := model.Observation{
+		Kind:           model.KindAdjustScope,
+		SuggestedScope: &model.Scope{Paths: []string{"billing/**"}},
+		Actor:          model.Actor{SessionID: "s2"},
+		CreatedAt:      tm(1),
+	}
+	// Different session, SAME branch as the memory.
+	confirm := model.Observation{
+		Kind:        model.KindConfirm,
+		Actor:       model.Actor{SessionID: "s3"},
+		CodeContext: &model.CodeContext{Paths: []string{"billing/reports/q1.go"}, Branch: "main"},
+		CreatedAt:   tm(2),
+	}
+	obs := []model.Observation{adjust, confirm}
+
+	// Under the default policy ("different_session"), the confirm is
+	// independent, so the broadening substantiates.
+	pDefault := policy.Default()
+	if got := effectiveScope(m, obs, pDefault); got.Paths[0] != "billing/**" {
+		t.Fatalf("default policy: substantiated broadening should apply, got %v", got.Paths)
+	}
+
+	// Under "different_session_and_branch", the same-branch confirm is no
+	// longer independent, so the broadening stays pending.
+	pStrict := policy.Default()
+	pStrict.Activation.Independence = "different_session_and_branch"
+	if got := effectiveScope(m, obs, pStrict); got.Paths[0] != "billing/migrations/**" {
+		t.Fatalf("strict policy: unsubstantiated broadening should NOT apply, got %v", got.Paths)
 	}
 }

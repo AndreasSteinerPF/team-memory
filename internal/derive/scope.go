@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/AndreasSteinerPF/team-memory/internal/model"
+	"github.com/AndreasSteinerPF/team-memory/internal/policy"
 )
 
 // segments splits a glob into path segments, trimming slashes.
@@ -188,7 +189,7 @@ func MatchPath(path string, s model.Scope) bool { return pathMatchesScope(path, 
 // pendingBroadenings returns adjust_scope observations whose suggested scope
 // broadens beyond the current effective scope and is not yet substantiated.
 // Mirrors the effectiveScope walk so the two functions stay consistent.
-func pendingBroadenings(m model.Memory, obs []model.Observation) []model.Observation {
+func pendingBroadenings(m model.Memory, obs []model.Observation, p policy.Policy) []model.Observation {
 	cur := m.Scope
 	var pending []model.Observation
 	for _, a := range sortedByTime(filterKind(obs, model.KindAdjustScope)) {
@@ -200,7 +201,7 @@ func pendingBroadenings(m model.Memory, obs []model.Observation) []model.Observa
 			cur = sug
 			continue
 		}
-		if broadeningSubstantiated(a, m, obs) {
+		if broadeningSubstantiated(a, m, obs, p) {
 			cur = sug // substantiated broadening — applied
 		} else {
 			pending = append(pending, a)
@@ -211,7 +212,7 @@ func pendingBroadenings(m model.Memory, obs []model.Observation) []model.Observa
 
 // effectiveScope applies adjust_scope observations in chronological order.
 // Narrowings apply immediately; broadenings apply only once substantiated.
-func effectiveScope(m model.Memory, obs []model.Observation) model.Scope {
+func effectiveScope(m model.Memory, obs []model.Observation, p policy.Policy) model.Scope {
 	cur := m.Scope
 	for _, a := range sortedByTime(filterKind(obs, model.KindAdjustScope)) {
 		if a.SuggestedScope == nil {
@@ -222,7 +223,7 @@ func effectiveScope(m model.Memory, obs []model.Observation) model.Scope {
 			cur = sug
 			continue
 		}
-		if broadeningSubstantiated(a, m, obs) {
+		if broadeningSubstantiated(a, m, obs, p) {
 			cur = sug
 		}
 	}
@@ -232,7 +233,7 @@ func effectiveScope(m model.Memory, obs []model.Observation) model.Scope {
 // broadeningSubstantiated implements prd.md §8.5(a)/(b): a human approve after
 // the adjustment, or a later independent confirm whose code-context paths fall
 // inside the suggested scope but outside the original scope.
-func broadeningSubstantiated(a model.Observation, m model.Memory, obs []model.Observation) bool {
+func broadeningSubstantiated(a model.Observation, m model.Memory, obs []model.Observation, p policy.Policy) bool {
 	for _, o := range obs {
 		if o.Kind == model.KindApprove && o.Actor.Kind == model.ActorHuman && o.CreatedAt.After(a.CreatedAt) {
 			return true
@@ -244,15 +245,15 @@ func broadeningSubstantiated(a model.Observation, m model.Memory, obs []model.Ob
 		if o.Kind != model.KindConfirm || !o.CreatedAt.After(a.CreatedAt) {
 			continue
 		}
-		if !isIndependent(o, m, "different_session") || o.CodeContext == nil {
+		if !isIndependent(o, m, p.Activation.Independence) || o.CodeContext == nil {
 			continue
 		}
 		matchSug, matchPrior := false, false
-		for _, p := range o.CodeContext.Paths {
-			if pathMatchesScope(p, sug) {
+		for _, pth := range o.CodeContext.Paths {
+			if pathMatchesScope(pth, sug) {
 				matchSug = true
 			}
-			if pathMatchesScope(p, prior) {
+			if pathMatchesScope(pth, prior) {
 				matchPrior = true
 			}
 		}

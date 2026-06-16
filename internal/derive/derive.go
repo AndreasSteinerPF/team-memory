@@ -40,7 +40,7 @@ func Derive(m model.Memory, obs []model.Observation, p policy.Policy) DerivedSta
 // BuildContext (typically the index replay or any CLI surface that has the
 // full ledger in hand).
 func DeriveWithContext(m model.Memory, obs []model.Observation, p policy.Policy, ctx Context) DerivedState {
-	eff := effectiveScope(m, obs)
+	eff := effectiveScope(m, obs, p)
 	risk := riskForScope(m, eff, p)
 	status, indConf := computeStatusWithContext(m, obs, risk, p, ctx)
 	conf := computeConfidence(obs, indConf)
@@ -55,7 +55,7 @@ func DeriveWithContext(m model.Memory, obs []model.Observation, p policy.Policy,
 		IndependentConfirms: indConf,
 		Contradictions:      countKind(obs, model.KindContradict),
 		Reason:              buildReasonWithContext(status, indConf, obs, m.ID, ctx),
-		PendingAdjustments:  pendingBroadenings(m, obs),
+		PendingAdjustments:  pendingBroadenings(m, obs, p),
 	}
 }
 
