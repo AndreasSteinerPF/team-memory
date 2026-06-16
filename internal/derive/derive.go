@@ -28,13 +28,21 @@ type DerivedState struct {
 	PendingAdjustments []model.Observation
 }
 
-// Derive computes the full state. Order matters: effective scope first (it can
-// change which sensitive paths the scope touches), then risk on that scope,
-// then status, confidence, and enforcement.
+// Derive computes the full state for memory m given its own observations.
+// Cross-memory state (currently: supersession) is computed as if there were
+// no other memories — use DeriveWithContext for ledger-wide derivation.
 func Derive(m model.Memory, obs []model.Observation, p policy.Policy) DerivedState {
+	return DeriveWithContext(m, obs, p, Context{})
+}
+
+// DeriveWithContext computes derived state including cross-memory facts
+// carried by ctx. Use it when you have already built a Context with
+// BuildContext (typically the index replay or any CLI surface that has the
+// full ledger in hand).
+func DeriveWithContext(m model.Memory, obs []model.Observation, p policy.Policy, ctx Context) DerivedState {
 	eff := effectiveScope(m, obs)
 	risk := riskForScope(m, eff, p)
-	status, indConf := computeStatus(m, obs, risk, p)
+	status, indConf := computeStatusWithContext(m, obs, risk, p, ctx)
 	conf := computeConfidence(obs, indConf)
 	enf := computeEnforcement(obs, status, risk, p)
 
@@ -46,12 +54,17 @@ func Derive(m model.Memory, obs []model.Observation, p policy.Policy) DerivedSta
 		EffectiveScope:      eff,
 		IndependentConfirms: indConf,
 		Contradictions:      countKind(obs, model.KindContradict),
-		Reason:              buildReason(status, indConf, obs),
+		Reason:              buildReasonWithContext(status, indConf, obs, m.ID, ctx),
 		PendingAdjustments:  pendingBroadenings(m, obs),
 	}
 }
 
+// buildReason is the per-memory back-compat wrapper.
 func buildReason(status model.Status, indConf int, obs []model.Observation) string {
+	return buildReasonWithContext(status, indConf, obs, "", Context{})
+}
+
+func buildReasonWithContext(status model.Status, indConf int, obs []model.Observation, memID string, ctx Context) string {
 	switch status {
 	case model.StatusActive:
 		if existsHumanApprove(obs) {
@@ -67,6 +80,13 @@ func buildReason(status model.Status, indConf int, obs []model.Observation) stri
 			return "duplicate of " + id
 		}
 		return "marked as a duplicate"
+	case model.StatusSuperseded:
+		if memID != "" {
+			if a, ok := ctx.SupersededBy[memID]; ok {
+				return "superseded by " + a
+			}
+		}
+		return "superseded by a newer memory"
 	case model.StatusRejected:
 		return "rejected by a maintainer"
 	default:

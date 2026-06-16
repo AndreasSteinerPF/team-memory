@@ -81,10 +81,16 @@ func isActive(obs []model.Observation, risk model.Risk, indConf int, p policy.Po
 	}
 }
 
-// computeStatus implements the precedence ladder of prd.md §8.2 and returns the
-// status plus the independent-confirm count (reused by confidence).
+// computeStatus is the back-compat per-memory wrapper.
 func computeStatus(m model.Memory, obs []model.Observation, risk model.Risk, p policy.Policy) (model.Status, int) {
+	return computeStatusWithContext(m, obs, risk, p, Context{})
+}
+
+// computeStatusWithContext implements prd.md §8.2's precedence ladder using
+// cross-memory state from ctx where needed (currently: SupersededBy).
+func computeStatusWithContext(m model.Memory, obs []model.Observation, risk model.Risk, p policy.Policy, ctx Context) (model.Status, int) {
 	indConf := countIndependentConfirms(m, obs, p.Activation.Independence)
+	_, isSuperseded := ctx.SupersededBy[m.ID]
 	switch {
 	case existsKind(obs, model.KindReject):
 		return model.StatusRejected, indConf
@@ -92,6 +98,8 @@ func computeStatus(m model.Memory, obs []model.Observation, risk model.Risk, p p
 		return model.StatusStale, indConf
 	case unresolved(obs, model.KindMarkDuplicate):
 		return model.StatusDuplicate, indConf
+	case isSuperseded:
+		return model.StatusSuperseded, indConf
 	case unresolved(obs, model.KindContradict):
 		return model.StatusContested, indConf
 	case m.Type == model.TypeSuccessfulPattern && indConf == 0 && !existsHumanApprove(obs):

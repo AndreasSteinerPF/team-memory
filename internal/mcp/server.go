@@ -393,7 +393,12 @@ Always include evidence when observing. Observations without evidence are less u
 		if err != nil {
 			return nil, nil, err
 		}
-		st := derive.Derive(mem, observationsFor(allObs, args.MemoryID), s.deps.Policy)
+		mems, err := s.deps.Ledger.Memories()
+		if err != nil {
+			return nil, nil, err
+		}
+		dctx := derive.BuildContext(mems, allObs, s.deps.Policy)
+		st := derive.DeriveWithContext(mem, observationsFor(allObs, args.MemoryID), s.deps.Policy, dctx)
 
 		var b strings.Builder
 		fmt.Fprintln(&b, args.MemoryID)

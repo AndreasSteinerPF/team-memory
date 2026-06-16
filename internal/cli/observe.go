@@ -97,7 +97,12 @@ func printTargetState(w io.Writer, e *env, target string) error {
 	if err != nil {
 		return err
 	}
-	st := derive.Derive(m, observationsFor(obs, target), e.pol)
+	ms, err := e.led.Memories()
+	if err != nil {
+		return err
+	}
+	ctx := derive.BuildContext(ms, obs, e.pol)
+	st := derive.DeriveWithContext(m, observationsFor(obs, target), e.pol, ctx)
 	fmt.Fprintln(w, target)
 	fmt.Fprintln(w, stateLine(st))
 	fmt.Fprintf(w, "reason: %s\n", st.Reason)

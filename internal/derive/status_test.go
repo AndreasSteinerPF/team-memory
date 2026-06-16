@@ -188,3 +188,41 @@ func TestStalePrecedesOverDuplicate(t *testing.T) {
 		t.Fatalf("stale > duplicate precedence: got %q, want %q", got, model.StatusStale)
 	}
 }
+
+func TestComputeStatusReturnsSupersededFromContext(t *testing.T) {
+	m := model.Memory{ID: "B", Type: model.TypeDecision,
+		Actor: model.Actor{Kind: model.ActorAgent, SessionID: "s1"}}
+	ctx := Context{SupersededBy: map[string]string{"B": "A"}}
+	got, _ := computeStatusWithContext(m, nil, model.RiskLow, policy.Default(), ctx)
+	if got != model.StatusSuperseded {
+		t.Fatalf("B with SupersededBy[B]=A: got %q, want %q", got, model.StatusSuperseded)
+	}
+}
+
+func TestSupersededPrecedesContested(t *testing.T) {
+	m := model.Memory{ID: "B", Type: model.TypeDecision,
+		Actor: model.Actor{Kind: model.ActorAgent, SessionID: "s1"}}
+	obs := []model.Observation{
+		{Kind: model.KindContradict, Target: "B",
+			Actor: model.Actor{Kind: model.ActorAgent, SessionID: "s2"}, CreatedAt: time.Unix(50, 0)},
+	}
+	ctx := Context{SupersededBy: map[string]string{"B": "A"}}
+	got, _ := computeStatusWithContext(m, obs, model.RiskLow, policy.Default(), ctx)
+	if got != model.StatusSuperseded {
+		t.Fatalf("precedence: got %q, want %q", got, model.StatusSuperseded)
+	}
+}
+
+func TestStalePrecedesSuperseded(t *testing.T) {
+	m := model.Memory{ID: "B", Type: model.TypeDecision,
+		Actor: model.Actor{Kind: model.ActorAgent, SessionID: "s1"}}
+	obs := []model.Observation{
+		{Kind: model.KindMarkStale, Target: "B",
+			Actor: model.Actor{Kind: model.ActorAgent, SessionID: "s2"}, CreatedAt: time.Unix(50, 0)},
+	}
+	ctx := Context{SupersededBy: map[string]string{"B": "A"}}
+	got, _ := computeStatusWithContext(m, obs, model.RiskLow, policy.Default(), ctx)
+	if got != model.StatusStale {
+		t.Fatalf("stale > superseded: got %q, want %q", got, model.StatusStale)
+	}
+}

@@ -35,7 +35,12 @@ func newShowCmd(g *globalOpts) *cobra.Command {
 				return err
 			}
 			rel := observationsFor(obs, target)
-			st := derive.Derive(m, rel, e.pol)
+			ms, err := e.led.Memories()
+			if err != nil {
+				return err
+			}
+			ctx := derive.BuildContext(ms, obs, e.pol)
+			st := derive.DeriveWithContext(m, rel, e.pol, ctx)
 
 			out := cmd.OutOrStdout()
 			fmt.Fprintf(out, "%s  %s\n", m.ID, m.Title)

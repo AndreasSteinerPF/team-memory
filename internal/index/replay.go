@@ -31,6 +31,7 @@ func (idx *Index) Reindex() error {
 		return err
 	}
 	byTarget := groupByTarget(obs)
+	ctx := derive.BuildContext(mems, obs, pol)
 
 	tx, err := idx.db.Begin()
 	if err != nil {
@@ -45,7 +46,7 @@ func (idx *Index) Reindex() error {
 		return err
 	}
 	for _, m := range mems {
-		if err := upsertTx(tx, m, derive.Derive(m, byTarget[m.ID], pol)); err != nil {
+		if err := upsertTx(tx, m, derive.DeriveWithContext(m, byTarget[m.ID], pol, ctx)); err != nil {
 			return err
 		}
 	}
@@ -84,6 +85,10 @@ func (idx *Index) Update() error {
 	if err != nil {
 		return err
 	}
+	mems, err := idx.src.Memories()
+	if err != nil {
+		return err
+	}
 	byID := make(map[string]model.Observation, len(obs))
 	for _, o := range obs {
 		byID[o.ID] = o
@@ -95,6 +100,7 @@ func (idx *Index) Update() error {
 	if err != nil {
 		return err
 	}
+	ctx := derive.BuildContext(mems, obs, pol)
 
 	tx, err := idx.db.Begin()
 	if err != nil {
@@ -109,7 +115,7 @@ func (idx *Index) Update() error {
 		if !ok {
 			continue // observation referencing a not-yet-present memory
 		}
-		if err := upsertTx(tx, m, derive.Derive(m, byTarget[id], pol)); err != nil {
+		if err := upsertTx(tx, m, derive.DeriveWithContext(m, byTarget[id], pol, ctx)); err != nil {
 			return err
 		}
 	}
