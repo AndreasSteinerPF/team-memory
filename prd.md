@@ -90,15 +90,16 @@ Non-examples:
 
 ### 5.2 Memory Types
 
-Five types in v1. Typed envelope, free-form summary and guidance.
+Six types in v1. Typed envelope, free-form summary and guidance.
 
 1. `failed_attempt` — an approach that was tried and failed, with evidence.
 2. `constraint` — a rule on how work must be done here; `origin: team` (internal convention/policy) or `origin: external` (third-party compatibility, API contract).
 3. `fragile_area` — a path where changes frequently break non-obvious things.
 4. `stale_doc` — a document that is outdated or misleading, ideally with a pointer to what supersedes it.
 5. `decision` — a decision that changes future work and is not written down anywhere else (including ownership/responsibility changes).
+6. `successful_pattern` — a repeatedly-applied refactor, approach, or workflow with a measurable outcome. A single function that worked once is NOT a pattern; the type carries a type-specific activation gate (§8.2) so unilateral proposals stay provisional until independently confirmed.
 
-Deferred to roadmap: `ownership` and `successful_pattern` as dedicated types (ownership changes are expressible as `decision`; `successful_pattern` is the memory-spam magnet and needs the validation flywheel proven first).
+Deferred to roadmap: `ownership` as a dedicated memory type (no concrete use case justifies it over `decision` today).
 
 ### 5.3 Records: Memories and Observations
 
@@ -115,10 +116,12 @@ Observation kinds:
 | `contradict` | agent or human | Found evidence the memory is wrong, with evidence |
 | `adjust_scope` | agent or human | The lesson is right but the scope is wrong; carries `suggested_scope` |
 | `mark_stale` | agent or human | The code or situation this memory describes no longer exists |
+| `mark_duplicate` | agent or human | This memory is a duplicate of another (named in `canonical_id`); auto-effect — the duplicate becomes status `duplicate` |
+| `supersede` | agent or human | Filed on a new canonical, names the obsolete one in `supersedes`; substantiated by independent confirm or human approve, then the obsolete one becomes status `superseded` (§8.5) |
 | `approve` | human only | Activate a critical memory, raise enforcement, or raise confidence |
 | `reject` | human only | Kill a memory (terminal) |
 
-Deferred to roadmap: `mark_duplicate`, `suggest_supersession` (need cross-memory linking), `broaden_scope` as a distinct kind (covered by `adjust_scope`), `add_evidence` (a `confirm` carries evidence), `record_usage` (voluntary telemetry agents won't reliably emit).
+Deferred to roadmap: `broaden_scope` as a distinct kind (covered by `adjust_scope`), `add_evidence` (a `confirm` carries evidence), `record_usage` (voluntary telemetry agents won't reliably emit).
 
 ### 5.4 Derived State
 
@@ -361,7 +364,7 @@ Repo scoping is implicit (the ledger lives in the repo). `services`, line ranges
 # observations/01J8X5A2P4HND7QW9XK1MZRTGE.yaml
 id: 01J8X5A2P4HND7QW9XK1MZRTGE
 target: 01J8X4QZ7M9FKE2V3R5T8WYBCD
-kind: confirm            # confirm | contradict | adjust_scope | mark_stale | approve | reject
+kind: confirm            # confirm | contradict | adjust_scope | mark_stale | mark_duplicate | supersede | approve | reject
 summary: >
   Same rollback failure reproduced on revenue-reporting branch.
 evidence:
@@ -382,8 +385,10 @@ actor:
 created_at: "2026-06-15T11:20:00Z"
 
 # kind-specific fields:
-# adjust_scope:  suggested_scope: { paths: [...] }
-# approve:       set_enforcement: requirement   set_confidence: high   (both optional)
+# adjust_scope:    suggested_scope: { paths: [...] }
+# mark_duplicate:  canonical_id: 01J...
+# supersede:       supersedes: 01J...
+# approve:         set_enforcement: requirement   set_confidence: high   (both optional)
 ```
 
 ## 10. Integration Surface
@@ -612,7 +617,7 @@ First 90 days: 500 stars; 5 external contributors; documented setups for 2+ codi
 
 **Agents ignore the voluntary verbs** → (1) the SessionStart brief injects the when-to-remember instructions every session; (2) a near-moment nudge engine (PostToolUse signal recording + Stop emission, Section 10.1) escalates the highest-value moments to pointed `tm_propose`/`tm_observe` prompts, bounded by an anti-spam budget (max 3/session, cooldown, suppress-if-already-acted) so it never manufactures junk proposals.
 
-**Memory spam** → usage-constraining MCP descriptions with explicit non-examples; five types only (`successful_pattern` deferred); provisional memories capped at 2 per check; cheap `reject`; FTS-assisted duplicate warning at propose time ("a similar memory exists — confirm it instead?").
+**Memory spam** → usage-constraining MCP descriptions with explicit non-examples; six types only; provisional memories capped at 2 per check; cheap `reject`; FTS-assisted duplicate warning at propose time ("a similar memory exists — confirm it instead?"). `successful_pattern` carries a type-specific activation gate (§8.2) so unilateral proposals stay provisional until independently confirmed.
 
 **Bad memories poison agents** → active ≠ authoritative; independent confirmation gates medium+ activation; contradictions demote to contested immediately; requirement needs a human; anchor drift is annotated.
 
@@ -643,7 +648,9 @@ First 90 days: 500 stars; 5 external contributors; documented setups for 2+ codi
 
 - **Cross-harness adapter layer** — Codex, Copilot, Cursor, and Gemini hook/MCP adapters with `tm init --harness {codex,copilot,cursor,gemini}` packaging (§6.2–§6.5, §10.6). **Shipped.**
 - **Cross-harness E2E test framework** — per-harness payload fixtures (default contract/replay/packaging tiers) plus build-tag-gated live capture and live-firing tiers that pin the remaining live-payload checks (§10.6; `e2e/harness/`, recipes in `docs/verification/cross-harness.md`). **Shipped.**
-- `ownership` and `successful_pattern` memory types; `mark_duplicate` and supersession observations.
+- `successful_pattern` memory type with type-specific activation gate; `mark_duplicate` and `supersede` observation kinds with cross-memory linking. **Shipped.**
+
+  Deferred to Phase 6: `ownership` as a dedicated memory type (no concrete use case justifies it over `decision` today).
 - Polished separate-remote UX.
 - **Package-manager distribution** — Homebrew and Scoop formulas on top of the existing GoReleaser pipeline, so `brew install teammemory` / `scoop install teammemory` are first-class install paths alongside `go install` and the GitHub Releases archives (§12.2, §16).
 
@@ -675,11 +682,16 @@ First 90 days: 500 stars; 5 external contributors; documented setups for 2+ codi
 4. **All state is derived**: status, confidence, risk, enforcement, and effective scope are a pure function of records + policy, cached in local SQLite, never stored or synced.
 5. **Risk is policy-derived**, never agent-assessed.
 6. **Tiered activation:** low risk activates immediately; medium/high need one independent confirmation; critical needs two independent confirmations; `requirement` enforcement always needs a human.
-7. Five memory types: `failed_attempt`, `constraint`, `fragile_area`, `stale_doc`, `decision`.
-8. Six observation kinds: `confirm`, `contradict`, `adjust_scope`, `mark_stale` (agents); `approve`, `reject` (humans).
+7. Six memory types: `failed_attempt`, `constraint`, `fragile_area`, `stale_doc`, `decision`, `successful_pattern` (see also decision 15 below).
+8. Eight observation kinds: `confirm`, `contradict`, `adjust_scope`, `mark_stale`, `mark_duplicate`, `supersede` (agents or humans); `approve`, `reject` (humans only) — see also decision 16 below.
 9. **Hook-first integration via a shared engine + per-harness adapters:** one harness-neutral hook engine drives `check_action`, `requirement` enforcement (block + ack), and the near-moment nudge; thin adapters translate each agent's hook wire format (Claude Code, Codex, Copilot, Cursor, and Gemini in v1 — Section 10.6). The PreToolUse block path makes `requirement` enforcement real on every harness; advisory memories surface pre-edit on Claude Code and post-edit elsewhere — the one deliberate fidelity difference. MCP covers the voluntary verbs and hookless surfaces.
 10. Memory evolution is autonomous between agents — no human code review in the loop; humans govern only activation of critical memories and requirement-level enforcement.
 11. Anchor-drift annotation ships in v1.
 12. Retrieval is precision-first and lexical in v1; output capped at 5 memories, 2 provisional.
 13. Implementation in **Go**.
 14. Session-start briefing is a first-class surface: `tm brief`, installed for Claude Code by `tm init`, with envelope formats for Codex, Copilot CLI, Cursor, Gemini CLI, and Continue.
+15. Memory types (6): `failed_attempt`, `constraint`, `fragile_area`, `stale_doc`, `decision`, `successful_pattern`.
+16. Observation kinds (8): `confirm`, `contradict`, `adjust_scope`, `mark_stale`, `mark_duplicate`, `supersede`, `approve`, `reject`.
+17. `successful_pattern` activation gate is type-specific (≥1 independent confirm or human `approve`) regardless of its low-risk tier.
+18. `supersede` uses `adjust_scope`-broadening substantiation rules (§8.5); the observation is filed on the new canonical, names the obsolete one in `supersedes`.
+19. Retrieval cap is additive: up to `max_results` active + `max_provisional` provisional surfaced (default 5 + 2), with `duplicate`/`superseded` excluded entirely (§11.4).

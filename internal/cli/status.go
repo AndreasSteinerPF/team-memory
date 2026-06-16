@@ -5,6 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/AndreasSteinerPF/team-memory/internal/derive"
 	"github.com/AndreasSteinerPF/team-memory/internal/index"
 	"github.com/AndreasSteinerPF/team-memory/internal/model"
 )
@@ -35,10 +36,30 @@ func newStatusCmd(g *globalOpts) *cobra.Command {
 					criticalProv = append(criticalProv, m)
 				}
 			}
+
+			// Pending supersede claims are cross-memory state, not stored on
+			// the index row. Compute once via derive.BuildContext (prd.md §8.5).
+			var pendingSupersede int
+			ms, mErr := e.led.Memories()
+			obs, oErr := e.led.Observations()
+			if mErr == nil && oErr == nil {
+				dctx := derive.BuildContext(ms, obs, e.pol)
+				for _, m := range ms {
+					if len(dctx.PendingSupersedeFor(m.ID)) > 0 {
+						pendingSupersede++
+					}
+				}
+			}
+
 			out := cmd.OutOrStdout()
-			fmt.Fprintf(out, "Memories: %d active, %d provisional, %d contested, %d stale, %d rejected\n",
+			fmt.Fprintf(out, "Memories: %d active, %d provisional, %d contested, %d stale, %d duplicate, %d superseded, %d rejected\n",
 				counts[model.StatusActive], counts[model.StatusProvisional],
-				counts[model.StatusContested], counts[model.StatusStale], counts[model.StatusRejected])
+				counts[model.StatusContested], counts[model.StatusStale],
+				counts[model.StatusDuplicate], counts[model.StatusSuperseded],
+				counts[model.StatusRejected])
+			if pendingSupersede > 0 {
+				fmt.Fprintf(out, "Pending supersede claims: %d\n", pendingSupersede)
+			}
 			if len(contested) > 0 {
 				fmt.Fprintln(out, "\nContested (needs human attention):")
 				for _, m := range contested {

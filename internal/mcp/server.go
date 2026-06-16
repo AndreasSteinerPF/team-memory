@@ -136,7 +136,7 @@ type statusArgs struct{}
 func (s *Server) addStatusTool(srv *sdkmcp.Server) {
 	sdkmcp.AddTool(srv, &sdkmcp.Tool{
 		Name: "tm_status",
-		Description: `Return a TeamMemory ledger overview: counts of active/provisional/contested/stale/rejected memories, items needing human attention (contested memories, critical-risk memories awaiting human approval), and the ledger branch tip.
+		Description: `Return a TeamMemory ledger overview: counts of active/provisional/contested/stale/duplicate/superseded/rejected memories, the number of pending supersede claims, items needing human attention (contested memories, critical-risk memories awaiting human approval), and the ledger branch tip.
 
 Use this to understand the health and size of the ledger before planning work.`,
 	}, func(ctx context.Context, req *sdkmcp.CallToolRequest, args statusArgs) (*sdkmcp.CallToolResult, any, error) {
@@ -158,10 +158,28 @@ Use this to understand the health and size of the ledger before planning work.`,
 				critProv = append(critProv, m)
 			}
 		}
+		// Pending supersede claims are cross-memory state (prd.md §8.5);
+		// compute once via derive.BuildContext.
+		var pendingSupersede int
+		if ms, mErr := s.deps.Ledger.Memories(); mErr == nil {
+			if obs, oErr := s.deps.Ledger.Observations(); oErr == nil {
+				dctx := derive.BuildContext(ms, obs, s.deps.Policy)
+				for _, m := range ms {
+					if len(dctx.PendingSupersedeFor(m.ID)) > 0 {
+						pendingSupersede++
+					}
+				}
+			}
+		}
 		var b strings.Builder
-		fmt.Fprintf(&b, "Memories: %d active, %d provisional, %d contested, %d stale, %d rejected\n",
+		fmt.Fprintf(&b, "Memories: %d active, %d provisional, %d contested, %d stale, %d duplicate, %d superseded, %d rejected\n",
 			counts[model.StatusActive], counts[model.StatusProvisional],
-			counts[model.StatusContested], counts[model.StatusStale], counts[model.StatusRejected])
+			counts[model.StatusContested], counts[model.StatusStale],
+			counts[model.StatusDuplicate], counts[model.StatusSuperseded],
+			counts[model.StatusRejected])
+		if pendingSupersede > 0 {
+			fmt.Fprintf(&b, "Pending supersede claims: %d\n", pendingSupersede)
+		}
 		if len(contested) > 0 {
 			fmt.Fprintln(&b, "\nContested (needs human attention):")
 			for _, m := range contested {
