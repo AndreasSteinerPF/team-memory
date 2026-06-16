@@ -546,7 +546,7 @@ Symbol matching, error-signature matching, and semantic ranking are roadmap.
 1. SaaS backend, web dashboard, GitHub app.
 2. Embeddings / semantic retrieval.
 3. Event-sourcing ledger with materialized state (superseded by derived state).
-4. `ownership` / `successful_pattern` types; `mark_duplicate` / `suggest_supersession` observations.
+4. `ownership` as a dedicated memory type (deferred to Phase 6 — expressible as `decision` today).
 5. Signed records, multi-human approval.
 6. Symbol-level anchors, content-hash anchor resolution.
 7. Dedicated reviewer agents, multi-agent debate.

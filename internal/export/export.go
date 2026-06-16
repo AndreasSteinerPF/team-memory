@@ -31,7 +31,7 @@ func Instructions(flavor string) string {
 		b.WriteString("- Before editing files, call the `tm_check_action` MCP tool (or `tm check-action --path <file>`) with the paths you are about to change.\n")
 	}
 	fmt.Fprintf(&b, "- When you discover durable project judgment — %s — record it with `tm_propose`. Do not record session state, trivia, or facts derivable from the code.\n", model.MemoryWorthyShortForm)
-	b.WriteString("- When your work bears on a memory shown to you, react with `tm_observe`: `confirm` with evidence, `contradict` with evidence, `adjust_scope`, or `mark_stale`.\n")
+	b.WriteString("- When your work bears on a memory shown to you, react with `tm_observe`: `confirm` with evidence, `contradict` with evidence, `adjust_scope`, `mark_stale`, `mark_duplicate` (point at the canonical), or `supersede` (file on the new canonical, name the obsolete one).\n")
 	return b.String()
 }
 
