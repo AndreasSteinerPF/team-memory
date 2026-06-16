@@ -6,6 +6,110 @@
 All notable changes to TeamMemory are documented here. The format is based on
 [Keep a Changelog], and this project adheres to [Semantic Versioning].
 
+## [0.4.0] - 2026-06-16
+
+The "memory types and cross-memory linking" release. Adds the
+`successful_pattern` memory type (Phase 2's deferred sixth) and two new
+observation kinds — `mark_duplicate` and `supersede` — that link memories to
+each other for the first time. Derived state gains a cross-memory layer
+(`derive.Context`) so a substantiated supersession transitions one memory's
+status based on another's observations.
+
+### Added
+
+- **`successful_pattern` memory type** — repeatedly-applied refactors or
+  approaches with a measurable outcome. Low risk for ranking, but carries a
+  **type-specific activation gate**: stays `provisional` until at least one
+  independent session confirms it (or a maintainer approves it), regardless
+  of the low-risk tier's normal auto-activation. The gate is the
+  spam-control: a single function that worked once cannot unilaterally
+  become an active pattern. (`prd.md §5.2`, `§8.2`)
+- **`mark_duplicate` observation kind.** File it on the duplicate memory
+  naming the kept memory in `--canonical-id`. Auto-effect — the duplicate
+  immediately flips to status `duplicate` and is excluded from retrieval.
+  A later `confirm`/`approve` on the duplicate resolves it (back to active).
+  (`prd.md §5.3`, `§8.2`)
+- **`supersede` observation kind.** File it on the *new canonical* naming
+  the obsolete memory in `--supersedes`. Substantiated cross-memory:
+  the obsolete memory transitions to status `superseded` only after either
+  a human `approve` or an independent `confirm` lands on the new canonical
+  (mirrors `adjust_scope`-broadening substantiation). Pending claims are
+  visible in `tm show <obsolete>` and `tm list --pending-supersede`. The
+  reason text names the new canonical. (`prd.md §5.3`, `§8.5`)
+- **Two new statuses with proper precedence.** Status ladder is now:
+  `rejected` > `stale` > `duplicate` > `superseded` > `contested` >
+  `successful_pattern` gate > `active` > `provisional`. Excluded from
+  retrieval entirely: `rejected`, `stale`, `duplicate`, `superseded`.
+  (`prd.md §8.2`, `§11.4`)
+- **Cross-memory derive primitive** (`internal/derive/Context`,
+  `BuildContext`). The first place per-memory derivation sees facts from
+  other memories' observations. Computed once per ledger pass; the index
+  incremental `Update` fans out canonical-status changes to dependent
+  memories so the materialized table stays consistent. Fast-path skips the
+  full memories load when no cross-memory observations exist, so hook
+  latency is unchanged on the common case. (`prd.md §8.5`)
+- **Multi-hop cycle detection** at observe time. `mark_duplicate` and
+  `supersede` walk the existing canonical/supersedes chain at file time
+  and warn (don't block) when a new observation would close a cycle of
+  any length (A→B→A, A→B→C→A, …). Operator may be deliberately
+  consolidating; the warning ensures they know they're about to hide every
+  memory in the chain from default retrieval. (`prd.md §8.5`)
+- **Orphan revival — canonical-status changes propagate.** If canonical A
+  becomes non-active (`reject` or unresolved `mark_stale`), any memory B
+  that pointed at A via `mark_duplicate` or `supersede` reverts to its
+  un-orphaned status. Reversible: a later `confirm` resolving a
+  `mark_stale` revives A *and* re-marks the dependents; `reject` is
+  terminal so its revival is permanent. (`prd.md §8.5`)
+- **New CLI filters and surfaces.** `tm list --duplicate`,
+  `--superseded`, and `--pending-supersede` filter by the new statuses
+  and the pending cross-memory claims. `tm show <obsolete>` lists pending
+  supersession claims naming the memory. `tm status` reports counts for
+  the new statuses plus a separate `Pending supersede claims: N` line.
+  (`prd.md §10.5`)
+- **Retrieval cap is now additive: 5 active + 2 provisional.** Previously
+  the cap was 5 total with provisional inside the same budget — which
+  starved provisional surfacing in well-instrumented areas (exactly where
+  new proposals are most likely). The two budgets are now separate;
+  `duplicate`/`superseded` rows are excluded entirely. (`prd.md §11.3`,
+  `§11.4`)
+
+### Changed
+
+- **Shared agent-facing guidance constants.** A single
+  `MemoryWorthyGuidance` (full enumeration with the new
+  `successful_pattern` non-example) and `MemoryWorthyShortForm` (one-sentence
+  form) in `internal/model/guidance.go` back the MCP `tm_propose`
+  description, the SessionStart briefing, and `tm export` instruction
+  preambles — so the same canonical text appears on every surface and
+  cannot drift. (`prd.md §10.3`, `§10.1`, `§10.6`)
+- **`tm_propose` accepts `successful_pattern`** in both the CLI validator
+  and the MCP tool. The MCP `Type` field schema lists all six types; the
+  tool description carries the activation-gate caveat so agents aren't
+  surprised by the initial `provisional` status.
+- **`tm_observe` accepts `mark_duplicate` and `supersede`** in both
+  surfaces. Cross-memory validation rejects self-references and missing
+  IDs, and **warns (not blocks)** when the referenced memory is in a
+  non-active state — same target-warning policy applied to the
+  observation's own target. CLI surfaces the warning on stderr; MCP
+  appends it to the tool result text. (`prd.md §10.3`, `§10.5`)
+- **Index schema bumped to v4.** Existing v3 indexes auto-rebuild on the
+  next `tm` invocation. No ledger migration needed — the new YAML
+  observation fields (`canonical_id`, `supersedes`) are `omitempty`, so
+  pre-existing observation files load unchanged.
+
+### Fixed
+
+- **Policy-driven independence in `adjust_scope` substantiation.** The
+  broadening-substantiation rule previously hardcoded the
+  `"different_session"` independence mode; it now respects
+  `policy.activation.independence` (same as supersede substantiation), so
+  the stricter `"different_session_and_branch"` mode applies consistently
+  across cross-memory checks. (`prd.md §8.5`)
+- **`tm observe` warn helpers use an O(1) status lookup.** The
+  `warnIfNonActive` helper introduced for cross-memory validation
+  initially scanned the full index per call; it now uses a new
+  single-row `idx.Status(id)` method.
+
 ## [0.3.0] - 2026-06-16
 
 The "MCP everywhere, merge-safely" release. `tm init` now registers the
@@ -177,6 +281,7 @@ dogfooding on real repositories.
 - **Acceptance tests** — flagship lifecycle demo, trap-repo retrieval benchmark,
   two-clone concurrent-sync convergence, and hook latency budget.
 
+[0.4.0]: https://github.com/AndreasSteinerPF/team-memory/releases/tag/v0.4.0
 [0.3.0]: https://github.com/AndreasSteinerPF/team-memory/releases/tag/v0.3.0
 [0.2.0]: https://github.com/AndreasSteinerPF/team-memory/releases/tag/v0.2.0
 [0.1.1]: https://github.com/AndreasSteinerPF/team-memory/releases/tag/v0.1.1
