@@ -2,6 +2,7 @@ package harness
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 )
 
@@ -49,14 +50,28 @@ func (claude) Parse(kind EventKind, r io.Reader) (Event, error) {
 	return ev, nil
 }
 
-// Render emits the hook decision. VERIFY (prd.md §10.6; docs/verification/cross-harness.md): on Stop the
-// context-injection shape may differ across Claude Code versions — some surface
-// Stop stdout directly, others require {"decision":"block","reason":...} (which
-// forces a turn, undesirable for a low-pressure nudge). This Render is the one
-// place that decides it; adjust here if a live payload differs.
+// Render emits the hook decision. Stop is special: Claude Code's Stop hook
+// schema (live-verified 2026-06-16) rejects `hookSpecificOutput` entirely —
+// that envelope is only valid for PreToolUse / PostToolUse /
+// UserPromptSubmit / PostToolBatch. An advisory Decision on Stop must render
+// as plain text to stdout, which Claude Code surfaces directly (matches the
+// README's "never a forced turn" promise for the nudge engine). A block
+// Decision on Stop — which the nudge engine never produces, but we render
+// defensively — uses the top-level `decision`/`reason` fields the Stop
+// schema does accept.
 func (claude) Render(kind EventKind, d Decision, w io.Writer) error {
 	if d.Empty() {
 		return nil // emit nothing; the action proceeds
+	}
+	if kind == Stop {
+		if d.Block {
+			return json.NewEncoder(w).Encode(struct {
+				Decision string `json:"decision"`
+				Reason   string `json:"reason"`
+			}{"block", d.Reason})
+		}
+		_, err := fmt.Fprintln(w, d.Context)
+		return err
 	}
 	type spec struct {
 		HookEventName            string `json:"hookEventName"`

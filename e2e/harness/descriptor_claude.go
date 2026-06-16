@@ -1,6 +1,9 @@
 package harness_e2e
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"strings"
+)
 
 func init() { Register(claudeDescriptor{}) }
 
@@ -39,7 +42,14 @@ func (claudeDescriptor) BlockReason(out []byte) string {
 	return hsoDecode(out).HookSpecificOutput.PermissionDecisionReason
 }
 func (claudeDescriptor) AdvisoryContext(out []byte) string {
-	return hsoDecode(out).HookSpecificOutput.AdditionalContext
+	// Stop hooks render as plain text (Claude Code's Stop schema rejects
+	// hookSpecificOutput); PostTool/PromptSubmit still use the hsoEnvelope.
+	// JSON-decode first; if no additionalContext came back, treat the bytes
+	// as plain text.
+	if ctx := hsoDecode(out).HookSpecificOutput.AdditionalContext; ctx != "" {
+		return ctx
+	}
+	return strings.TrimSpace(string(out))
 }
 
 func (claudeDescriptor) Packaging() []PackagingExpectation {

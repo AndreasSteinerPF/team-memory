@@ -57,6 +57,34 @@ func TestClaudeRenderPreToolBlock(t *testing.T) {
 	}
 }
 
+// TestClaudeRenderStopAdvisoryUsesPlainStdout pins Claude Code's Stop-hook
+// output contract (CLI 2.1.x, 2026-06-16, live-verified): the Stop event
+// rejects `hookSpecificOutput` entirely — that envelope is only valid for
+// PreToolUse, PostToolUse, UserPromptSubmit, and PostToolBatch. The Stop
+// schema accepts top-level fields (decision, reason, systemMessage,
+// stopReason, etc.) but a nudge wants neither a forced continuation
+// (decision=block) nor a user-only systemMessage; it wants plain text the
+// agent surface picks up. Claude Code surfaces a Stop hook's stdout
+// directly, so an advisory Decision on Stop must render as plain text
+// (no JSON wrapper).
+func TestClaudeRenderStopAdvisoryUsesPlainStdout(t *testing.T) {
+	a, _ := harness.Get("claude")
+	var b bytes.Buffer
+	if err := a.Render(harness.Stop, harness.Decision{Context: "tm: fragile area, consider tm_propose"}, &b); err != nil {
+		t.Fatal(err)
+	}
+	out := b.String()
+	if !strings.Contains(out, "tm: fragile area, consider tm_propose") {
+		t.Errorf("render missing advisory text: %q", out)
+	}
+	if strings.Contains(out, "hookSpecificOutput") {
+		t.Errorf("Stop output must not include hookSpecificOutput (Claude Code's Stop schema rejects it): %q", out)
+	}
+	if strings.HasPrefix(strings.TrimSpace(out), "{") {
+		t.Errorf("Stop advisory must be plain text, not JSON: %q", out)
+	}
+}
+
 func TestClaudeRenderEmptyDecisionWritesNothing(t *testing.T) {
 	a, _ := harness.Get("claude")
 	var b bytes.Buffer

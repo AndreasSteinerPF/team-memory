@@ -12,11 +12,11 @@ func TestDescriptorDecoders(t *testing.T) {
 	}{
 		{"claude",
 			`{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"blocked by mem X"}}`,
-			`{"hookSpecificOutput":{"hookEventName":"Stop","additionalContext":"tm_propose failed_attempt"}}`,
+			"tm_propose failed_attempt\n", // Stop hook renders plain text on stdout (Claude Code's Stop schema rejects hookSpecificOutput; live-verified 2026-06-16)
 			"blocked by mem X", "tm_propose failed_attempt"},
 		{"codex",
 			`{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"blocked by mem X"}}`,
-			`{"hookSpecificOutput":{"hookEventName":"Stop","additionalContext":"tm_propose failed_attempt"}}`,
+			"tm_propose failed_attempt\n", // Stop renders plain text on stdout (mirrors Claude Code fix; codex Stop schema not yet live-captured but adapter is aligned preemptively)
 			"blocked by mem X", "tm_propose failed_attempt"},
 		{"copilot",
 			`{"permissionDecision":"deny","permissionDecisionReason":"blocked by mem X"}`,

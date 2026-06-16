@@ -97,6 +97,16 @@ against the repo root (codex emits relative `apply_patch` paths) via the shared
   `codex` row's `PostToolFailureSensor` was set to **no**, and the `fail_pass_nudge`
   scenario is not applicable to codex. (Claude Code was later found to share this
   exact behavior — see the Claude section below — and was flipped to `no` too.)
+- **Stop hook output shape — preemptively aligned with Claude Code (2026-06-16):**
+  Claude Code's Stop hook was found live to reject `hookSpecificOutput`
+  (`(root): Invalid input`); see the Claude section below for the full payload
+  and resolution. Codex's Stop schema is **not yet live-captured**, but every
+  other shared wire shape has matched Claude Code exactly, so `codex.go` was
+  updated alongside `claude.go` to render Stop advisories as plain text to
+  stdout and a defensive Stop-block as top-level `{decision,reason}`. Pin a
+  live capture during the next `TM_CODEX_LIVE_REPO` session and either confirm
+  this or peel it back if Codex actually accepts `hookSpecificOutput` on Stop.
+  Pinned by `harness.TestCodexRenderStopAdvisoryUsesPlainStdout`.
 
 **Automated codex live test (`TestLive/codex`).** Because each `TestLive` run
 uses a fresh, untrusted temp repo, codex's subtest can't fire there. Instead it is
@@ -600,6 +610,23 @@ like Codex. The capability matrix sets claude `PostToolFailureSensor = no`, the
 retained only for forward-compat. Pinned by `harness.TestClaudeSuccessPostToolHasNoExitCode`.
 **Re-check by ~2026-08-15** alongside Codex: if a later version emits a `PostToolUse`
 on failure, re-enable the capability and restore the scenario.
+
+**Stop hook output shape — RESOLVED (2026-06-16):** Claude Code's `Stop` hook
+schema rejects `hookSpecificOutput` entirely — that envelope is only valid for
+`PreToolUse`, `PostToolUse`, `UserPromptSubmit`, and `PostToolBatch`. Live
+dogfooding of `tm nudge --hook` on a Stop event produced:
+`Hook JSON output validation failed — (root): Invalid input` against a payload
+of `{"hookSpecificOutput":{"hookEventName":"Stop","additionalContext":...}}`.
+The Stop schema accepts only top-level fields (`continue`, `suppressOutput`,
+`stopReason`, `decision`, `reason`, `systemMessage`, `terminalSequence`,
+`permissionDecision`). A nudge wants neither a forced continuation
+(`decision: "block"` retries the turn) nor a user-only `systemMessage`, so the
+adapter renders Stop advisories as **plain text to stdout** — which Claude Code
+surfaces directly — matching the original `claude.go` `VERIFY` comment's
+`Stop stdout directly` option. The defensive block path on Stop emits
+top-level `{"decision":"block","reason":...}` (the only block shape the Stop
+schema accepts), though the engine doesn't currently produce a block Decision
+for Stop. Pinned by `harness.TestClaudeRenderStopAdvisoryUsesPlainStdout`.
 
 ---
 

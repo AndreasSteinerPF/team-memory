@@ -87,3 +87,30 @@ func TestCodexRenderPostToolContext(t *testing.T) {
 		t.Errorf("render = %s", b.String())
 	}
 }
+
+// TestCodexRenderStopAdvisoryUsesPlainStdout mirrors the Claude Code finding
+// (claude_test.go: TestClaudeRenderStopAdvisoryUsesPlainStdout). Codex's hook
+// docs describe the same hookSpecificOutput shape as Claude Code, but Claude
+// Code's Stop schema was found live to reject hookSpecificOutput entirely.
+// Codex's Stop schema is not yet live-captured here, but every other shared
+// shape has behaved identically (PostToolUse-on-success-only, etc.), so this
+// pin extends the same fix preemptively: on Stop, render advisory as plain
+// text to stdout. If a future live capture shows Codex's Stop schema differs
+// from Claude Code's, adjust the rendering and this test together.
+func TestCodexRenderStopAdvisoryUsesPlainStdout(t *testing.T) {
+	a, _ := harness.Get("codex")
+	var b bytes.Buffer
+	if err := a.Render(harness.Stop, harness.Decision{Context: "tm: consider tm_propose"}, &b); err != nil {
+		t.Fatal(err)
+	}
+	out := b.String()
+	if !strings.Contains(out, "tm: consider tm_propose") {
+		t.Errorf("render missing advisory text: %q", out)
+	}
+	if strings.Contains(out, "hookSpecificOutput") {
+		t.Errorf("Stop output must not include hookSpecificOutput: %q", out)
+	}
+	if strings.HasPrefix(strings.TrimSpace(out), "{") {
+		t.Errorf("Stop advisory must be plain text, not JSON: %q", out)
+	}
+}
