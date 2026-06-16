@@ -5,8 +5,11 @@ import "sort"
 // PackagingExpectation is one file tm init --harness X must write, with literal
 // substrings that must appear in it.
 type PackagingExpectation struct {
-	// Path is the repo-relative path of the written config file.
+	// Path is the config file path. Repo-relative unless Home is set.
 	Path string
+	// Home, when true, resolves Path relative to the user's home dir instead
+	// of the repo (Codex's ~/.codex, Copilot's ~/.copilot).
+	Home bool
 	// Contains are substrings that must all be present in the file.
 	Contains []string
 	// AbsentDir, when non-empty, is a repo-relative dir that must NOT exist

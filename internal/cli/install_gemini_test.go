@@ -68,3 +68,82 @@ func TestInstallGeminiSchema(t *testing.T) {
 		}
 	}
 }
+
+func TestInstallGeminiMergesSettings(t *testing.T) {
+	repo := t.TempDir()
+	gdir := filepath.Join(repo, ".gemini")
+	if err := os.MkdirAll(gdir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Pre-existing settings with a user MCP server, a user hook, and an unrelated key.
+	seed := `{
+  "mcpServers": { "other": { "command": "x" } },
+  "hooks": { "BeforeTool": [{ "matcher": "foo", "hooks": [{ "type": "command", "command": "user-cmd" }] }] },
+  "theme": "dark"
+}`
+	settingsPath := filepath.Join(gdir, "settings.json")
+	if err := os.WriteFile(settingsPath, []byte(seed), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := installGemini(repo); err != nil {
+		t.Fatalf("installGemini: %v", err)
+	}
+	data, err := os.ReadFile(settingsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var s map[string]any
+	if err := json.Unmarshal(data, &s); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	// Unrelated key preserved.
+	if s["theme"] != "dark" {
+		t.Error("unrelated top-level key 'theme' was dropped")
+	}
+	// Both MCP servers present.
+	servers, _ := s["mcpServers"].(map[string]any)
+	if servers["other"] == nil {
+		t.Error("pre-existing mcpServers.other was clobbered")
+	}
+	if servers["teammemory"] == nil {
+		t.Error("teammemory MCP server not added")
+	}
+	// User's BeforeTool hook preserved AND tm's BeforeTool hook added (2 groups).
+	hooks, _ := s["hooks"].(map[string]any)
+	bt, _ := hooks["BeforeTool"].([]any)
+	if len(bt) < 2 {
+		t.Errorf("BeforeTool should have user hook + tm hook, got %d group(s)", len(bt))
+	}
+	// tm's AfterAgent nudge hook present.
+	if hooks["AfterAgent"] == nil {
+		t.Error("tm AfterAgent hook not added")
+	}
+}
+
+func TestInstallGeminiIdempotent(t *testing.T) {
+	repo := t.TempDir()
+	if err := installGemini(repo); err != nil {
+		t.Fatalf("first: %v", err)
+	}
+	if err := installGemini(repo); err != nil {
+		t.Fatalf("second: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(repo, ".gemini", "settings.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var s struct {
+		MCPServers map[string]any   `json:"mcpServers"`
+		Hooks      map[string][]any `json:"hooks"`
+	}
+	if err := json.Unmarshal(data, &s); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	// No duplicate tm hook groups after two runs.
+	if n := len(s.Hooks["BeforeTool"]); n != 1 {
+		t.Errorf("BeforeTool has %d groups after 2 runs, want 1 (idempotent)", n)
+	}
+	if n := len(s.Hooks["AfterAgent"]); n != 1 {
+		t.Errorf("AfterAgent has %d groups after 2 runs, want 1", n)
+	}
+}

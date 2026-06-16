@@ -27,15 +27,22 @@ func (codexDescriptor) AdvisoryContext(out []byte) string {
 }
 
 func (codexDescriptor) Packaging() []PackagingExpectation {
-	return []PackagingExpectation{{
-		Path: ".codex/hooks.json",
-		Contains: []string{
-			`"hooks"`, "PreToolUse", "PostToolUse", "Stop", "apply_patch",
-			"tm check-action --hook --harness codex",
-			"tm signal --hook --harness codex",
-			"tm nudge --hook --harness codex",
-			"tm signal --hook --prompt --harness codex",
+	return []PackagingExpectation{
+		{
+			Path: ".codex/hooks.json",
+			Contains: []string{
+				`"hooks"`, "PreToolUse", "PostToolUse", "Stop", "apply_patch",
+				"tm check-action --hook --harness codex",
+				"tm signal --hook --harness codex",
+				"tm nudge --hook --harness codex",
+				"tm signal --hook --prompt --harness codex",
+			},
+			AbsentDir: ".codex-plugin",
 		},
-		AbsentDir: ".codex-plugin",
-	}}
+		{
+			Path:     ".codex/config.toml",
+			Home:     true,
+			Contains: []string{"[mcp_servers.teammemory]", `command = "tm"`, `args = ["mcp"]`},
+		},
+	}
 }

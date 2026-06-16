@@ -8,12 +8,10 @@ import (
 )
 
 // installCodex writes Codex CLI hook config to <repo>/.codex/hooks.json and
-// prints the MCP setup the user must run (prd.md §10.6). Codex discovers hooks
-// from <repo>/.codex/hooks.json (and ~/.codex/hooks.json) and expects the event
-// map wrapped under a top-level "hooks" key. Codex prompts to trust repo hooks
-// on first run. (The earlier .codex-plugin/ layout only loads as a
-// marketplace-installed, trusted plugin, which tm init does not set up.)
-func installCodex(repoDir string, out io.Writer) error {
+// registers the teammemory MCP server in <homeDir>/.codex/config.toml (prd.md
+// §10.6). Codex discovers hooks from <repo>/.codex/hooks.json and prompts to
+// trust repo hooks on first run.
+func installCodex(repoDir, homeDir string, out io.Writer) error {
 	dir := filepath.Join(repoDir, ".codex")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
@@ -33,7 +31,16 @@ func installCodex(repoDir string, out io.Writer) error {
 	if err := os.WriteFile(filepath.Join(dir, "hooks.json"), []byte(hooks), 0o644); err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "Codex MCP: run `codex mcp add teammemory -- tm mcp` (or add [mcp_servers.teammemory] to ~/.codex/config.toml).")
+	cfgPath := filepath.Join(homeDir, ".codex", "config.toml")
+	added, err := ensureCodexMCP(cfgPath)
+	if err != nil {
+		return err
+	}
+	if added {
+		fmt.Fprintf(out, "Registered teammemory MCP server in %s.\n", cfgPath)
+	} else {
+		fmt.Fprintf(out, "teammemory MCP server already registered in %s.\n", cfgPath)
+	}
 	fmt.Fprintln(out, "Codex will prompt to trust the repo hooks in .codex/hooks.json on first run.")
 	return nil
 }

@@ -46,8 +46,14 @@ func (claudeDescriptor) Packaging() []PackagingExpectation {
 	// Claude hooks are written into .claude/settings.json only when .claude/
 	// pre-exists; init.go prints guidance otherwise. The packaging tier seeds
 	// .claude/ before init (see Task 8), so assert the settings file.
-	return []PackagingExpectation{{
-		Path:     ".claude/settings.json",
-		Contains: []string{"check-action", "PreToolUse"},
-	}}
+	return []PackagingExpectation{
+		{
+			Path:     ".claude/settings.json",
+			Contains: []string{"check-action", "PreToolUse"},
+		},
+		{
+			Path:     ".mcp.json",
+			Contains: []string{"teammemory", `"command": "tm"`},
+		},
+	}
 }

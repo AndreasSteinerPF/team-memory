@@ -35,6 +35,6 @@ func (geminiDescriptor) AdvisoryContext(out []byte) string {
 func (geminiDescriptor) Packaging() []PackagingExpectation {
 	return []PackagingExpectation{{
 		Path:     ".gemini/settings.json",
-		Contains: []string{"AfterTool", "BeforeTool", "AfterAgent", "tm nudge --hook --harness gemini", "mcpServers"},
+		Contains: []string{"AfterTool", "BeforeTool", "AfterAgent", "tm nudge --hook --harness gemini", "mcpServers", "teammemory"},
 	}}
 }

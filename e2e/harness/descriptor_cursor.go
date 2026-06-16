@@ -34,5 +34,6 @@ func (cursorDescriptor) Packaging() []PackagingExpectation {
 	return []PackagingExpectation{
 		{Path: ".cursor/hooks.json", Contains: []string{"afterShellExecution", "postToolUseFailure", "tm nudge --hook --harness cursor"}},
 		{Path: ".cursor/rules/teammemory.mdc", Contains: []string{"TeamMemory"}},
+		{Path: ".cursor/mcp.json", Contains: []string{"teammemory", `"command": "tm"`}},
 	}
 }

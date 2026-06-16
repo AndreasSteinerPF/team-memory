@@ -71,12 +71,20 @@ func newInitCmd(g *globalOpts) *cobra.Command {
 			case "", "claude":
 				printSetup(out, repoDir, remote)
 			case "codex":
-				if err := installCodex(repoDir, out); err != nil {
+				home, err := os.UserHomeDir()
+				if err != nil {
+					return err
+				}
+				if err := installCodex(repoDir, home, out); err != nil {
 					return err
 				}
 				fmt.Fprintln(out, "Installed Codex hooks in .codex/hooks.json.")
 			case "copilot":
-				if err := installCopilot(repoDir, out); err != nil {
+				home, err := os.UserHomeDir()
+				if err != nil {
+					return err
+				}
+				if err := installCopilot(repoDir, home, out); err != nil {
 					return err
 				}
 				fmt.Fprintln(out, "Installed Copilot hooks in .github/hooks/teammemory.json.")
@@ -100,7 +108,8 @@ func newInitCmd(g *globalOpts) *cobra.Command {
 }
 
 // printSetup prints integration next-steps. Installs Claude Code hooks into
-// .claude/settings.json when .claude/ is present.
+// .claude/settings.json when .claude/ is present, and registers the teammemory
+// MCP server in the repo-root .mcp.json (merge-safe).
 func printSetup(w io.Writer, repoDir, remote string) {
 	installed, err := installClaudeCodeHooks(repoDir)
 	if err != nil {
@@ -110,10 +119,18 @@ func printSetup(w io.Writer, repoDir, remote string) {
 	} else if _, serr := os.Stat(filepath.Join(repoDir, ".claude")); serr == nil {
 		fmt.Fprintln(w, "Claude Code hooks already present in .claude/settings.json.")
 	}
-	fmt.Fprintln(w, "Next steps:")
-	fmt.Fprintln(w, "  • MCP (Claude Code / Cursor / Codex): add to your .mcp.json —")
-	fmt.Fprintln(w, `      { "mcpServers": { "teammemory": { "command": "tm", "args": ["mcp"] } } }`)
+	// printSetup's contract is to print next-steps and never fail init, so an
+	// MCP-registration error here is a warning, not a hard error (unlike the
+	// --harness paths, which abort).
+	mcpPath := filepath.Join(repoDir, ".mcp.json")
+	if added, err := ensureMCPServerJSON(mcpPath, map[string]any{"command": "tm", "args": []string{"mcp"}}); err != nil {
+		fmt.Fprintf(w, "Warning: could not register MCP server in .mcp.json: %v\n", err)
+	} else if added {
+		fmt.Fprintln(w, "Registered teammemory MCP server in .mcp.json.")
+	} else {
+		fmt.Fprintln(w, "teammemory MCP server already registered in .mcp.json.")
+	}
 	if remote != "" {
-		fmt.Fprintf(w, "  • Ledger remote stored as git config tm.remote=%s; sync and background fetch/push use it.\n", remote)
+		fmt.Fprintf(w, "Ledger remote stored as git config tm.remote=%s; sync and background fetch/push use it.\n", remote)
 	}
 }
