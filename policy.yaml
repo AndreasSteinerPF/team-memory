@@ -1,0 +1,48 @@
+# TeamMemory policy (prd.md §8.1). Edit to tune risk, activation, retrieval, and sync.
+base_risk:
+    constraint: medium
+    decision: low
+    failed_attempt: medium
+    fragile_area: medium
+    stale_doc: low
+escalators:
+    broad_scope_bump: true
+    sensitive_paths:
+        - glob: '**/migrations/**'
+          min_risk: high
+        - glob: '**/auth/**'
+          min_risk: critical
+        - glob: .github/workflows/**
+          min_risk: critical
+activation:
+    independence: different_session
+    tiers:
+        critical:
+            auto: independent_confirm
+            min_independent_confirms: 2
+            max_auto_enforcement: warning
+        high:
+            auto: independent_confirm
+            max_auto_enforcement: warning
+        low:
+            auto: immediate
+            max_auto_enforcement: recommendation
+        medium:
+            auto: independent_confirm
+            max_auto_enforcement: warning
+requirement_enforcement:
+    human_required: true
+retrieval:
+    max_results: 5
+    max_provisional: 2
+    provisional_mode: related
+sync:
+    auto_fetch_after: 5m
+nudge:
+    enabled: true
+    max_per_session: 3
+    cooldown_turns: 3
+    self_review_every: 8
+    churn_threshold: 3
+inject:
+    advisory_max_per_session: 5
