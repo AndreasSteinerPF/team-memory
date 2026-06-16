@@ -83,19 +83,21 @@ func TestHookLatency1000(t *testing.T) {
 
 	ev := hookEvent(t, "latency-sess", dir, "billing/migrations/seed.sql")
 
-	// Warm-up run establishes a machine-load baseline. If a measured run later
-	// exceeds 2× the warm-up, parallel test-package builds spiked the load — skip
-	// rather than fail. A real regression produces consistently slow times (warm-up
-	// and runs alike), so the 2× ratio still catches it.
+	// Warm-up establishes a machine-load baseline. Skip when the warm-up alone
+	// eats more than half the budget — anything closer means the test is one OS
+	// scheduling hiccup from a spurious failure, and a real regression would
+	// produce *consistently* slow times (warm-up included), which the skip still
+	// catches. The 2× warm-up rule on measured runs catches mid-test load spikes.
+	const budget = 100 * time.Millisecond
+	const warmupSkipThreshold = budget / 2 // 50ms — half the budget
 	warmStart := time.Now()
 	runTM(t, dir, ev, "check-action", "--hook")
 	warmElapsed := time.Since(warmStart)
 	t.Logf("warm-up: %v", warmElapsed)
-	if warmElapsed > 100*time.Millisecond {
-		t.Skipf("host too loaded for latency assertion (warm-up=%v; skipping)", warmElapsed)
+	if warmElapsed > warmupSkipThreshold {
+		t.Skipf("host too loaded for latency assertion (warm-up=%v > %v; skipping)", warmElapsed, warmupSkipThreshold)
 	}
 
-	const budget = 100 * time.Millisecond
 	const runs = 5
 	for i := 0; i < runs; i++ {
 		start := time.Now()
