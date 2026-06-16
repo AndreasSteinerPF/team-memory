@@ -1,7 +1,8 @@
-# tm init creates the ledger branch and prints next steps.
+# tm init creates the ledger branch and registers the MCP server.
 exec tm init
 stdout 'Initialized TeamMemory ledger on branch "teammemory"'
-stdout 'mcpServers'
+stdout 'Registered teammemory MCP server in .mcp.json'
+exists .mcp.json
 
 # Re-running is idempotent and reports the existing ledger.
 exec tm init
