@@ -92,6 +92,10 @@ func computeStatus(m model.Memory, obs []model.Observation, risk model.Risk, p p
 		return model.StatusStale, indConf
 	case unresolved(obs, model.KindContradict):
 		return model.StatusContested, indConf
+	case m.Type == model.TypeSuccessfulPattern && indConf == 0 && !existsHumanApprove(obs):
+		// Type-specific activation gate (prd.md §8.2): successful_pattern stays
+		// provisional until validated, regardless of its low-risk tier default.
+		return model.StatusProvisional, indConf
 	case isActive(obs, risk, indConf, p):
 		return model.StatusActive, indConf
 	default:

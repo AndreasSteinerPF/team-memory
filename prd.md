@@ -277,6 +277,8 @@ Evaluated in precedence order:
 
 **Independence (default):** an observation is independent if its `actor.session_id` is present and differs from the memory's `actor.session_id`. The stricter `different_session_and_branch` mode additionally requires the observation's `code_context.branch` to differ from the memory's `code_context.branch`; if either branch is absent, this mode degrades to session-only.
 
+**Type-specific activation gate (§5.2 `successful_pattern`).** Despite being low-risk, `successful_pattern` memories stay provisional until ≥1 independent confirm exists (per the standard independence rule above) or a human `approve` is issued. This is the only type that overrides its risk tier's activation rule. Once activated, enforcement follows the normal low-tier ceiling (`recommendation`).
+
 ### 8.3 Confidence
 
 * `low` at creation.

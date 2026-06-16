@@ -106,3 +106,38 @@ func TestCriticalAutoActivatesOnTwoConfirms(t *testing.T) {
 		t.Errorf("critical with human approve → %q, want active", st)
 	}
 }
+
+func TestSuccessfulPatternProvisionalAtCreation(t *testing.T) {
+	m := model.Memory{ID: "M1", Type: model.TypeSuccessfulPattern,
+		Actor: model.Actor{Kind: model.ActorAgent, SessionID: "s1"}}
+	got, _ := computeStatus(m, nil, model.RiskLow, policy.Default())
+	if got != model.StatusProvisional {
+		t.Fatalf("successful_pattern at creation: got %q, want %q (gated)", got, model.StatusProvisional)
+	}
+}
+
+func TestSuccessfulPatternActivatesOnIndependentConfirm(t *testing.T) {
+	m := model.Memory{ID: "M1", Type: model.TypeSuccessfulPattern,
+		Actor: model.Actor{Kind: model.ActorAgent, SessionID: "s1"}}
+	obs := []model.Observation{{
+		Kind:  model.KindConfirm,
+		Actor: model.Actor{Kind: model.ActorAgent, SessionID: "s2"}, // independent
+	}}
+	got, _ := computeStatus(m, obs, model.RiskLow, policy.Default())
+	if got != model.StatusActive {
+		t.Fatalf("successful_pattern after 1 independent confirm: got %q, want %q", got, model.StatusActive)
+	}
+}
+
+func TestSuccessfulPatternStaysProvisionalOnSameSessionConfirm(t *testing.T) {
+	m := model.Memory{ID: "M1", Type: model.TypeSuccessfulPattern,
+		Actor: model.Actor{Kind: model.ActorAgent, SessionID: "s1"}}
+	obs := []model.Observation{{
+		Kind:  model.KindConfirm,
+		Actor: model.Actor{Kind: model.ActorAgent, SessionID: "s1"}, // same session — not independent
+	}}
+	got, _ := computeStatus(m, obs, model.RiskLow, policy.Default())
+	if got != model.StatusProvisional {
+		t.Fatalf("successful_pattern after same-session confirm: got %q, want %q", got, model.StatusProvisional)
+	}
+}
