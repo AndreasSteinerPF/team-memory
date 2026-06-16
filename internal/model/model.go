@@ -75,8 +75,8 @@ const (
 	StatusActive      Status = "active"
 	StatusContested   Status = "contested"
 	StatusStale       Status = "stale"
-	StatusDuplicate   Status = "duplicate"   // prd.md §8.2
-	StatusSuperseded  Status = "superseded"  // prd.md §8.2
+	StatusDuplicate   Status = "duplicate"  // prd.md §8.2
+	StatusSuperseded  Status = "superseded" // prd.md §8.2
 	StatusRejected    Status = "rejected"
 )
 
