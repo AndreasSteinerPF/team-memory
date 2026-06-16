@@ -453,7 +453,8 @@ tm observe       # add an observation: confirm|contradict|adjust_scope|mark_stal
 tm ack           # session-scoped requirement acknowledgment (local-only)
 tm approve       # human: activate / raise enforcement or confidence
 tm reject        # human: kill a memory
-tm list          # list memories (--stale, --contested, --stale-candidates)
+tm list          # list memories (--stale, --contested, --stale-candidates,
+                 # --duplicate, --superseded, --pending-supersede)
 tm show          # full detail: envelope, observations, derived state, pending scope adjustments
 tm search        # lexical search
 tm export        # generate AGENTS.md / CLAUDE.md / .cursor/rules blocks / JSON
