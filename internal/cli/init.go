@@ -119,6 +119,9 @@ func printSetup(w io.Writer, repoDir, remote string) {
 	} else if _, serr := os.Stat(filepath.Join(repoDir, ".claude")); serr == nil {
 		fmt.Fprintln(w, "Claude Code hooks already present in .claude/settings.json.")
 	}
+	// printSetup's contract is to print next-steps and never fail init, so an
+	// MCP-registration error here is a warning, not a hard error (unlike the
+	// --harness paths, which abort).
 	mcpPath := filepath.Join(repoDir, ".mcp.json")
 	if added, err := ensureMCPServerJSON(mcpPath, map[string]any{"command": "tm", "args": []string{"mcp"}}); err != nil {
 		fmt.Fprintf(w, "Warning: could not register MCP server in .mcp.json: %v\n", err)

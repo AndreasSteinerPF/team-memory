@@ -7,6 +7,7 @@ exists .mcp.json
 # Re-running is idempotent and reports the existing ledger.
 exec tm init
 stdout 'already initialized'
+stdout 'already registered'
 
 # The orphan branch exists with a policy.yaml.
 exec git cat-file -p teammemory:policy.yaml

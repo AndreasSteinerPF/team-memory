@@ -65,6 +65,9 @@ func ensureCodexMCP(configPath string) (bool, error) {
 	if err == nil {
 		content = string(data)
 	}
+	// Idempotency is detected by the table header; a server registered via TOML
+	// dotted-key syntax (mcp_servers.teammemory.command = ...) would not match.
+	// In practice codex writes the table-header form, so this is sufficient.
 	if strings.Contains(content, "[mcp_servers.teammemory]") {
 		return false, nil
 	}

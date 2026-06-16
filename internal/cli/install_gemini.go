@@ -33,6 +33,10 @@ func installGemini(repoDir string) error {
   }
 }
 `
+	// Unlike the other harnesses' MCP files, .gemini/settings.json is written
+	// wholesale (tm-owned): it carries both tm's hooks and mcpServers as one
+	// unit, so a re-run overwrites any hand-added entries here. Merging it is a
+	// deliberate non-goal (see prd.md §10.6).
 	if err := os.WriteFile(filepath.Join(gdir, "settings.json"), []byte(settings), 0o644); err != nil {
 		return err
 	}
