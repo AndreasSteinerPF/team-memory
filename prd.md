@@ -634,6 +634,7 @@ First 90 days: 500 stars; 5 external contributors; documented setups for 2+ codi
 - **Cross-harness E2E test framework** — per-harness payload fixtures (default contract/replay/packaging tiers) plus build-tag-gated live capture and live-firing tiers that pin the remaining live-payload checks (§10.6; `e2e/harness/`, recipes in `docs/verification/cross-harness.md`). **Shipped.**
 - `ownership` and `successful_pattern` memory types; `mark_duplicate` and supersession observations.
 - Polished separate-remote UX.
+- **Package-manager distribution** — Homebrew and Scoop formulas on top of the existing GoReleaser pipeline, so `brew install teammemory` / `scoop install teammemory` are first-class install paths alongside `go install` and the GitHub Releases archives (§12.2, §16).
 
 **Phase 3 — GitHub workflow:** bring memories onto the PR review surface, not just the live agent hook.
 
@@ -647,7 +648,13 @@ First 90 days: 500 stars; 5 external contributors; documented setups for 2+ codi
 - **Content-hash drift detection** — detect when anchored code *content* has changed via content hashes, beyond line-range drift (§9.1).
 - **Semantic ranking** — embeddings-based ranking of candidates (V1 is lexical only, no embeddings — §11, §12.3).
 
-**Phase 5 — Governance depth:** signed records, multi-human approval, policy templates, expiry workflows, contested-memory review UI.
+**Phase 5 — Harness breadth:** extend the §10.6 adapter set to additional coding agents — one adapter plus its packaging per harness, no engine changes.
+
+- **OpenCode** — hook + MCP adapter and `tm init --harness opencode` packaging.
+- **Pi** — hook + MCP adapter and `tm init --harness pi` packaging.
+- Further open-source coding agents as they gain a hook surface comparable to §10.6's matrix.
+
+**Phase 6 — Governance depth:** signed records, multi-human approval, policy templates, expiry workflows, contested-memory review UI.
 
 ## 18. Decisions Locked
 
