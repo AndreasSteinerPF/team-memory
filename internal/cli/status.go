@@ -2,10 +2,12 @@ package cli
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/AndreasSteinerPF/team-memory/internal/derive"
+	"github.com/AndreasSteinerPF/team-memory/internal/git"
 	"github.com/AndreasSteinerPF/team-memory/internal/index"
 	"github.com/AndreasSteinerPF/team-memory/internal/model"
 )
@@ -74,6 +76,16 @@ func newStatusCmd(g *globalOpts) *cobra.Command {
 			}
 			tip, _ := e.led.Tip()
 			fmt.Fprintf(out, "\nLedger branch %q at %s\n", e.branch, shortSHA(tip))
+
+			// Push-failure surface (spec §3.3): surface only consecutive >= 2 and recent.
+			if store, perr := git.OpenPushFailureStore(e.gitDir); perr == nil {
+				if rec, rerr := store.ReadFresh(time.Now().UTC(), 7*24*time.Hour); rerr == nil && rec != nil && rec.Consecutive >= 2 {
+					fmt.Fprintln(out)
+					fmt.Fprintf(out, "⚠ Last %d background pushes to %q rejected (%s).\n",
+						rec.Consecutive, rec.Remote, pushFailureHumanKind(rec.Kind))
+					fmt.Fprintf(out, "  Fix: %s\n", pushFailureFixHint(rec))
+				}
+			}
 			return nil
 		},
 	}
