@@ -302,6 +302,8 @@ Evaluated in precedence order:
 * Latest applicable adjustment wins.
 * Effective scope covers command patterns as well as paths; an `adjust_scope` may narrow or broaden them. Command-pattern containment is by token-prefix (`assistant jira create *` ⊆ `assistant *`). A command broadening is substantiated like a path broadening: by a human `approve`, or by a later independent `confirm` whose `code_context.commands` match the broader pattern but not the prior one.
 
+**Supersession substantiation (cross-memory).** A `supersede` observation is filed on the new canonical A and names the obsolete memory B in its `supersedes` field. The relationship is **pending** until either (a) a human `approve` observation lands on A after the supersede observation, or (b) a later **independent** `confirm` observation lands on A. On substantiation, B transitions to status `superseded` (precedence allowing — `rejected`/`stale`/`duplicate` on B still win). The rule mirrors `adjust_scope`-broadening substantiation above; see `internal/derive/supersede.go` for the implementation. Pending supersede claims are visible in `tm show A` and `tm list --pending-supersede`.
+
 ### 8.6 Anchor Drift (v1, cheap version)
 
 At `check_action` time, for each anchored path: does the path still exist, and has the file changed since the memory's anchored commit (`git log --oneline <commit>.. -- <path> | wc -l`)?
