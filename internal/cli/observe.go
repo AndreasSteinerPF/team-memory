@@ -54,7 +54,7 @@ func newObserveCmd(g *globalOpts) *cobra.Command {
 					return fmt.Errorf("mark_duplicate requires --canonical-id")
 				}
 				if canonicalID == target {
-					return fmt.Errorf("mark_duplicate canonical-id cannot equal target")
+					return fmt.Errorf("mark_duplicate canonical-id cannot equal target (file the observation on the duplicate, naming the kept memory in --canonical-id)")
 				}
 				if _, ok, err := e.led.Memory(canonicalID); err != nil {
 					return err

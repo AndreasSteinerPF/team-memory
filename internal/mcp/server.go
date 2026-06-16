@@ -393,7 +393,7 @@ Always include evidence when observing. Observations without evidence are less u
 			if args.CanonicalID == args.MemoryID {
 				return &sdkmcp.CallToolResult{
 					IsError: true,
-					Content: []sdkmcp.Content{&sdkmcp.TextContent{Text: "mark_duplicate canonical_id cannot equal memory_id"}},
+					Content: []sdkmcp.Content{&sdkmcp.TextContent{Text: "mark_duplicate canonical_id cannot equal memory_id (file the observation on the duplicate (memory_id), naming the kept memory in canonical_id)"}},
 				}, nil, nil
 			}
 			if _, ok, err := s.deps.Ledger.Memory(args.CanonicalID); err != nil {
@@ -417,7 +417,7 @@ Always include evidence when observing. Observations without evidence are less u
 			if args.Supersedes == args.MemoryID {
 				return &sdkmcp.CallToolResult{
 					IsError: true,
-					Content: []sdkmcp.Content{&sdkmcp.TextContent{Text: "supersede: 'supersedes' cannot equal memory_id (file on the NEW canonical)"}},
+					Content: []sdkmcp.Content{&sdkmcp.TextContent{Text: "supersede: 'supersedes' cannot equal memory_id (file the observation on the new canonical (memory_id), naming the obsolete one in 'supersedes')"}},
 				}, nil, nil
 			}
 			if _, ok, err := s.deps.Ledger.Memory(args.Supersedes); err != nil {
