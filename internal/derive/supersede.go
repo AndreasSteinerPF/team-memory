@@ -29,6 +29,23 @@ func (c Context) PendingSupersedeFor(b string) []model.Observation {
 // BuildContext scans the full ledger and computes cross-memory state. Safe to
 // call with empty memories/obs (returns a zero-but-non-nil Context).
 func BuildContext(memories []model.Memory, allObs []model.Observation, p policy.Policy) Context {
+	ctx := Context{
+		SupersededBy:    make(map[string]string),
+		pendingByTarget: make(map[string][]model.Observation),
+	}
+
+	// Fast path: nearly every ledger has zero supersede observations, so
+	// avoid the O(N log N) sort over all observations in the hook hot path.
+	var supersedes []model.Observation
+	for _, o := range allObs {
+		if o.Kind == model.KindSupersede {
+			supersedes = append(supersedes, o)
+		}
+	}
+	if len(supersedes) == 0 {
+		return ctx
+	}
+
 	memByID := make(map[string]model.Memory, len(memories))
 	for _, m := range memories {
 		memByID[m.ID] = m
@@ -38,15 +55,10 @@ func BuildContext(memories []model.Memory, allObs []model.Observation, p policy.
 		obsByTarget[o.Target] = append(obsByTarget[o.Target], o)
 	}
 
-	ctx := Context{
-		SupersededBy:    make(map[string]string),
-		pendingByTarget: make(map[string][]model.Observation),
-	}
-
 	// Process supersede observations in chronological order so that, if
 	// multiple supersede observations name the same B, the latest substantiated
 	// one wins (matches §8.5's "latest applicable adjustment wins" intuition).
-	for _, o := range sortedByTime(allObs) {
+	for _, o := range sortedByTime(supersedes) {
 		if o.Kind != model.KindSupersede {
 			continue
 		}

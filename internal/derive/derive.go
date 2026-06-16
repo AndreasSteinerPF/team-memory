@@ -59,11 +59,6 @@ func DeriveWithContext(m model.Memory, obs []model.Observation, p policy.Policy,
 	}
 }
 
-// buildReason is the per-memory back-compat wrapper.
-func buildReason(status model.Status, indConf int, obs []model.Observation) string {
-	return buildReasonWithContext(status, indConf, obs, "", Context{})
-}
-
 func buildReasonWithContext(status model.Status, indConf int, obs []model.Observation, memID string, ctx Context) string {
 	switch status {
 	case model.StatusActive:
