@@ -104,10 +104,9 @@ func checkHooks(repoDir string) checkResult {
 // (known v1 limitation, see the design doc).
 func checkMCP(repoDir string) checkResult {
 	r := checkResult{name: "MCP registration"}
-	snippet := `add: { "mcpServers": { "teammemory": { "command": "tm", "args": ["mcp"] } } }`
 	data, err := os.ReadFile(filepath.Join(repoDir, ".mcp.json"))
 	if err != nil {
-		r.sev, r.detail, r.hint = sevWarn, ".mcp.json not found", snippet
+		r.sev, r.detail, r.hint = sevWarn, ".mcp.json not found", "run `tm init`"
 		return r
 	}
 	var cfg struct {
@@ -123,7 +122,7 @@ func checkMCP(repoDir string) checkResult {
 		r.sev, r.detail = sevOK, "teammemory registered"
 		return r
 	}
-	r.sev, r.detail, r.hint = sevWarn, "teammemory not in .mcp.json", snippet
+	r.sev, r.detail, r.hint = sevWarn, "teammemory not in .mcp.json", "run `tm init`"
 	return r
 }
 
