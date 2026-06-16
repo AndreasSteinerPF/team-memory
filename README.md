@@ -251,7 +251,7 @@ The hook:
 
 ### MCP server
 
-Add to `.mcp.json`:
+`tm init` registers the `teammemory` MCP server in the repo-root `.mcp.json` automatically (merge-safe — existing servers are preserved). The resulting entry:
 
 ```json
 {
