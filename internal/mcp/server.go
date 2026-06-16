@@ -430,7 +430,7 @@ Always include evidence when observing. Observations without evidence are less u
 			if cycle, err := detectCycleMCP(s, args.MemoryID, args.CanonicalID, model.KindMarkDuplicate); err != nil {
 				return nil, nil, err
 			} else if cycle {
-				appendWarn(fmt.Sprintf("[warning: %s is already marked as a duplicate of %s — your observation would close a duplicate cycle. Both memories will be hidden from default retrieval]", args.CanonicalID, args.MemoryID))
+				appendWarn(fmt.Sprintf("[warning: a duplicate chain from %s already reaches %s — your observation would close a duplicate cycle. Every memory in the cycle will be hidden from default retrieval]", args.CanonicalID, args.MemoryID))
 			}
 			appendWarn(warnNonActiveMCP(s, args.CanonicalID))
 			appendWarn(warnNonActiveMCP(s, args.MemoryID))
@@ -460,7 +460,7 @@ Always include evidence when observing. Observations without evidence are less u
 			if cycle, err := detectCycleMCP(s, args.MemoryID, args.Supersedes, model.KindSupersede); err != nil {
 				return nil, nil, err
 			} else if cycle {
-				appendWarn(fmt.Sprintf("[warning: %s already has a supersede observation naming %s — your observation would close a supersede cycle. Both memories may end up hidden from default retrieval if both claims substantiate]", args.Supersedes, args.MemoryID))
+				appendWarn(fmt.Sprintf("[warning: a supersede chain from %s already reaches %s — your observation would close a supersede cycle. Every memory in the cycle is at risk of being hidden from default retrieval if claims substantiate]", args.Supersedes, args.MemoryID))
 			}
 			appendWarn(warnNonActiveMCP(s, args.Supersedes))
 			appendWarn(warnNonActiveMCP(s, args.MemoryID))

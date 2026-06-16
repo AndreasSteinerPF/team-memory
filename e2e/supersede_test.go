@@ -349,3 +349,81 @@ func TestSupersedeRevertedWhenCanonicalRejected(t *testing.T) {
 		t.Fatalf("B should revert from superseded after canonical A is rejected, got: %s", out)
 	}
 }
+
+// TestSupersedeRevertedWhenCanonicalMarkedStale pins R-N2 for the mark_stale
+// path: B reverts from superseded when A goes stale (mirrors the reject test).
+// Also exercises the reversibility property (R3-2): a later confirm on A that
+// resolves the mark_stale re-marks B as superseded.
+func TestSupersedeRevertedWhenCanonicalMarkedStale(t *testing.T) {
+	dir := newGitRepo(t)
+	runTM(t, dir, "", "init")
+
+	propose := func(title string) string {
+		out, _, code := runTM(t, dir, "",
+			"propose", "decision",
+			"--title", title,
+			"--scope", "docs/**",
+			"--session", "s1",
+		)
+		if code != 0 {
+			t.Fatalf("propose %s exit %d: %s", title, code, out)
+		}
+		return parseID(t, out)
+	}
+	idA := propose("A canonical")
+	idB := propose("B obsolete")
+
+	// Supersede + independent confirm: B is superseded by A.
+	if _, errb, code := runTM(t, dir, "",
+		"observe", idA, "supersede",
+		"--supersedes", idB,
+		"--summary", "A replaces B",
+		"--session", "s1",
+	); code != 0 {
+		t.Fatalf("supersede exit %d: %s", code, errb)
+	}
+	if _, errb, code := runTM(t, dir, "",
+		"observe", idA, "confirm",
+		"--summary", "I hit this elsewhere",
+		"--session", "s2",
+	); code != 0 {
+		t.Fatalf("confirm exit %d: %s", code, errb)
+	}
+	out, _, code := runTM(t, dir, "", "show", idB)
+	if code != 0 || !strings.Contains(out, "status: superseded") {
+		t.Fatalf("B should be superseded, got: %s", out)
+	}
+
+	// mark A stale. B reverts under orphan revival.
+	if _, errb, code := runTM(t, dir, "",
+		"observe", idA, "mark_stale",
+		"--summary", "A no longer applies",
+		"--session", "s3",
+	); code != 0 {
+		t.Fatalf("mark_stale A exit %d: %s", code, errb)
+	}
+	out, _, code = runTM(t, dir, "", "show", idB)
+	if code != 0 {
+		t.Fatalf("show B exit %d: %s", code, out)
+	}
+	if strings.Contains(out, "status: superseded") {
+		t.Fatalf("B should revert after canonical A is marked stale, got: %s", out)
+	}
+
+	// A later confirm resolves the mark_stale, reviving A. B re-flips to
+	// superseded (orphan revival is reversible — prd.md §8.5).
+	if _, errb, code := runTM(t, dir, "",
+		"observe", idA, "confirm",
+		"--summary", "A still applies after all",
+		"--session", "s4",
+	); code != 0 {
+		t.Fatalf("revival confirm exit %d: %s", code, errb)
+	}
+	out, _, code = runTM(t, dir, "", "show", idB)
+	if code != 0 {
+		t.Fatalf("show B exit %d: %s", code, out)
+	}
+	if !strings.Contains(out, "status: superseded") {
+		t.Fatalf("B should re-flip to superseded after A is revived, got: %s", out)
+	}
+}

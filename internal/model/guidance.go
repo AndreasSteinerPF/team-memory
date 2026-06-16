@@ -15,7 +15,9 @@ const MemoryWorthyGuidance = `Record durable, future-action-relevant project jud
 
 Do NOT call for: session state ("task in progress"), trivia, code facts derivable from the repo ("this function validates invoices"), things already in CLAUDE.md/AGENTS.md, or system/OS/host-specific facts (a flag that differs per OS, "python" vs "python3", path separators, local toolchain versions) — memories are team-shared and repo-scoped, so a machine-specific fact would be wrong for part of the team.
 
-Memories earn trust through independent confirmation — redundant proposals are noise. If a similar memory may already exist, use tm_search first.`
+Memories earn trust through independent confirmation — redundant proposals are noise. If a similar memory may already exist, use tm_search first.
+
+Note: successful_pattern carries a type-specific activation gate — it stays provisional until at least one independent session confirms it (or a maintainer approves it). Don't be surprised by the initial provisional status.`
 
 // MemoryWorthyShortForm is the one-sentence form of the same enumeration, used
 // where space is at a premium: the SessionStart brief (lands in every session's

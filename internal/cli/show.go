@@ -85,8 +85,8 @@ func newShowCmd(g *globalOpts) *cobra.Command {
 			if pend := ctx.PendingSupersedeFor(m.ID); len(pend) > 0 {
 				fmt.Fprintln(out, "pending supersession claims naming this memory:")
 				for _, o := range pend {
-					fmt.Fprintf(out, "  %s  by %s (needs independent confirm on %s or human approve)\n",
-						o.CreatedAt.UTC().Format(time.RFC3339), o.Target, o.Target)
+					fmt.Fprintf(out, "  %s  by %s (needs independent confirm or human approve)\n",
+						o.CreatedAt.UTC().Format(time.RFC3339), o.Target)
 				}
 			}
 			return nil

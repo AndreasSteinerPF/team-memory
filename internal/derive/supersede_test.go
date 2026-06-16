@@ -91,6 +91,61 @@ func TestBuildContextSkipsSupersedeWhenCanonicalRejected(t *testing.T) {
 	}
 }
 
+// TestBuildContextAliveFlipsOnStaleConfirmCycle pins the reversibility
+// property of orphan revival (prd.md §8.5): once a mark_stale on A is itself
+// resolved by a later confirm, A is alive again and the supersede claim
+// substantiates. So B's status: superseded → reverted → superseded across
+// the stale → confirm sequence.
+func TestBuildContextAliveFlipsOnStaleConfirmCycle(t *testing.T) {
+	a := model.Memory{ID: "A", Type: model.TypeDecision,
+		Actor: model.Actor{Kind: model.ActorAgent, SessionID: "s1"}}
+	b := model.Memory{ID: "B", Type: model.TypeDecision,
+		Actor: model.Actor{Kind: model.ActorAgent, SessionID: "s2"}}
+	supersedeObs := model.Observation{
+		ID: "O1", Target: "A", Kind: model.KindSupersede, Supersedes: "B",
+		Actor: model.Actor{Kind: model.ActorAgent, SessionID: "s3"}, CreatedAt: time.Unix(100, 0),
+	}
+	initialConfirm := model.Observation{
+		ID: "O2", Target: "A", Kind: model.KindConfirm,
+		Actor: model.Actor{Kind: model.ActorAgent, SessionID: "s4"}, CreatedAt: time.Unix(150, 0),
+	}
+	staleObs := model.Observation{
+		ID: "O3", Target: "A", Kind: model.KindMarkStale,
+		Actor: model.Actor{Kind: model.ActorAgent, SessionID: "s5"}, CreatedAt: time.Unix(200, 0),
+	}
+	revivalConfirm := model.Observation{
+		ID: "O4", Target: "A", Kind: model.KindConfirm,
+		Actor: model.Actor{Kind: model.ActorAgent, SessionID: "s6"}, CreatedAt: time.Unix(300, 0),
+	}
+
+	// Step 1: supersede + confirm → B is superseded.
+	step1 := []model.Observation{supersedeObs, initialConfirm}
+	ctx1 := BuildContext([]model.Memory{a, b}, step1, policy.Default())
+	if got, ok := ctx1.SupersededBy["B"]; !ok || got != "A" {
+		t.Fatalf("step 1: SupersededBy[B] = (%q, %v), want (A, true)", got, ok)
+	}
+
+	// Step 2: + mark_stale → A not alive, B reverts (not in SupersededBy).
+	step2 := []model.Observation{supersedeObs, initialConfirm, staleObs}
+	ctx2 := BuildContext([]model.Memory{a, b}, step2, policy.Default())
+	if _, ok := ctx2.SupersededBy["B"]; ok {
+		t.Fatal("step 2 (stale): B should revert from SupersededBy")
+	}
+	if ctx2.Alive["A"] {
+		t.Fatal("step 2 (stale): A should not be Alive")
+	}
+
+	// Step 3: + revival confirm resolves the mark_stale → A alive, B re-flips.
+	step3 := []model.Observation{supersedeObs, initialConfirm, staleObs, revivalConfirm}
+	ctx3 := BuildContext([]model.Memory{a, b}, step3, policy.Default())
+	if !ctx3.Alive["A"] {
+		t.Fatal("step 3 (revival): A should be Alive again after confirm resolves the stale")
+	}
+	if got, ok := ctx3.SupersededBy["B"]; !ok || got != "A" {
+		t.Fatalf("step 3 (revival): B should re-flip to superseded; SupersededBy[B] = (%q, %v)", got, ok)
+	}
+}
+
 // TestBuildContextSkipsSupersedeWhenCanonicalStale pins R-N2 for the unresolved
 // mark_stale case: even if a confirm previously substantiated the supersede,
 // an unresolved mark_stale on A reverts B (A is not alive, supersede is moot).

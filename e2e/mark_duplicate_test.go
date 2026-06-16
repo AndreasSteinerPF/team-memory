@@ -288,3 +288,57 @@ func TestMarkDuplicateRevertedWhenCanonicalRejected(t *testing.T) {
 		t.Fatalf("B should revert from duplicate after canonical A is rejected, got: %s", out)
 	}
 }
+
+// TestMarkDuplicateRevertedWhenCanonicalMarkedStale pins R-N2 for the
+// mark_stale path (prd.md §8.5): a non-rejected canonical that goes stale
+// also reverts the duplicate, mirroring the reject case. This pins the
+// incremental Update() fan-out path for mark_stale on the canonical.
+func TestMarkDuplicateRevertedWhenCanonicalMarkedStale(t *testing.T) {
+	dir := newGitRepo(t)
+	runTM(t, dir, "", "init")
+
+	propose := func(title string) string {
+		out, _, code := runTM(t, dir, "",
+			"propose", "decision",
+			"--title", title,
+			"--scope", "docs/**",
+			"--session", "s1",
+		)
+		if code != 0 {
+			t.Fatalf("propose %s exit %d: %s", title, code, out)
+		}
+		return parseID(t, out)
+	}
+	idA := propose("A canonical")
+	idB := propose("B duplicate")
+
+	// B is a duplicate of A.
+	if _, errb, code := runTM(t, dir, "",
+		"observe", idB, "mark_duplicate",
+		"--canonical-id", idA,
+		"--summary", "B duplicates A",
+		"--session", "s1",
+	); code != 0 {
+		t.Fatalf("mark_duplicate exit %d: %s", code, errb)
+	}
+	out, _, code := runTM(t, dir, "", "show", idB)
+	if code != 0 || !strings.Contains(out, "status: duplicate") {
+		t.Fatalf("B should be duplicate, got: %s", out)
+	}
+
+	// mark A stale. B should revert under orphan revival.
+	if _, errb, code := runTM(t, dir, "",
+		"observe", idA, "mark_stale",
+		"--summary", "A no longer applies",
+		"--session", "s2",
+	); code != 0 {
+		t.Fatalf("mark_stale A exit %d: %s", code, errb)
+	}
+	out, _, code = runTM(t, dir, "", "show", idB)
+	if code != 0 {
+		t.Fatalf("show B exit %d: %s", code, out)
+	}
+	if strings.Contains(out, "status: duplicate") {
+		t.Fatalf("B should revert from duplicate after canonical A is marked stale, got: %s", out)
+	}
+}

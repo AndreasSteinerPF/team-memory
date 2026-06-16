@@ -120,6 +120,12 @@ func (idx *Index) Update() error {
 		// A via supersede or mark_duplicate must be re-derived too —
 		// substantiation can flip B's status, and (post-R-N2) A losing
 		// alive-ness reverts B from duplicate/superseded.
+		//
+		// Single-pass is sufficient: derive.Context.Alive depends only on local
+		// reject/mark_stale, not on any other memory's derived status, so the
+		// cascade depth is exactly one. If we ever make Alive transitive (e.g.
+		// "A is not alive when its own canonical is dead"), this loop becomes
+		// a fixpoint iteration.
 		for _, o := range obs {
 			switch o.Kind {
 			case model.KindSupersede:

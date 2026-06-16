@@ -65,7 +65,7 @@ func newObserveCmd(g *globalOpts) *cobra.Command {
 					return err
 				} else if cycle {
 					fmt.Fprintf(cmd.ErrOrStderr(),
-						"Note: %s is already marked as a duplicate of %s — your observation would close a duplicate cycle. Both memories will be hidden from default retrieval.\n",
+						"Note: a duplicate chain from %s already reaches %s — your observation would close a duplicate cycle. Every memory in the cycle will be hidden from default retrieval.\n",
 						canonicalID, target)
 				}
 				warnIfNonActive(cmd, e, canonicalID)
@@ -88,7 +88,7 @@ func newObserveCmd(g *globalOpts) *cobra.Command {
 					return err
 				} else if cycle {
 					fmt.Fprintf(cmd.ErrOrStderr(),
-						"Note: %s already has a supersede observation naming %s — your observation would close a supersede cycle. Both memories may end up hidden from default retrieval if both claims substantiate.\n",
+						"Note: a supersede chain from %s already reaches %s — your observation would close a supersede cycle. Every memory in the cycle is at risk of being hidden from default retrieval if claims substantiate.\n",
 						supersedes, target)
 				}
 				warnIfNonActive(cmd, e, supersedes)
