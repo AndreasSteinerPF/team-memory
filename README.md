@@ -172,9 +172,16 @@ propose → provisional
     → contested (confidence reduced)
   + observe mark_stale
     → stale
+  + observe mark_duplicate --canonical-id <other>
+    → duplicate (auto-effect; hidden from default retrieval)
+  + observe supersede --supersedes <obsolete>   (filed on the NEW canonical)
+    + substantiation: independent confirm or human approve on the canonical
+    → obsolete memory becomes superseded
 ```
 
-- **Status:** `provisional` → `active` → `contested` / `stale` / `rejected`.
+`successful_pattern` is the one type that overrides its risk tier: even though it is low-risk, it stays `provisional` until at least one independent session confirms it (or a maintainer approves it). The intent is to keep unilateral pattern proposals from auto-activating without evidence.
+
+- **Status:** `provisional` → `active` → `contested` / `stale` / `duplicate` / `superseded` / `rejected`.
 - **Enforcement:** `hint` → `recommendation` → `warning` → `requirement`. Only a human can set `requirement`.
 - **Risk** (`low` / `medium` / `high` / `critical`) is computed deterministically from `policy.yaml` — never from agent self-assessment. High-risk paths (e.g. `**/migrations/**`) escalate automatically, as do broad command scopes (a bare-binary pattern like `pytest *`).
 
@@ -184,7 +191,7 @@ Status, risk, confidence, and enforcement are always *derived* from the ledger a
 
 ## Memory types
 
-Five typed envelopes, each with a free-form summary and guidance:
+Six typed envelopes, each with a free-form summary and guidance:
 
 | Type | When to use it |
 |---|---|
@@ -193,6 +200,7 @@ Five typed envelopes, each with a free-form summary and guidance:
 | `fragile_area` | A path where changes frequently break non-obvious things. |
 | `stale_doc` | A document that is outdated or misleading — ideally pointing to what supersedes it. |
 | `decision` | A decision that changes future work and isn't written down anywhere else. |
+| `successful_pattern` | A repeatedly-applied refactor, approach, or workflow with a measurable outcome. Carries a type-specific activation gate — stays `provisional` until one independent session confirms it. A single function that worked once is NOT a pattern. |
 
 ---
 
@@ -206,11 +214,13 @@ tm signal        record nudge signals (PostToolUse) or a prompt marker (--prompt
 tm nudge         emit at most one propose/observe nudge at turn end (--hook mode for the Stop hook)
 tm brief         session-start briefing for agent hooks (live counts + instructions)
 tm propose       create a memory record
-tm observe       add an observation (confirm / contradict / adjust_scope / mark_stale)
+tm observe       add an observation (confirm / contradict / adjust_scope / mark_stale /
+                 mark_duplicate --canonical-id / supersede --supersedes)
 tm ack           session-scoped requirement acknowledgment (local-only, never committed)
 tm approve       activate a memory; set enforcement and confidence (human action)
 tm reject        kill a memory permanently (human action)
-tm list          list memories (--stale, --contested, --stale-candidates)
+tm list          list memories (--stale, --contested, --stale-candidates,
+                 --duplicate, --superseded, --pending-supersede)
 tm show          full detail: envelope, observations, derived state
 tm search        lexical search over titles, summaries, guidance
 tm export        generate AGENTS.md / CLAUDE.md / .cursor/rules blocks or JSON
@@ -218,7 +228,7 @@ tm status        ledger overview, items needing human attention, sync state
 tm doctor        diagnose setup: ledger branch, index, hooks, MCP, remote
 ```
 
-Run any command with `--help` for its full flag set. Memories are scoped with `--scope` (path globs) and/or `--scope-command` (command patterns such as `pytest *`); `tm check-action` takes `--path` and/or `--command`. `tm propose` and `tm observe` also accept `--actor`, `--session`, `--ctx-branch`, `--ctx-path`, and `--ctx-command` to attribute records and record code context.
+Run any command with `--help` for its full flag set. Memories are scoped with `--scope` (path globs) and/or `--scope-command` (command patterns such as `pytest *`); `tm check-action` takes `--path` and/or `--command`. `tm observe mark_duplicate` requires `--canonical-id <other-memory>` (filed on the duplicate, names the kept memory); `tm observe supersede` requires `--supersedes <obsolete-memory>` (filed on the NEW canonical, names the obsolete one). `tm propose` and `tm observe` also accept `--actor`, `--session`, `--ctx-branch`, `--ctx-path`, and `--ctx-command` to attribute records and record code context.
 
 ---
 
