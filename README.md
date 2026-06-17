@@ -2,44 +2,133 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Go 1.26+](https://img.shields.io/badge/Go-1.26%2B-00ADD8.svg)](go.mod)
+[![Release](https://img.shields.io/github/v/release/AndreasSteinerPF/team-memory.svg)](https://github.com/AndreasSteinerPF/team-memory/releases)
+[![Status: beta](https://img.shields.io/badge/status-beta-orange.svg)](#roadmap)
 
 **Agents propose. Agents observe. Teams remember.**
 
-TeamMemory is a Git-backed collaborative memory ledger for coding agents. Agents propose repo-scoped memories during normal work; other agents confirm, contradict, or refine them when they encounter related code; validated memories reach future agents deterministically through a hook at edit *and command* time — not just a voluntary tool call.
+<!-- TODO: replace with hero GIF once recorded — drop at demo/hero.gif -->
+<!-- ![TeamMemory in action](demo/hero.gif) -->
 
-It is not a general memory system and not an agent framework. It is a focused system for preserving **future-action-relevant project judgment**: failed attempts, hidden constraints, fragile areas, stale docs, and undocumented decisions that should change what an agent does next.
+Coding agents keep relearning the same lessons — a migration that won't roll back, a file that breaks release reconciliation when touched, a doc an ADR quietly superseded. TeamMemory is a Git-backed memory ledger that captures these lessons during normal agent work, validates them through independent confirmation from other agents, and delivers the validated ones deterministically — through a `PreToolUse` hook that fires at edit *and command* time, not a voluntary tool call.
 
----
-
-## Why TeamMemory
-
-Coding agents keep relearning the same lessons. A migration that can't be rolled back, a file that breaks release reconciliation when touched, a doc that an ADR quietly superseded — each agent rediscovers these the hard way, because the knowledge lived in one session and died with it.
-
-Static context files (`CLAUDE.md`, `AGENTS.md`, `.cursor/rules`) help, but they don't evolve through work and nobody updates them. Auto-capture memory tools go the other way: they accumulate everything without validation, which is exactly how memory poisoning happens — one confident-but-wrong note misleads every agent that reads it.
-
-TeamMemory takes a different position:
-
-> Team memory should **evolve through normal work and earn trust through evidence**. Agents propose a memory when they discover reusable judgment. Future agents encounter it, then confirm or contradict it with evidence during their own work. Memories strengthen or weaken accordingly — and validated ones reach agents deterministically, at the moment they edit a relevant file.
-
-The result is a memory layer that gets *more* trustworthy over time instead of noisier, and that lands its strongest signals at the exact point an agent is about to make a mistake.
+It is not a general memory system and not an agent framework. It is a focused tool for preserving the project judgment that should change what an agent does next: failed attempts, hidden constraints, fragile areas, stale docs, and undocumented decisions.
 
 ---
 
-## What you can do with it
+## Install
 
-- **Stop repeating known-bad approaches.** When an agent burns a session on an approach that fails, it records a `failed_attempt` with evidence. The next agent that opens the same area is told before it tries again.
-- **Enforce hard constraints at edit *and command* time.** Promote a validated memory to a `requirement` and the `PreToolUse` hook *blocks* edits to matching paths — or Bash commands matching its command patterns — until the agent acknowledges it, turning tribal knowledge into a guardrail no agent can skip.
-- **Catch command-time failures, not just edits.** Scope a memory to a command pattern (e.g. `pytest *`, `terraform apply *`) and the hook surfaces — or blocks — it the moment an agent is about to run that command, not only when it edits a file.
-- **Flag fragile areas and stale docs** so agents treat risky files carefully and stop trusting documents an ADR already replaced.
-- **Get nudged to record at the right moment.** A near-moment nudge engine watches for memory-worthy moments (a test that went fail→pass, a reverted change, repeated churn on one path, a surfaced-but-unobserved memory) and, at turn end, escalates the single highest-value one to a pointed `tm_propose`/`tm_observe` prompt — so the lesson gets captured while it's fresh. The verbs stay voluntary, and an anti-spam budget keeps it from manufacturing junk.
-- **Let memory validate itself across the team.** A memory proposed on one branch, in one session, by one agent gets independently confirmed by another — and auto-activates only when that evidence threshold is met. No single agent can unilaterally create a binding rule.
-- **Keep humans in control of the high-impact calls.** Agents can propose and confirm freely; only a human can escalate a memory to a hard `requirement` or kill it.
-- **Audit every change as plain Git.** The entire ledger is an append-only orphan branch — `git log teammemory` shows who proposed what, who confirmed it, and when it became binding.
-- **Serve every agent from one ledger.** Claude Code, Codex, Cursor, Continue, Copilot, and Gemini CLI all read the same memories via hooks, MCP, or generated context files.
+**Homebrew (macOS / Linux):**
+
+```bash
+brew install AndreasSteinerPF/tm/tm
+```
+
+**Scoop (Windows):**
+
+```powershell
+scoop bucket add tm https://github.com/AndreasSteinerPF/tm-scoop
+scoop install tm
+```
+
+**Shell installer (POSIX):**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/AndreasSteinerPF/team-memory/main/install.sh | sh
+```
+
+Drops the latest `tm` binary into `~/.local/bin` (override with `TM_INSTALL_DIR`). Verifies the SHA-256 against the release's `checksums.txt` before installing.
+
+**From source (Go 1.26+):**
+
+```bash
+go install github.com/AndreasSteinerPF/team-memory/cmd/tm@latest
+```
+
+Or download a prebuilt archive from [Releases](https://github.com/AndreasSteinerPF/team-memory/releases).
 
 ---
 
-## See it work
+## Quickstart
+
+### 1. Initialize in your repo
+
+```bash
+cd your-repo
+tm init
+```
+
+Creates an orphan branch `teammemory`, a local SQLite index under `.git/tm/`, and (when `.claude/` exists) installs the Claude Code hooks: `PreToolUse` check on edits *and Bash commands*, `SessionStart` briefing, and the near-moment nudge engine (`PostToolUse` signal + `Stop` nudge + `UserPromptSubmit` marker).
+
+### 2. Propose a memory
+
+```bash
+tm propose failed_attempt \
+  --title "Billing migrations require downgrade-path tests" \
+  --guidance "Run downgrade tests before modifying billing migrations." \
+  --scope "billing/migrations/**" \
+  --session "$CLAUDE_SESSION_ID"
+```
+
+Memories can be scoped to **commands** as well as paths. Use `--scope-command` for a lesson that bites when a command runs, not when a file is edited:
+
+```bash
+tm propose constraint \
+  --title "pytest needs DATABASE_URL set" \
+  --guidance "Export DATABASE_URL before running the test suite." \
+  --scope-command "pytest *" \
+  --session "$CLAUDE_SESSION_ID"
+```
+
+Output:
+
+```
+01J8X4QZ7M9FKE2V3R5T8WYBCD
+status: provisional   risk: high   confidence: low   enforcement: hint
+reason: awaiting independent confirmation
+```
+
+### 3. Check a path or command before acting
+
+```bash
+tm check-action --path billing/migrations/new_migration.sql
+tm check-action --command "pytest -q tests/"
+```
+
+### 4. Export to your context files
+
+```bash
+tm export --format agents --out AGENTS.md
+tm export --format claude --out CLAUDE.md
+tm export --format json            # prints JSON to stdout
+```
+
+---
+
+## Features
+
+- **Stop repeating known-bad approaches.** An agent records a failed approach with evidence; the next agent that opens the same area is warned before it tries again.
+- **Block bad moves at edit and command time.** Validated memories promoted to `requirement` make the `PreToolUse` hook deny matching edits and Bash commands until acknowledged — tribal knowledge becomes a guardrail no agent can skip.
+- **Memory earns trust through evidence.** A memory stays provisional until another agent (different session, different branch) independently confirms it. No single agent can unilaterally create a binding rule; only humans can promote to `requirement`.
+- **One ledger, every coding agent.** Claude Code, Codex, Cursor, Continue, Copilot, and Gemini CLI all share the same memories — same rules, same enforcement, same Git-backed audit trail.
+- **Audit every change as plain Git.** The ledger is an append-only orphan branch; `git log teammemory` shows who proposed what, who confirmed it, and when it became binding.
+
+---
+
+## How it compares
+
+| Class | Examples | What they do | TeamMemory's difference |
+|---|---|---|---|
+| Auto-capture memory | claude-mem, Mem0/OpenMemory, Cipher | Observe sessions, compress, accumulate | Evidence-validated lifecycle: memories earn trust through independent confirmation; contradictions weaken them |
+| Hosted team memory | Cloudflare Agent Memory, Supermemory | Shared memory via a hosted API | Git-native and local-first: the ledger lives in your repo, auditable via `git log`, no SaaS dependency |
+| Platform-native memory | Claude managed memory, Cursor memories | Per-platform memory stores | Cross-agent and team-scoped: one ledger serves Claude Code, Codex, Cursor, Continue |
+| Static context files | `CLAUDE.md`, `AGENTS.md`, `.cursor/rules` | Hand-maintained instructions | Evolves through work; context files become generated projections |
+
+In short: **evidence-validated, Git-native, governed team memory with a deterministic enforcement point.**
+
+---
+
+## Demo
 
 The flagship demo walks the full lifecycle — a provisional memory becoming an enforced requirement through ordinary agent work, across two branches and three sessions. Run the whole thing in one command:
 
@@ -83,100 +172,6 @@ Every step is auditable as ordinary Git history:
 
 ```bash
 git log teammemory -- memories/ observations/
-```
-
----
-
-## Install
-
-**Homebrew (macOS / Linux):**
-
-```bash
-brew install AndreasSteinerPF/tm/tm
-```
-
-**Scoop (Windows):**
-
-```powershell
-scoop bucket add tm https://github.com/AndreasSteinerPF/tm-scoop
-scoop install tm
-```
-
-**Shell installer (POSIX):**
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/AndreasSteinerPF/team-memory/main/install.sh | sh
-```
-
-Drops the latest `tm` binary into `~/.local/bin` (override with `TM_INSTALL_DIR`). Verifies the SHA-256 against the release's `checksums.txt` before installing.
-
-**From source (Go 1.26+):**
-
-```bash
-go install github.com/AndreasSteinerPF/team-memory/cmd/tm@latest
-```
-
-Or download a prebuilt archive from [Releases](https://github.com/AndreasSteinerPF/team-memory/releases).
-
----
-
-## Quickstart (under 10 minutes)
-
-### 1. Initialize in your repo
-
-```bash
-cd your-repo
-tm init
-```
-
-This creates an orphan branch `teammemory` and a local SQLite index under `.git/tm/`. If `.claude/` exists, it also installs the Claude Code hooks in `.claude/settings.json`: the `PreToolUse` check (on edits *and Bash commands*), a `SessionStart` briefing (`tm brief`), and the near-moment nudge engine — `PostToolUse` signal recording (`tm signal`), a `Stop` nudge emitter (`tm nudge`), and a `UserPromptSubmit` prompt marker (`tm signal --hook --prompt`).
-
-### 2. Propose a memory
-
-```bash
-tm propose failed_attempt \
-  --title "Billing migrations require downgrade-path tests" \
-  --guidance "Run downgrade tests before modifying billing migrations." \
-  --scope "billing/migrations/**" \
-  --session "$CLAUDE_SESSION_ID"
-```
-
-Memories can be scoped to **commands** as well as paths. Use `--scope-command` (repeatable) for a lesson that bites when a command runs, not when a file is edited:
-
-```bash
-tm propose constraint \
-  --title "pytest needs DATABASE_URL set" \
-  --guidance "Export DATABASE_URL before running the test suite." \
-  --scope-command "pytest *" \
-  --session "$CLAUDE_SESSION_ID"
-```
-
-Output:
-
-```
-01J8X4QZ7M9FKE2V3R5T8WYBCD
-status: provisional   risk: high   confidence: low   enforcement: hint
-reason: awaiting independent confirmation
-```
-
-### 3. Check a path before editing
-
-```bash
-tm check-action --path billing/migrations/new_migration.sql
-```
-
-Or check a command before running it:
-
-```bash
-tm check-action --command "pytest -q tests/"
-```
-
-### 4. Export to your context files
-
-```bash
-tm export --format agents --out AGENTS.md
-tm export --format claude --out CLAUDE.md
-tm export --format json            # prints JSON to stdout
 ```
 
 ---
@@ -450,16 +445,14 @@ activation:
 
 ---
 
-## How it compares
+## Roadmap
 
-| Class | Examples | What they do | TeamMemory's difference |
-|---|---|---|---|
-| Auto-capture memory | claude-mem, Mem0/OpenMemory, Cipher | Observe sessions, compress, accumulate | Evidence-validated lifecycle: memories earn trust through independent confirmation; contradictions weaken them |
-| Hosted team memory | Cloudflare Agent Memory, Supermemory | Shared memory via a hosted API | Git-native and local-first: the ledger lives in your repo, auditable via `git log`, no SaaS dependency |
-| Platform-native memory | Claude managed memory, Cursor memories | Per-platform memory stores | Cross-agent and team-scoped: one ledger serves Claude Code, Codex, Cursor, Continue |
-| Static context files | `CLAUDE.md`, `AGENTS.md`, `.cursor/rules` | Hand-maintained instructions | Evolves through work; context files become generated projections |
+See [`prd.md §17`](prd.md#17-roadmap) for the full roadmap. **Phase 1** (MVP) and **Phase 2** (cross-harness adapters, separate-remote UX, package-manager distribution) are shipped. Coming up:
 
-In short: **evidence-validated, Git-native, governed team memory with a deterministic enforcement point.**
+- **Phase 3 — GitHub workflow.** A GitHub Action that posts relevant memories on a PR's changed paths/commands, plus a static HTML timeline report of the ledger's history.
+- **Phase 4 — Retrieval depth.** Symbol anchors, error-signature matching, content-hash drift detection, and embeddings-based semantic ranking.
+- **Phase 5 — Harness breadth.** Adapters for OpenCode, Pi, and other coding agents as they gain a comparable hook surface.
+- **Phase 6 — Governance depth.** Signed records, multi-human approval, policy templates, expiry workflows.
 
 ---
 
