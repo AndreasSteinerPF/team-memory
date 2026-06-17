@@ -1,0 +1,17 @@
+id: 01KVASS1JDTZ7J6NE2XVAK6VSG
+target: 01KV84H0XQTPVWVNR65PG1TD2A
+kind: adjust_scope
+summary: After committing the fix (e9816fe), the memory's effective surface is now wider than just the harness adapter — the workaround lives at the engine level. Updating scope so future agents touching the nudge engine (not only the adapter) get this memory as context. The contradicting evidence remains on the record; the validation-error half of the guidance (Stop schema rejects hookSpecificOutput) is still authoritative.
+suggested_scope:
+    paths:
+        - internal/harness/claude.go
+        - internal/harness/claude_test.go
+        - internal/cli/nudge.go
+        - internal/cli/signal.go
+        - internal/nudge/journal.go
+        - e2e/harness/descriptor_claude.go
+actor:
+    kind: agent
+    name: claude-code-dogfooding
+    session_id: 56ff9bb1-e944-4f08-968c-8842d70df298
+created_at: 2026-06-17T12:44:25.549881Z
