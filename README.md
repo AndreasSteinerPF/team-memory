@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Go 1.26+](https://img.shields.io/badge/Go-1.26%2B-00ADD8.svg)](go.mod)
 [![Release](https://img.shields.io/github/v/release/AndreasSteinerPF/team-memory.svg)](https://github.com/AndreasSteinerPF/team-memory/releases)
-[![Status: beta](https://img.shields.io/badge/status-beta-orange.svg)](#roadmap)
+[![Status: beta](https://img.shields.io/badge/status-beta-orange.svg)](prd.md#17-roadmap)
 
 **Agents propose. Agents observe. Teams remember.**
 
@@ -109,6 +109,10 @@ tm propose constraint \
 # Query what would surface for an action (the hook does this automatically):
 tm check-action --path billing/migrations/new_migration.sql
 tm check-action --command "pytest -q tests/"
+
+# Or run the full propose → confirm → activate → approve → block lifecycle
+# end to end in one command (this is what TestFlagshipDemo runs in CI):
+bash demo/run.sh
 ```
 
 ---
@@ -138,54 +142,6 @@ Memory tools for coding agents make different tradeoffs. tm is designed for **pr
 **When to pick something else:** if you want semantic recall over months of chat history, Mem0 or Cipher are designed for that. If you want zero-config sharing without touching Git, a hosted team service fits better.
 
 **When tm is the right call:** when the same project mistakes keep getting repeated, when you want validated lessons to block bad moves automatically, and when you want the audit trail in plain Git.
-
----
-
-## Demo
-
-The demo walks the full lifecycle — provisional memory → independent confirmation → human-approved requirement → blocked edit — in one command:
-
-```bash
-bash demo/run.sh
-```
-
-What it does, step by step (illustrative — `demo/run.sh` runs the real thing end to end):
-
-```bash
-# Agent A, on feature/invoice-state, burns a session on a rollback that fails.
-# It records the lesson with evidence.
-tm propose failed_attempt \
-  --title   "Billing migrations require downgrade-path tests" \
-  --summary "Rollback failed when invoice_state migration lacked a downgrade path." \
-  --guidance "Before modifying billing migrations, check rollback behavior and add downgrade-path tests." \
-  --scope   "billing/migrations/**" \
-  --evidence "test_failure:logs/rollback_failure.log" \
-  --anchor  "billing/migrations/2026_add_invoice_state.sql@HEAD" \
-  --session session_a
-# → provisional   risk: high   confidence: low   enforcement: hint
-
-ID=01J8X4QZ7M9FKE2V3R5T8WYBCD   # from the output
-
-# Agent B, on a different branch and session, hits the same wall and confirms.
-# Independent confirmation auto-activates the memory.
-tm observe $ID confirm \
-  --summary "Same rollback failure reproduced on revenue-reporting branch." \
-  --session session_b
-# → status: active   confidence: medium   enforcement: warning
-
-# A human escalates it to a hard requirement.
-tm approve $ID --enforcement requirement --confidence high
-
-# Agent C tries to edit a billing migration. The PreToolUse hook BLOCKS the edit.
-# Agent C runs the downgrade tests, acknowledges the requirement, and retries — now it proceeds.
-tm ack $ID --session session_c --note "downgrade tests pass"
-```
-
-Every step is auditable as ordinary Git history:
-
-```bash
-git log teammemory -- memories/ observations/
-```
 
 ---
 
@@ -439,17 +395,6 @@ Every cap is policy-driven (`retrieval.max_results`, `retrieval.max_provisional`
 - **Sync:** union-merge of the orphan branch. Concurrent proposals never conflict because each record is an append-only ULID file.
 - **Hook:** the `PreToolUse` hook (on edits and Bash commands) reads the index (no network, no ledger-branch checkout) and completes in under 100 ms.
 - **Nudge engine:** `PostToolUse`/`UserPromptSubmit` record raw events to a per-session journal under `.git/tm/nudge`; the `Stop` hook detects the memory-worthy patterns and emits at most one bounded propose/observe nudge. Detection is pure and the journal is local-only — never a ledger record.
-
----
-
-## Roadmap
-
-See [`prd.md §17`](prd.md#17-roadmap) for the full roadmap. **Phase 1** (MVP) and **Phase 2** (cross-harness adapters, separate-remote UX, package-manager distribution) are shipped. Coming up:
-
-- **Phase 3 — GitHub workflow.** A GitHub Action that posts relevant memories on a PR's changed paths/commands, plus a static HTML timeline report of the ledger's history.
-- **Phase 4 — Retrieval depth.** Symbol anchors, error-signature matching, content-hash drift detection, and embeddings-based semantic ranking.
-- **Phase 5 — Harness breadth.** Adapters for OpenCode, Pi, and other coding agents as they gain a comparable hook surface.
-- **Phase 6 — Governance depth.** Signed records, multi-human approval, policy templates, expiry workflows.
 
 ---
 
