@@ -1,0 +1,18 @@
+id: 01KVARXGM97RB3DGPD90D09J8T
+target: 01KV84H0XQTPVWVNR65PG1TD2A
+kind: contradict
+summary: 'The memory''s "Stop schema rejects hookSpecificOutput" claim is correct, and rendering plain stdout is the right fix to avoid the validation error. BUT the subsidiary claim that "Claude Code surfaces Stop-hook stdout directly" does not hold in live dogfooding (Claude Code 2.1.x, 2026-06-17). In session 56ff9bb1 with the brewed v0.6.0 binary (which already includes commit 6f95c9c — Stop→plain-text — tagged in v0.4.0/v0.5.0/v0.6.0), the nudge journal records three fired self_review nudges (turns 19, 24, 32) per the MaxPerSession=3 budget, yet none of the rendered "tm: anything memory-worthy this session..." text appeared in the agent''s next-turn context across the entire conversation. Independent manual verification (synthesized Stop payload piped to `tm nudge --hook --harness claude` on the dev binary) confirms tm itself emits the line correctly to stdout with exit 0. The existing harness replay test (e2e/harness/replay_test.go:111-129 user_intervened_nudge) only asserts the bytes tm emits, NOT that Claude Code injects them into the next agent turn — so CI cannot detect this gap. Net: the nudge engine''s Stop path is silently no-op on Claude Code despite CapStopNudge=yes in the capability matrix (prd.md §10.6).'
+evidence:
+    - type: log
+      ref: '.git/tm/nudge/56ff9bb1-e944-4f08-968c-8842d70df298.json (fired: self_review:19, self_review:24, self_review:32; no corresponding tm:-prefixed text in the agent transcript)'
+    - type: test
+      ref: 'manual `tm nudge --hook --harness claude` < synthesized Stop payload emits `tm: anything memory-worthy this session...` to stdout (dev-44c1c6b, 2026-06-17)'
+    - type: doc
+      ref: e2e/harness/replay_test.go:120-128 asserts tm's emitted bytes via d.AdvisoryContext(out), not Claude Code's next-turn surfacing
+    - type: doc
+      ref: prd.md §10.6 capability matrix declares claude StopNudge=yes but no live behavior test gates this
+actor:
+    kind: agent
+    name: claude-code-dogfooding
+    session_id: 56ff9bb1-e944-4f08-968c-8842d70df298
+created_at: 2026-06-17T12:29:23.465823Z
