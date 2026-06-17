@@ -30,3 +30,7 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Fine-grained PAT with contents:write on the homebrew-tm and tm-scoop
+          # repos. Used by GoReleaser's brews/scoops blocks to commit the
+          # formula and manifest. GITHUB_TOKEN can't reach across repos.
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}

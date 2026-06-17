@@ -89,13 +89,34 @@ git log teammemory -- memories/ observations/
 
 ## Install
 
-Requires **Go 1.26+** (or skip the toolchain and grab a prebuilt binary below).
+**Homebrew (macOS / Linux):**
+
+```bash
+brew install AndreasSteinerPF/tm/tm
+```
+
+**Scoop (Windows):**
+
+```powershell
+scoop bucket add tm https://github.com/AndreasSteinerPF/tm-scoop
+scoop install tm
+```
+
+**Shell installer (POSIX):**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/AndreasSteinerPF/team-memory/main/install.sh | sh
+```
+
+Drops the latest `tm` binary into `~/.local/bin` (override with `TM_INSTALL_DIR`). Verifies the SHA-256 against the release's `checksums.txt` before installing.
+
+**From source (Go 1.26+):**
 
 ```bash
 go install github.com/AndreasSteinerPF/team-memory/cmd/tm@latest
 ```
 
-Or download a prebuilt binary from [Releases](https://github.com/AndreasSteinerPF/team-memory/releases).
+Or download a prebuilt archive from [Releases](https://github.com/AndreasSteinerPF/team-memory/releases).
 
 ---
 

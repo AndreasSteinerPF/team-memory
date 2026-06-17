@@ -6,6 +6,26 @@
 All notable changes to TeamMemory are documented here. The format is based on
 [Keep a Changelog], and this project adheres to [Semantic Versioning].
 
+## [0.6.0] - 2026-06-17
+
+The "package-manager distribution" release — Phase 2 closes (`prd.md §17`).
+`tm` is now installable via the standard OSS channels alongside `go install`
+and the GitHub Releases archives.
+
+### Added
+
+- **Homebrew tap** — `brew install AndreasSteinerPF/tm/tm`. GoReleaser commits
+  the formula to [`AndreasSteinerPF/homebrew-tm`](https://github.com/AndreasSteinerPF/homebrew-tm)
+  on each release.
+- **Scoop bucket** — `scoop bucket add tm https://github.com/AndreasSteinerPF/tm-scoop && scoop install tm`.
+  GoReleaser commits the manifest to [`AndreasSteinerPF/tm-scoop`](https://github.com/AndreasSteinerPF/tm-scoop)
+  on each release.
+- **POSIX install script** — `curl -fsSL https://raw.githubusercontent.com/AndreasSteinerPF/team-memory/main/install.sh | sh`.
+  Detects OS/arch, fetches the matching archive from the latest release,
+  verifies its SHA-256 against `checksums.txt`, and drops `tm` into
+  `$HOME/.local/bin` (overridable via `TM_INSTALL_DIR`). No deps beyond
+  `curl` and `tar`.
+
 ## [0.5.0] - 2026-06-17
 
 The "polished separate-remote UX" release. The separate-remote escape hatch

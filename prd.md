@@ -657,7 +657,7 @@ First 90 days: 500 stars; 5 external contributors; documented setups for 2+ codi
 
   Deferred to Phase 6: `ownership` as a dedicated memory type (no concrete use case justifies it over `decision` today).
 - **Polished separate-remote UX** — `tm remote {show,set,unset}` first-class subcommand, `tm init` validates the remote via `ls-remote` and seeds the ref with a best-effort push (`--no-push` opt-out), and every push attempt classifies its failure (`protected_branch | auth | network | unknown`) into `.git/tm/push_failure.json`, surfaced via `tm sync` (foreground), `tm status`, and `tm doctor` (§7.1, §10.5, §15). **Shipped.**
-- **Package-manager distribution** — Homebrew and Scoop formulas on top of the existing GoReleaser pipeline, so `brew install teammemory` / `scoop install teammemory` are first-class install paths alongside `go install` and the GitHub Releases archives (§12.2, §16).
+- **Package-manager distribution** — Homebrew and Scoop formulas plus a POSIX `install.sh` (checksum-verified, no deps beyond `curl`/`tar`) on top of the existing GoReleaser pipeline, so `brew install AndreasSteinerPF/tm/tm`, `scoop install tm`, and `curl -fsSL …/install.sh | sh` are first-class install paths alongside `go install` and the GitHub Releases archives (§12.2, §16). **Shipped.**
 
 **Phase 3 — GitHub workflow:** bring memories onto the PR review surface, not just the live agent hook.
 

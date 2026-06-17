@@ -47,6 +47,44 @@ archives:
 checksum:
   name_template: "checksums.txt"
 
+# Homebrew tap — commits a tm.rb formula to AndreasSteinerPF/homebrew-tm on each
+# release. Users install with: brew install AndreasSteinerPF/tm/tm
+# Requires the HOMEBREW_TAP_TOKEN secret (fine-grained PAT with contents:write
+# on homebrew-tm and tm-scoop) to be passed in via release.yml.
+brews:
+  - name: tm
+    repository:
+      owner: AndreasSteinerPF
+      name: homebrew-tm
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    homepage: https://github.com/AndreasSteinerPF/team-memory
+    description: "Git-backed collaborative memory ledger for coding agents"
+    license: MIT
+    commit_author:
+      name: goreleaserbot
+      email: bot@goreleaser.com
+    install: |
+      bin.install "tm"
+    test: |
+      system "#{bin}/tm", "version"
+
+# Scoop bucket — commits a tm.json manifest to AndreasSteinerPF/tm-scoop on each
+# release. Users install with:
+#   scoop bucket add tm https://github.com/AndreasSteinerPF/tm-scoop
+#   scoop install tm
+scoops:
+  - name: tm
+    repository:
+      owner: AndreasSteinerPF
+      name: tm-scoop
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    homepage: https://github.com/AndreasSteinerPF/team-memory
+    description: "Git-backed collaborative memory ledger for coding agents"
+    license: MIT
+    commit_author:
+      name: goreleaserbot
+      email: bot@goreleaser.com
+
 changelog:
   use: github
   sort: asc
