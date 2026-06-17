@@ -6,6 +6,47 @@
 All notable changes to TeamMemory are documented here. The format is based on
 [Keep a Changelog], and this project adheres to [Semantic Versioning].
 
+## [0.6.1] - 2026-06-17
+
+Bugfix release closing two Claude Code surfacing gaps discovered while
+dogfooding v0.6.0, plus a UX fix to `tm search`.
+
+### Fixed
+
+- **Claude Code Stop-hook stdout doesn't reach the agent.** A live session
+  that fired three `self_review` nudges showed zero `tm:`-prefixed text in
+  the transcript — the v0.6.0 plain-stdout-on-Stop path doesn't actually
+  surface on Claude Code 2.1.x. `tm nudge --hook` now also queues each
+  Claude nudge into `journal.Pending`, and `tm signal --hook --prompt`
+  (UserPromptSubmit) drains the queue via `hookSpecificOutput.additionalContext`
+  — the channel verified to surface. The Render path still emits plain
+  stdout for harnesses where that works. Pinned by
+  `TestNudgeHookQueuesPendingOnClaude` and
+  `TestPromptSignalDrainsPendingViaAdditionalContext`.
+- **`$CLAUDE_SESSION_ID` isn't exported into the Bash tool's subprocess** on
+  Claude Code 2.1.x, so every shelled-out `tm ack` / `tm propose` /
+  `tm observe` silently fell back to TTL session attribution. Hook payloads
+  still carry `session_id`, so `tm signal --hook` and `tm nudge --hook` now
+  write `.git/tm/current-session.txt`, and `envSession()` reads it after the
+  env var. Discovery order is documented in `prd.md §10.2`. Pinned by
+  `parse_test.go`.
+- **`tm search` / `tm_search` now distinguish "no searchable tokens" from
+  "no matches".** Queries like `*`, `**`, or any all-punctuation input that
+  tokenized to nothing previously printed the same `No results.` line as a
+  genuine miss — callers had no way to tell an empty ledger from a
+  meaningless query. Both call sites now emit a distinct message and steer
+  the caller to a real keyword or to `tm status` / `tm_status` for ledger
+  contents.
+
+### Changed
+
+- **OSS hygiene files** — `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`,
+  `SECURITY.md`, and GitHub issue templates added for first-impression
+  parity with mature OSS projects.
+- **README** — restructured for OSS first-impression (install up top,
+  trimmed mid-sections, roadmap moved down); added a measured **Context
+  cost** section with token figures.
+
 ## [0.6.0] - 2026-06-17
 
 The "package-manager distribution" release — Phase 2 closes (`prd.md §17`).
