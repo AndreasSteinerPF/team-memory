@@ -52,6 +52,8 @@ Or download a prebuilt archive from [Releases](https://github.com/AndreasSteiner
 
 ## Quickstart
 
+You don't drive tm yourself — your coding agent does. Your job is two commands.
+
 ### 1. Initialize in your repo
 
 ```bash
@@ -59,49 +61,54 @@ cd your-repo
 tm init
 ```
 
-Creates an orphan `teammemory` branch in your repo (the memory ledger) and a local SQLite index. If `.claude/` exists, it also installs the Claude Code hooks — see [Claude Code integration](#claude-code-integration) for what gets wired up.
+For agents other than Claude Code: `tm init --harness {codex,copilot,cursor,gemini,continue}`.
 
-### 2. Propose a memory
+This creates an orphan `teammemory` branch (the ledger), a local SQLite index under `.git/tm/`, and wires the hooks + MCP server into your agent's config. Idempotent; safe to re-run.
+
+### 2. Use your coding agent normally
+
+That's it. From the next session your agent knows about TeamMemory: the `SessionStart` briefing tells it when to record judgment and when to confirm prior lessons; the `PreToolUse` hook surfaces (or blocks on) matching memories at edit and command time. **Agents propose and observe; you don't type anything for the system to work.**
+
+The animation above shows the full loop end to end across four real Claude Code sessions — same flow on every supported agent.
+
+### 3. Promote validated lessons to hard rules (the only human step)
+
+Once a memory has been independently confirmed by another agent and you want it to *block* future edits, not just warn:
+
+```bash
+tm approve <memory-id> --enforcement requirement --confidence high
+```
+
+Agents can propose and confirm freely; only humans can promote to `requirement`. This is the governance seam — a small, reviewable hand-off where you decide which lessons become guardrails.
+
+### 4. Inspect the ledger anytime
+
+```bash
+tm status                    # overview + items needing human attention
+tm list                      # active + provisional + contested
+tm show <memory-id>          # full envelope, observations, derived state
+git log teammemory           # everything is plain Git
+```
+
+### Driving the CLI directly (optional)
+
+Every MCP verb has a CLI sibling — useful for scripting, testing, or seeding memories before opening a repo to your team:
 
 ```bash
 tm propose failed_attempt \
-  --title "Billing migrations require downgrade-path tests" \
+  --title    "Billing migrations require downgrade-path tests" \
   --guidance "Run downgrade tests before modifying billing migrations." \
-  --scope "billing/migrations/**" \
-  --session "$CLAUDE_SESSION_ID"
-```
+  --scope    "billing/migrations/**"
 
-Memories can be scoped to **commands** as well as paths. Use `--scope-command` for a lesson that bites when a command runs, not when a file is edited:
-
-```bash
+# Memories can also be scoped to commands, not just paths:
 tm propose constraint \
   --title "pytest needs DATABASE_URL set" \
-  --guidance "Export DATABASE_URL before running the test suite." \
   --scope-command "pytest *" \
-  --session "$CLAUDE_SESSION_ID"
-```
+  --guidance "Export DATABASE_URL before running the test suite."
 
-Output:
-
-```
-01J8X4QZ7M9FKE2V3R5T8WYBCD
-status: provisional   risk: high   confidence: low   enforcement: hint
-reason: awaiting independent confirmation
-```
-
-### 3. Check a path or command before acting
-
-```bash
+# Query what would surface for an action (the hook does this automatically):
 tm check-action --path billing/migrations/new_migration.sql
 tm check-action --command "pytest -q tests/"
-```
-
-### 4. Export to your context files
-
-```bash
-tm export --format agents --out AGENTS.md
-tm export --format claude --out CLAUDE.md
-tm export --format json            # prints JSON to stdout
 ```
 
 ---
