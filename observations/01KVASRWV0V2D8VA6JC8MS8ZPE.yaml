@@ -1,0 +1,18 @@
+id: 01KVASRWV0V2D8VA6JC8MS8ZPE
+target: 01KVARYCDSNWZXXB655VM0JF66
+kind: confirm
+summary: 'Independently verified the env-var gap (a fresh Claude Code session reported $CLAUDE_SESSION_ID as empty in the Bash tool''s subprocess while journal files were correctly keyed by session_id). Implemented option (b) from the memory''s guidance: signal/nudge hooks now write .git/tm/current-session.txt from the payload''s session_id, and envSession() reads it after $CLAUDE_SESSION_ID. Combined with option (a) — prd.md §10.2 now documents the explicit resolution chain (--session > env > file) so the fallback isn''t invisible. Pinned by TestEnvSessionFallsBackToFile + TestWriteCurrentSessionRoundtrip in internal/cli/parse_test.go. Committed as e9816fe.'
+evidence:
+    - type: test
+      ref: internal/cli/parse_test.go TestEnvSessionFallsBackToFile passes (file fallback wired)
+    - type: test
+      ref: internal/cli/parse_test.go TestEnvSessionPrefersEnvVar passes (env var precedence preserved)
+    - type: commit
+      ref: 'e9816fe hooks: close two Claude Code surfacing gaps found while dogfooding'
+    - type: doc
+      ref: prd.md §10.2 now states the discovery order explicitly
+actor:
+    kind: agent
+    name: claude-code-dogfooding
+    session_id: 56ff9bb1-e944-4f08-968c-8842d70df298
+created_at: 2026-06-17T12:44:20.704375Z
