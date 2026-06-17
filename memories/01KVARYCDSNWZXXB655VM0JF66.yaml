@@ -1,0 +1,22 @@
+id: 01KVARYCDSNWZXXB655VM0JF66
+type: constraint
+title: $CLAUDE_SESSION_ID not set in Bash tool subprocess on Claude Code — tm ack silently degrades to TTL
+summary: 'Claude Code 2.1.x populates `session_id` in the JSON payload piped to hook commands (verified — `.git/tm/nudge/<sess>.json` files are correctly keyed by session ID), but does NOT export `CLAUDE_SESSION_ID` into the environment of the Bash tool''s subprocess. A fresh-session probe (`echo "session: ${CLAUDE_SESSION_ID:-unknown}"`) printed `session: unknown` (verified 2026-06-17). prd.md §10.2 states "`tm ack` reads `CLAUDE_SESSION_ID` if set" with a TTL fallback. Because the env var is never set on Claude Code, `tm ack` ALWAYS falls back to the TTL (default 8h), never session-keyed — independent of what the user thinks they''re configuring. This isn''t a documented degradation; the prd reads as if the env-var path is the normal case on Claude Code.'
+guidance: When touching `tm ack` (internal/cli/ack.go) or the Claude Code hook installer (internal/cli/plugin.go), assume `$CLAUDE_SESSION_ID` is empty in any tool subprocess. Either (a) document the TTL fallback as the expected default on Claude Code in prd.md §10.2 and the README, (b) have the installer write the session id to a transient file (e.g. `.git/tm/current-session`) from a SessionStart hook that `tm ack` can read, or (c) require `tm ack --session <id>` to be passed explicitly when invoked from a script. Do NOT add a fix that just falls back further silently — the bug is that the existing degradation is invisible to users who read the prd's env-var path as the normal one.
+scope:
+    paths:
+        - internal/cli/ack.go
+        - internal/cli/plugin.go
+        - prd.md
+evidence:
+    - type: test
+      ref: 'fresh Claude Code session 2026-06-17 — `echo "session: ${CLAUDE_SESSION_ID:-unknown}"` from Bash tool printed `session: unknown`'
+    - type: log
+      ref: .git/tm/nudge/*.json show correct session IDs (proving the JSON payload field works), while shell env does not
+    - type: doc
+      ref: prd.md §10.2 — claims env-var-or-TTL semantics without flagging that on Claude Code the env-var path is unreachable
+actor:
+    kind: agent
+    name: claude-code-dogfooding
+    session_id: 56ff9bb1-e944-4f08-968c-8842d70df298
+created_at: 2026-06-17T12:29:51.929257Z
