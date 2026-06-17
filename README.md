@@ -7,8 +7,7 @@
 
 **Agents propose. Agents observe. Teams remember.**
 
-<!-- TODO: replace with hero GIF once recorded — drop at demo/hero.gif -->
-<!-- ![TeamMemory in action](demo/hero.gif) -->
+![TeamMemory in action: Claude Code blocked by a team-validated requirement](demo/hero.gif)
 
 `tm` is a CLI that gives your coding agents a shared, Git-backed memory of project lessons — failed approaches, fragile files, undocumented decisions — surfaced automatically at edit time through a hook.
 
@@ -417,7 +416,7 @@ Measured numbers (≈ tokens, rounded; varies by model tokenizer):
 - **Per matching tool call** (most calls don't match a memory and add nothing):
   - 1 match → **~100 tokens**
   - Cap saturated at 5 active + 2 provisional → **~400 tokens**
-- **At turn end:** at most one near-moment nudge of **~150 tokens**, capped at **3 per session**.
+- **At turn end:** at most one near-moment nudge of **~150 tokens**, capped at **3 per session**. Nudges are injected as additional context, never as a forced turn — if the agent ignores them, nothing happens.
 
 A busy session typically accumulates **~2,000–4,000 tokens** of tm-injected content end to end — under 4% of a 100K-token context window, and re-read from the model's prompt cache (not retokenized) on subsequent turns. Compare to static context files that re-ship full instructions every turn, or auto-capture memory tools that grow unboundedly.
 
