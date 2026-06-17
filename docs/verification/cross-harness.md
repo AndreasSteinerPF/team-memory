@@ -611,7 +611,7 @@ retained only for forward-compat. Pinned by `harness.TestClaudeSuccessPostToolHa
 **Re-check by ~2026-08-15** alongside Codex: if a later version emits a `PostToolUse`
 on failure, re-enable the capability and restore the scenario.
 
-**Stop hook output shape — RESOLVED (2026-06-16):** Claude Code's `Stop` hook
+**Stop hook output shape — PARTIALLY RESOLVED (2026-06-16, revised 2026-06-17):** Claude Code's `Stop` hook
 schema rejects `hookSpecificOutput` entirely — that envelope is only valid for
 `PreToolUse`, `PostToolUse`, `UserPromptSubmit`, and `PostToolBatch`. Live
 dogfooding of `tm nudge --hook` on a Stop event produced:
@@ -621,12 +621,26 @@ The Stop schema accepts only top-level fields (`continue`, `suppressOutput`,
 `stopReason`, `decision`, `reason`, `systemMessage`, `terminalSequence`,
 `permissionDecision`). A nudge wants neither a forced continuation
 (`decision: "block"` retries the turn) nor a user-only `systemMessage`, so the
-adapter renders Stop advisories as **plain text to stdout** — which Claude Code
-surfaces directly — matching the original `claude.go` `VERIFY` comment's
-`Stop stdout directly` option. The defensive block path on Stop emits
-top-level `{"decision":"block","reason":...}` (the only block shape the Stop
-schema accepts), though the engine doesn't currently produce a block Decision
-for Stop. Pinned by `harness.TestClaudeRenderStopAdvisoryUsesPlainStdout`.
+adapter renders Stop advisories as **plain text to stdout**. **HOWEVER** (live-
+verified 2026-06-17 against session `56ff9bb1`, brewed `tm 0.6.0` already
+shipping the plain-text fix from `6f95c9c`): plain stdout on Stop does NOT
+surface to the agent's next turn — the session journal recorded three fired
+self_review nudges (`fired: [self_review:19, self_review:24, self_review:32]`)
+yet zero `tm:`-prefixed text appeared anywhere in the transcript. A manual
+`tm nudge --hook --harness claude` against a synthesized Stop payload confirms
+the binary emits the expected line to stdout (exit 0); the gap is between
+`tm` and Claude Code, not inside `tm`. The nudge engine compensates by ALSO
+queuing the rendered text into `journal.Pending` whenever a Claude Stop nudge
+fires (`internal/cli/nudge.go`), and the next `UserPromptSubmit`'s
+`tm signal --hook --prompt` drains the queue and re-injects via
+`hookSpecificOutput.additionalContext` (`internal/cli/signal.go`) — the
+channel that does reach the agent. Pinned by
+`cli.TestNudgeHookQueuesPendingOnClaude` and
+`cli.TestPromptSignalDrainsPendingViaAdditionalContext`. Other harnesses keep
+the original stdout-only path until their own Stop surfacing is independently
+verified or contradicted. Original assertion pinned by
+`harness.TestClaudeRenderStopAdvisoryUsesPlainStdout` (which still passes —
+the rendered bytes are correct; only the downstream surfacing is broken).
 
 ---
 

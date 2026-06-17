@@ -49,8 +49,15 @@ type Journal struct {
 	Surfaced    []Surfaced   `json:"surfaced,omitempty"`     // memories shown this session
 	PromptTurns []int        `json:"prompt_turns,omitempty"` // turns a user prompt landed
 	Fired       []FiredNudge `json:"fired,omitempty"`
-	Injected    []string     `json:"injected,omitempty"` // advisory memory ids delivered
-	UpdatedAt   time.Time    `json:"updated_at"`
+	Injected    []string     `json:"injected,omitempty"`     // advisory memory ids delivered
+	// Pending holds nudge text emitted at Stop that needs to be re-injected at
+	// the next UserPromptSubmit. Stop-hook stdout does not actually surface to
+	// the agent on Claude Code (contested 2026-06-17 — see ledger memory
+	// 01KV84H0XQTPVWVNR65PG1TD2A), so on that harness we queue the rendered
+	// text here and the prompt-signal hook drains it via additionalContext
+	// (a channel verified to surface).
+	Pending   []string  `json:"pending,omitempty"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // Store is a directory of journal files keyed by session id.

@@ -2,6 +2,9 @@ package cli_test
 
 import (
 	"bytes"
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -39,5 +42,93 @@ func TestNudgeHookSilentWithNoSignal(t *testing.T) {
 	}
 	if strings.TrimSpace(out) != "" {
 		t.Errorf("expected silence on a fresh session, got: %q", out)
+	}
+}
+
+// TestNudgeHookQueuesPendingOnClaude pins the Stop→UserPromptSubmit re-delivery
+// path required when the harness's Stop hook does not surface stdout to the
+// agent (Claude Code; contested ledger memory 01KV84H0XQTPVWVNR65PG1TD2A). The
+// nudge text must land in journal.Pending so the next prompt-signal hook can
+// re-inject it via additionalContext.
+func TestNudgeHookQueuesPendingOnClaude(t *testing.T) {
+	repo := initRepo(t)
+	feed := func(s string) { runSignalForTest(t, repo, s) }
+	feed(`{"session_id":"s1","tool_name":"Bash","tool_input":{"command":"go test ./..."},"tool_response":{"exit_code":1}}`)
+	feed(`{"session_id":"s1","tool_name":"Edit","tool_input":{"file_path":"internal/index/x.go"}}`)
+	feed(`{"session_id":"s1","tool_name":"Bash","tool_input":{"command":"go test ./..."},"tool_response":{"exit_code":0}}`)
+
+	if _, code := runNudge(t, repo, `{"session_id":"s1"}`); code != 0 {
+		t.Fatalf("nudge exit %d", code)
+	}
+
+	data, err := os.ReadFile(filepath.Join(repo, ".git", "tm", "nudge", "s1.json"))
+	if err != nil {
+		t.Fatalf("read journal: %v", err)
+	}
+	var j struct {
+		Pending []string `json:"pending"`
+	}
+	if err := json.Unmarshal(data, &j); err != nil {
+		t.Fatal(err)
+	}
+	if len(j.Pending) != 1 || !strings.Contains(j.Pending[0], "tm_propose") {
+		t.Fatalf("expected one tm_propose nudge queued in Pending, got: %v", j.Pending)
+	}
+}
+
+// TestPromptSignalDrainsPendingViaAdditionalContext pins the surfacing path on
+// Claude: a queued nudge from a prior Stop event must be re-emitted on the
+// next UserPromptSubmit inside hookSpecificOutput.additionalContext (the
+// channel verified to reach the agent — Stop stdout doesn't), and the journal
+// must clear Pending so the same nudge isn't re-delivered on subsequent
+// prompts.
+func TestPromptSignalDrainsPendingViaAdditionalContext(t *testing.T) {
+	repo := initRepo(t)
+	feed := func(s string) { runSignalForTest(t, repo, s) }
+	feed(`{"session_id":"s1","tool_name":"Bash","tool_input":{"command":"go test ./..."},"tool_response":{"exit_code":1}}`)
+	feed(`{"session_id":"s1","tool_name":"Edit","tool_input":{"file_path":"internal/index/x.go"}}`)
+	feed(`{"session_id":"s1","tool_name":"Bash","tool_input":{"command":"go test ./..."},"tool_response":{"exit_code":0}}`)
+	if _, code := runNudge(t, repo, `{"session_id":"s1"}`); code != 0 {
+		t.Fatalf("nudge exit %d", code)
+	}
+
+	var out, errb bytes.Buffer
+	code := cli.Run([]string{"--repo", repo, "signal", "--hook", "--prompt"}, strings.NewReader(`{"session_id":"s1"}`), &out, &errb)
+	if code != 0 {
+		t.Fatalf("prompt signal exit %d: %s", code, errb.String())
+	}
+
+	body := out.String()
+	if !strings.Contains(body, "hookSpecificOutput") {
+		t.Errorf("expected hookSpecificOutput envelope, got: %q", body)
+	}
+	if !strings.Contains(body, "additionalContext") {
+		t.Errorf("expected additionalContext field, got: %q", body)
+	}
+	if !strings.Contains(body, "tm_propose") {
+		t.Errorf("expected nudge text re-injected via additionalContext, got: %q", body)
+	}
+
+	data, err := os.ReadFile(filepath.Join(repo, ".git", "tm", "nudge", "s1.json"))
+	if err != nil {
+		t.Fatalf("read journal: %v", err)
+	}
+	var j struct {
+		Pending []string `json:"pending"`
+	}
+	if err := json.Unmarshal(data, &j); err != nil {
+		t.Fatal(err)
+	}
+	if len(j.Pending) != 0 {
+		t.Errorf("Pending must be cleared after drain, got: %v", j.Pending)
+	}
+
+	// A second prompt with no new Stop nudge must NOT re-emit (idempotent drain).
+	var out2 bytes.Buffer
+	if code := cli.Run([]string{"--repo", repo, "signal", "--hook", "--prompt"}, strings.NewReader(`{"session_id":"s1"}`), &out2, &errb); code != 0 {
+		t.Fatalf("second prompt signal exit %d", code)
+	}
+	if strings.TrimSpace(out2.String()) != "" {
+		t.Errorf("second prompt should emit nothing, got: %q", out2.String())
 	}
 }

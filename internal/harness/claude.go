@@ -53,12 +53,21 @@ func (claude) Parse(kind EventKind, r io.Reader) (Event, error) {
 // Render emits the hook decision. Stop is special: Claude Code's Stop hook
 // schema (live-verified 2026-06-16) rejects `hookSpecificOutput` entirely —
 // that envelope is only valid for PreToolUse / PostToolUse /
-// UserPromptSubmit / PostToolBatch. An advisory Decision on Stop must render
-// as plain text to stdout, which Claude Code surfaces directly (matches the
-// README's "never a forced turn" promise for the nudge engine). A block
-// Decision on Stop — which the nudge engine never produces, but we render
-// defensively — uses the top-level `decision`/`reason` fields the Stop
-// schema does accept.
+// UserPromptSubmit / PostToolBatch. So an advisory Decision on Stop renders
+// as plain text to stdout (the only shape the Stop schema accepts for
+// non-blocking content). HOWEVER, that stdout does NOT actually reach the
+// agent's next turn on Claude Code 2.1.x (live-verified 2026-06-17: a
+// session with three fired self_review nudges showed zero `tm:` text in
+// the transcript). The nudge engine compensates upstream in
+// internal/cli/nudge.go by ALSO queuing the rendered text into
+// `journal.Pending`, which the next UserPromptSubmit's
+// `tm signal --hook --prompt` re-injects via the `additionalContext`
+// channel — verified to surface. The plain-text emission here is preserved
+// so non-Claude harnesses that DO surface Stop stdout (and any future
+// Claude version that starts to) continue to receive the nudge directly.
+// A block Decision on Stop — which the nudge engine never produces, but
+// we render defensively — uses the top-level `decision`/`reason` fields
+// the Stop schema does accept.
 func (claude) Render(kind EventKind, d Decision, w io.Writer) error {
 	if d.Empty() {
 		return nil // emit nothing; the action proceeds

@@ -36,6 +36,7 @@ func newNudgeCmd(g *globalOpts) *cobra.Command {
 				return err
 			}
 			defer e.close()
+			writeCurrentSession(e.gitDir, ev.SessionID)
 			store, err := e.nudgeStore()
 			if err != nil {
 				return err
@@ -53,6 +54,16 @@ func newNudgeCmd(g *globalOpts) *cobra.Command {
 
 			// Record the fired nudge for dedup + budget, then persist.
 			j.Fired = append(j.Fired, nudge.FiredNudge{Key: n.Key, Turn: j.Turn})
+			// On Claude Code, Stop-hook stdout does not actually surface to the
+			// agent's next turn (live-verified 2026-06-17 against a session that
+			// fired three nudges without any reaching the transcript; see ledger
+			// memory 01KV84H0XQTPVWVNR65PG1TD2A). Queue the text here so the
+			// next UserPromptSubmit can re-inject it via additionalContext, the
+			// channel that does surface. Other harnesses keep the original
+			// stdout-only path.
+			if a.Name() == "claude" {
+				j.Pending = append(j.Pending, n.Text)
+			}
 			if err := store.Save(j); err != nil {
 				return err
 			}

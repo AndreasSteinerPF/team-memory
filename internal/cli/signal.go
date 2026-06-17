@@ -43,6 +43,7 @@ func newSignalCmd(g *globalOpts) *cobra.Command {
 				return err
 			}
 			defer e.close()
+			writeCurrentSession(e.gitDir, ev.SessionID)
 			store, err := e.nudgeStore()
 			if err != nil {
 				return err
@@ -120,6 +121,7 @@ func recordPromptSignal(cmd *cobra.Command, g *globalOpts, a harness.Adapter) er
 		return err
 	}
 	defer e.close()
+	writeCurrentSession(e.gitDir, ev.SessionID)
 	store, err := e.nudgeStore()
 	if err != nil {
 		return err
@@ -130,7 +132,24 @@ func recordPromptSignal(cmd *cobra.Command, g *globalOpts, a harness.Adapter) er
 	}
 	j.Turn++ // the prompt occupies its own turn, between the edits around it
 	j.RecordPrompt()
-	return store.Save(j)
+
+	// Drain nudges queued at Stop (Claude only — Stop-hook stdout doesn't
+	// surface on Claude, so the nudge command parks the text in j.Pending and
+	// this UserPromptSubmit injection re-delivers it via additionalContext,
+	// the channel that does reach the agent. See ledger memory
+	// 01KV84H0XQTPVWVNR65PG1TD2A.
+	var pending []string
+	if len(j.Pending) > 0 {
+		pending = j.Pending
+		j.Pending = nil
+	}
+	if err := store.Save(j); err != nil {
+		return err
+	}
+	if len(pending) == 0 {
+		return nil
+	}
+	return a.Render(harness.PromptSubmit, harness.Decision{Context: strings.Join(pending, "\n")}, cmd.OutOrStdout())
 }
 
 // relPath converts an absolute or repo-relative path to a forward-slash repo path.

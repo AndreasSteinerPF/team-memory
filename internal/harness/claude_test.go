@@ -58,15 +58,19 @@ func TestClaudeRenderPreToolBlock(t *testing.T) {
 }
 
 // TestClaudeRenderStopAdvisoryUsesPlainStdout pins Claude Code's Stop-hook
-// output contract (CLI 2.1.x, 2026-06-16, live-verified): the Stop event
-// rejects `hookSpecificOutput` entirely — that envelope is only valid for
-// PreToolUse, PostToolUse, UserPromptSubmit, and PostToolBatch. The Stop
-// schema accepts top-level fields (decision, reason, systemMessage,
-// stopReason, etc.) but a nudge wants neither a forced continuation
-// (decision=block) nor a user-only systemMessage; it wants plain text the
-// agent surface picks up. Claude Code surfaces a Stop hook's stdout
-// directly, so an advisory Decision on Stop must render as plain text
-// (no JSON wrapper).
+// output contract: the Stop event rejects `hookSpecificOutput` entirely
+// (live-verified 2026-06-16; the envelope is only valid for PreToolUse,
+// PostToolUse, UserPromptSubmit, PostToolBatch). The Stop schema accepts
+// top-level fields (decision, reason, systemMessage, stopReason, etc.) but
+// a nudge wants neither a forced continuation (decision=block) nor a
+// user-only systemMessage; plain stdout is the only remaining shape, so
+// Render must emit it as plain text (no JSON wrapper) — the test below
+// pins that. Note: live dogfooding (2026-06-17) revealed Claude Code does
+// NOT actually surface Stop-hook stdout to the agent's next turn, so the
+// nudge engine queues the same text in journal.Pending and re-injects via
+// UserPromptSubmit additionalContext (see internal/cli/nudge.go +
+// internal/cli/signal.go). The plain-text emission here is still required
+// for non-Claude harnesses that DO surface Stop stdout.
 func TestClaudeRenderStopAdvisoryUsesPlainStdout(t *testing.T) {
 	a, _ := harness.Get("claude")
 	var b bytes.Buffer
