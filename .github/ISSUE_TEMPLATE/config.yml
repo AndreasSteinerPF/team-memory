@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability report
+    url: https://github.com/AndreasSteinerPF/team-memory/security/advisories/new
+    about: Please report security issues privately, not via the issue tracker. See SECURITY.md for details.

@@ -478,19 +478,7 @@ See [`prd.md §17`](prd.md#17-roadmap) for the full roadmap. **Phase 1** (MVP) a
 
 ## Contributing
 
-1. `go test ./... -count=1` must be green before any PR.
-2. The flagship demo (`TestFlagshipDemo`) and trap-repo benchmark (`TestTrapRepoBenchmark`) are the acceptance tests — keep them passing.
-3. Derived state (`internal/derive`) is the single most-depended-on package; any change there requires updated golden fixtures.
-
-### Testing across harnesses
-
-The five harness adapters (claude, codex, copilot, cursor, gemini) are validated at two levels:
-
-- **Default tiers — deterministic, run in CI, no live CLIs.** `go test ./e2e/harness/...` drives the real `tm` CLI in-process across a per-harness matrix: a *contract* tier pins each adapter's wire format (parse + render goldens), a *replay* tier runs each capability scenario through the engine, and a *packaging* tier checks `tm init --harness <name>` writes the right hook config. The authoritative capability matrix lives in `prd.md §10.6`; a conformance test fails if any adapter disagrees with it.
-- **Live tiers — opt-in, build-tag gated.** `go test -tags harness_live` drives the *real* harness CLIs to confirm they actually load and fire the installed hook (`TestLive`) and to refresh fixtures from captured payloads (`TestCapture`). These need each CLI installed and authenticated, so they run on demand rather than in CI. Live firing is confirmed for **Claude, Copilot, Cursor, and Gemini** per run; **Codex** fires too but only after its repo hooks are trusted once interactively (`codex` → "Trust all and continue"), so its live test is gated on `TM_CODEX_LIVE_REPO` (`task setup:codex-live`). Recipes and per-harness wire-format findings live in `docs/verification/cross-harness.md`.
-- **Live behavior tests.** Beyond confirming a hook *fires*, `TestLiveRequirementBlock` and `TestLiveRealTmRecording` install the real `tm` and assert actual behavior against each live CLI — a scoped `requirement` genuinely blocks the edit/command (the file stays unwritten *and* the requirement is surfaced), and outcomes get recorded. Requirement blocking is live-verified on **all five harnesses**, each honoring the hook deny even under its permission-bypass flag.
-
-The default tiers catch regressions in our adapter/engine logic continuously; the live tiers catch the harder class of bug — a real CLI changing its hook contract or trust model — and are how several real bugs surfaced: the Gemini hook-schema rejection, the Codex trust gate and its `apply_patch` edit-path shape (file-edit blocking silently no-opped without it), a Cursor Windows-BOM bug that silently broke every Cursor hook, and the per-harness command-failure wire shapes.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, testing, PR conventions, and the cross-harness test framework. By participating you agree to the [Code of Conduct](CODE_OF_CONDUCT.md). For security issues, see [SECURITY.md](SECURITY.md).
 
 ---
 
