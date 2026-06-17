@@ -107,6 +107,12 @@ against the repo root (codex emits relative `apply_patch` paths) via the shared
   live capture during the next `TM_CODEX_LIVE_REPO` session and either confirm
   this or peel it back if Codex actually accepts `hookSpecificOutput` on Stop.
   Pinned by `harness.TestCodexRenderStopAdvisoryUsesPlainStdout`.
+  **Update (2026-06-17):** the matching question is now *whether Codex
+  surfaces Stop-hook stdout to the next agent turn at all*. Claude Code does
+  NOT (see the Claude Stop section below — three fired nudges, zero visible),
+  and `tm` was patched to queue + re-inject via UserPromptSubmit
+  `additionalContext`. The same gap may apply to Codex; recipe and remediation
+  pointer are in the second Codex Stop block further below.
 
 **Automated codex live test (`TestLive/codex`).** Because each `TestLive` run
 uses a fresh, untrusted temp repo, codex's subtest can't fire there. Instead it is
@@ -641,6 +647,26 @@ the original stdout-only path until their own Stop surfacing is independently
 verified or contradicted. Original assertion pinned by
 `harness.TestClaudeRenderStopAdvisoryUsesPlainStdout` (which still passes —
 the rendered bytes are correct; only the downstream surfacing is broken).
+
+**Stop hook output shape — OPEN for Codex (TODO, 2026-06-17):** Codex's
+Stop-hook schema has never been live-captured. The adapter at
+`internal/harness/codex.go:102-108` mirrors Claude Code's plain-text-on-Stop
+shape "preemptively" on the assumption that every other shared wire shape
+matches Claude (PostToolUse-on-success-only, etc.). With Claude's Stop-stdout
+surfacing now contradicted (§ above), Codex plausibly shares the same gap —
+i.e. `tm nudge --hook --harness codex` emits the nudge to stdout but it never
+reaches the agent's next turn. **Recipe to settle it:** in a fresh `codex exec`
+session (with hooks trusted per `~/.codex/config.toml`, see existing capture
+notes), drive enough PostToolUse events to cross `SelfReviewEvery=8` plus at
+least one edit, then submit a follow-up prompt. Inspect (a) the session's
+`.git/tm/nudge/<sess>.json` `fired` list and (b) the second turn's injected
+context for a `tm:`-prefixed line. If `fired` is populated but no `tm:` text
+appeared, the gap is confirmed — mirror Claude's workaround at
+`internal/cli/nudge.go` by extending the `a.Name() == "claude"` branch to also
+cover `"codex"`, and verify with a new test pair parallel to
+`TestNudgeHookQueuesPendingOnClaude` / `TestPromptSignalDrainsPendingViaAdditionalContext`.
+If the `tm:` text DOES appear, leave the adapter as-is and note the contrast
+here (codex Stop surfacing differs from Claude's despite shape parity).
 
 ---
 
