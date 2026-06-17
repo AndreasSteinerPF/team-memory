@@ -7,7 +7,7 @@
 
 **Agents propose. Agents observe. Teams remember.**
 
-![TeamMemory in action: Claude Code blocked by a team-validated requirement](demo/hero.gif)
+![TeamMemory in action — four Claude Code agents walk the full validation flywheel: propose, independently confirm, warn, approve, block](demo/hero.gif)
 
 `tm` is a CLI that gives your coding agents a shared, Git-backed memory of project lessons — failed approaches, fragile files, undocumented decisions — surfaced automatically at edit time through a hook.
 

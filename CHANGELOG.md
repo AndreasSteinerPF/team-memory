@@ -6,6 +6,41 @@
 All notable changes to TeamMemory are documented here. The format is based on
 [Keep a Changelog], and this project adheres to [Semantic Versioning].
 
+## [0.6.2] - 2026-06-17
+
+Bugfix release closing the third Claude Code surfacing gap (the MCP
+session-id template-literal case), plus a new five-act hero GIF in the
+README that demonstrates the full validation flywheel end to end.
+
+### Fixed
+
+- **MCP boundary swallowed `${CLAUDE_SESSION_ID}` as a literal value.**
+  The v0.6.1 envSession fallback only covered the Bash-subprocess case;
+  the MCP server's `tm_propose` / `tm_observe` handlers still stored
+  `args.Session` verbatim. The MCP schema docs said *"Use
+  $CLAUDE_SESSION_ID"*, which agents reading the schema sometimes
+  interpreted as "put this literal string in the field" — both the
+  proposed memory and the confirming observation then carried the
+  template string as their session id, the independence check
+  collapsed to a string-equality false positive, and the memory never
+  auto-activated. A new `internal/sessionid` package now centralizes
+  the resolution chain (explicit non-template → `$CLAUDE_SESSION_ID`
+  → `.git/tm/current-session.txt`), recognizes `${VAR}` / `$VAR` /
+  `<placeholder>` shapes as unset, and is called from both the CLI
+  flag defaults and the MCP handlers. The schema docs now tell agents
+  to leave `session` empty.
+
+### Changed
+
+- **README hero GIF** — replaced the original single-block recording
+  with a five-act flywheel demonstration: Agent A proposes, Agent B
+  independently confirms (memory auto-activates to warning), Agent C
+  hits the warning and complies by adding the missing `.down.sql`,
+  the maintainer promotes to requirement, Agent D tries the same
+  edit and reports the block by name. All four Claude sessions are
+  real — the GIF is reproducible via `bash demo/hero-setup.sh` +
+  `vhs demo/hero.tape`. 3:10, 2.4MB.
+
 ## [0.6.1] - 2026-06-17
 
 Bugfix release closing two Claude Code surfacing gaps discovered while
