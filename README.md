@@ -10,9 +10,11 @@
 <!-- TODO: replace with hero GIF once recorded — drop at demo/hero.gif -->
 <!-- ![TeamMemory in action](demo/hero.gif) -->
 
-Coding agents keep relearning the same lessons — a migration that won't roll back, a file that breaks release reconciliation when touched, a doc an ADR quietly superseded. TeamMemory is a Git-backed memory ledger that captures these lessons during normal agent work, validates them through independent confirmation from other agents, and delivers the validated ones deterministically — through a `PreToolUse` hook that fires at edit *and command* time, not a voluntary tool call.
+`tm` is a CLI that gives your coding agents a shared, Git-backed memory of project lessons — failed approaches, fragile files, undocumented decisions — surfaced automatically at edit time through a hook.
 
-It is not a general memory system and not an agent framework. It is a focused tool for preserving the project judgment that should change what an agent does next: failed attempts, hidden constraints, fragile areas, stale docs, and undocumented decisions.
+The key idea: a memory stays provisional until an independent agent confirms it with evidence. Only validated memories reach enforcement; no single agent can unilaterally create a binding rule.
+
+TeamMemory is not a general memory system or an agent framework. It is a focused tool for preserving the project judgment that should change what an agent does next.
 
 ---
 
@@ -58,7 +60,7 @@ cd your-repo
 tm init
 ```
 
-Creates an orphan branch `teammemory`, a local SQLite index under `.git/tm/`, and (when `.claude/` exists) installs the Claude Code hooks: `PreToolUse` check on edits *and Bash commands*, `SessionStart` briefing, and the near-moment nudge engine (`PostToolUse` signal + `Stop` nudge + `UserPromptSubmit` marker).
+Creates an orphan `teammemory` branch in your repo (the memory ledger) and a local SQLite index. If `.claude/` exists, it also installs the Claude Code hooks — see [Claude Code integration](#claude-code-integration) for what gets wired up.
 
 ### 2. Propose a memory
 
@@ -108,8 +110,8 @@ tm export --format json            # prints JSON to stdout
 ## Features
 
 - **Stop repeating known-bad approaches.** An agent records a failed approach with evidence; the next agent that opens the same area is warned before it tries again.
-- **Block bad moves at edit and command time.** Validated memories promoted to `requirement` make the `PreToolUse` hook deny matching edits and Bash commands until acknowledged — tribal knowledge becomes a guardrail no agent can skip.
-- **Memory earns trust through evidence.** A memory stays provisional until another agent (different session, different branch) independently confirms it. No single agent can unilaterally create a binding rule; only humans can promote to `requirement`.
+- **Block bad moves at edit and command time.** Validated memories promoted to `requirement` make the `PreToolUse` hook deny matching edits and Bash commands until acknowledged.
+- **Independent confirmation required.** A memory stays provisional until another agent (different session, different branch) confirms it. No single agent can unilaterally create a binding rule; only humans can promote to `requirement`.
 - **One ledger, every coding agent.** Claude Code, Codex, Cursor, Continue, Copilot, and Gemini CLI all share the same memories — same rules, same enforcement, same Git-backed audit trail.
 - **Audit every change as plain Git.** The ledger is an append-only orphan branch; `git log teammemory` shows who proposed what, who confirmed it, and when it became binding.
 
@@ -117,20 +119,25 @@ tm export --format json            # prints JSON to stdout
 
 ## How it compares
 
-| Class | Examples | What they do | TeamMemory's difference |
-|---|---|---|---|
-| Auto-capture memory | claude-mem, Mem0/OpenMemory, Cipher | Observe sessions, compress, accumulate | Evidence-validated lifecycle: memories earn trust through independent confirmation; contradictions weaken them |
-| Hosted team memory | Cloudflare Agent Memory, Supermemory | Shared memory via a hosted API | Git-native and local-first: the ledger lives in your repo, auditable via `git log`, no SaaS dependency |
-| Platform-native memory | Claude managed memory, Cursor memories | Per-platform memory stores | Cross-agent and team-scoped: one ledger serves Claude Code, Codex, Cursor, Continue |
-| Static context files | `CLAUDE.md`, `AGENTS.md`, `.cursor/rules` | Hand-maintained instructions | Evolves through work; context files become generated projections |
+Memory tools for coding agents make different tradeoffs. tm is designed for **project-scoped lessons with enforcement** — not personal recall, not chat history.
 
-In short: **evidence-validated, Git-native, governed team memory with a deterministic enforcement point.**
+| Tool class | Scope | Validation | Storage |
+|---|---|---|---|
+| Auto-capture (Mem0, claude-mem, Cipher) | Personal, cross-project | None — accumulate everything | Hosted or local DB |
+| Hosted team memory (Cloudflare Agent Memory, Supermemory) | Team, cross-project | Vendor-defined | Hosted API |
+| Platform-native (Claude managed memory, Cursor memories) | Personal, per-platform | None | Vendor-managed |
+| Static context files (`CLAUDE.md`, `AGENTS.md`, `.cursor/rules`) | Project | None — hand-curated | Git in repo |
+| **TeamMemory** | **Project, team-scoped** | **Independent confirmation required** | **Git in repo (orphan branch)** |
+
+**When to pick something else:** if you want semantic recall over months of chat history, Mem0 or Cipher are designed for that. If you want zero-config sharing without touching Git, a hosted team service fits better.
+
+**When tm is the right call:** when the same project mistakes keep getting repeated, when you want validated lessons to block bad moves automatically, and when you want the audit trail in plain Git.
 
 ---
 
 ## Demo
 
-The flagship demo walks the full lifecycle — a provisional memory becoming an enforced requirement through ordinary agent work, across two branches and three sessions. Run the whole thing in one command:
+The demo walks the full lifecycle — provisional memory → independent confirmation → human-approved requirement → blocked edit — in one command:
 
 ```bash
 bash demo/run.sh
@@ -322,45 +329,9 @@ Every agent reads the same ledger; what differs is the delivery guarantee:
 
 > † The **fail→fix→pass** nudge detector does not fire on Claude Code or Codex: both run `PostToolUse` only on tool *success*, so a failed command is never observed. Every other nudge detector — reverted change, repeated edit churn on one path, user redirected mid-edit, surfaced-but-unobserved memory, anchor drift — works on both. (See `prd.md §10.6`.)
 
-Every hook-capable agent enforces `requirement` memories deterministically: `tm init --harness <name>` installs a pre-tool hook — Claude Code's `PreToolUse` and the equivalent on Codex, Copilot, Cursor, and Gemini (Continue reuses Claude Code's hook schema) — that **blocks** a matching edit or Bash command until it's acked, rendering the deny in each harness's native hook format. Only genuinely hook-less agents fall back to a voluntary `check_action` over MCP — same knowledge, but a voluntary call rather than a guaranteed one.
+`tm init --harness <name>` wires up each agent natively — same engine, same enforcement, rendered in each harness's hook format. For agents without hooks, the MCP server still works and `tm export` generates instruction blocks for `AGENTS.md` / `.cursor/rules`.
 
-The near-moment nudge engine is harness-neutral: a thin adapter maps each tool's post-tool, prompt, and turn-end events onto the same `tm signal` / `tm nudge` verbs, so Codex, Copilot, Cursor, and Gemini get the same propose/observe nudges as Claude Code. `tm init --harness <name>` wires the per-tool hooks (event names differ; the engine and anti-spam budget do not).
-
-The MCP server works with any MCP-compatible agent. For agents without MCP, `tm export` generates instruction blocks that are clearly marked and never the source of truth — the ledger is.
-
-```bash
-# Add to your context file once; re-run when memories change.
-tm export --format agents --out AGENTS.md
-```
-
-`tm brief` supports per-tool output formats for session-start hooks (snippets abridged — consult each tool's hooks reference):
-
-**Codex CLI** (`.codex/config.toml`; requires a trusted workspace):
-
-```toml
-[[hooks.SessionStart]]
-command = ["tm", "brief"]
-```
-
-**Copilot CLI** (`.github/hooks/teammemory.json`):
-
-```json
-{ "version": 1, "hooks": { "sessionStart": [{ "type": "command", "command": "tm brief --format copilot" }] } }
-```
-
-**Cursor** (`hooks.json`):
-
-```json
-{ "version": 1, "hooks": { "sessionStart": [{ "command": "tm brief --format cursor" }] } }
-```
-
-**Gemini CLI** (`settings.json`):
-
-```json
-{ "hooks": { "SessionStart": [{ "type": "command", "command": "tm brief --format gemini" }] } }
-```
-
-**Continue CLI**: hook schemas are Claude Code-compatible — use the same entry `tm init` writes for Claude Code.
+See **[docs/harnesses.md](docs/harnesses.md)** for per-tool hook configs, session-start briefing formats, and packaging details.
 
 ---
 
@@ -436,7 +407,7 @@ activation:
 
 ## Context cost
 
-TeamMemory is deliberately stingy with your agent's context window: every injection point is policy-capped, retrieval is precision-first so most tool calls add nothing, and the worst-case session ceiling sits well under what a modern context window will notice.
+TeamMemory's context overhead is small and bounded. Retrieval is precision-first (most tool calls add nothing) and every injection point is policy-capped; concrete numbers below.
 
 Measured numbers (≈ tokens, rounded; varies by model tokenizer):
 
