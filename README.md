@@ -365,6 +365,21 @@ tm sync --remote git@github.com:org/repo-memory.git
 
 `tm init --remote <name-or-url>` stores a separate ledger remote as `git config tm.remote`; `tm sync`, background fetch, and background push all honor it.
 
+### Branch protection / separate-remote mode
+
+If your code remote protects all branches (preventing the orphan `teammemory`
+branch from being pushed), point the ledger at a separate remote:
+
+    git remote add memory git@github.com:acme/repo-memory.git
+    tm remote set memory
+
+`tm sync`, the background push, and the opportunistic fetch all honor it.
+`tm doctor` and `tm status` warn if recent pushes have been rejected
+(usually a sign that branch protection is still in the way).
+
+`tm remote show` prints the current ledger remote; `tm remote unset` reverts
+to `origin`.
+
 Sync uses **union-merge**: because each record is an append-only ULID-named file, concurrent proposals from different clones never conflict.
 
 ---

@@ -180,7 +180,7 @@ teammemory branch:
 
 `tm` reads and writes the branch through git plumbing (`hash-object`, `mktree`, `commit-tree`, `update-ref`) — no visible checkout, nothing ever touches the user's working tree.
 
-**Separate-remote mode:** a single git config key (`git config tm.remote git@github.com:acme/billing.memory.git`) points the branch at a different remote for teams with strict branch protection. Same code path, different push target. Not the default.
+**Separate-remote mode:** a single git config key (`git config tm.remote git@github.com:acme/billing.memory.git`) points the branch at a different remote for teams with strict branch protection. Same code path, different push target. Not the default. `tm remote set <name-or-url>` is the first-class way to view, set, or unset this value; see §10.5.
 
 ### 7.2 IDs and Conflict-Freedom
 
@@ -446,7 +446,7 @@ Same MCP server. As of 2026, Codex CLI, Copilot CLI, Cursor, Gemini CLI, and Con
 
 ### 10.5 CLI
 
-Seventeen commands:
+Eighteen commands:
 
 ```text
 tm init          # create orphan branch, default policy.yaml, local index;
@@ -462,6 +462,7 @@ tm observe       # add an observation: confirm|contradict|adjust_scope|mark_stal
 tm ack           # session-scoped requirement acknowledgment (local-only)
 tm approve       # human: activate / raise enforcement or confidence
 tm reject        # human: kill a memory
+tm remote        # show/set/unset the ledger remote (separate-remote mode; §7.1)
 tm list          # list memories (--stale, --contested, --stale-candidates,
                  # --duplicate, --superseded, --pending-supersede)
 tm show          # full detail: envelope, observations, derived state, pending scope adjustments
@@ -629,7 +630,7 @@ First 90 days: 500 stars; 5 external contributors; documented setups for 2+ codi
 
 **Hook latency annoys users** → Go binary + local SQLite, <100ms budget enforced by a perf test; network never on the hook path; hook is removable independently of MCP.
 
-**Branch protection blocks the orphan branch** → documented setup note (exempt `teammemory` from protection rules) and the separate-remote config fallback.
+**Branch protection blocks the orphan branch** → `tm remote set <url>` points the ledger at a separate remote (prd.md §7.1); push failures are captured per push attempt and surfaced in `tm status` / `tm doctor` so the user is not silently stuck.
 
 **Crowded market** → positioning per Section 2.1: evidence-validated + git-native + deterministic enforcement, against named alternatives.
 
@@ -655,7 +656,7 @@ First 90 days: 500 stars; 5 external contributors; documented setups for 2+ codi
 - `successful_pattern` memory type with type-specific activation gate; `mark_duplicate` and `supersede` observation kinds with cross-memory linking. **Shipped.**
 
   Deferred to Phase 6: `ownership` as a dedicated memory type (no concrete use case justifies it over `decision` today).
-- Polished separate-remote UX.
+- **Polished separate-remote UX** — `tm remote {show,set,unset}` first-class subcommand, `tm init` validates the remote via `ls-remote` and seeds the ref with a best-effort push (`--no-push` opt-out), and every push attempt classifies its failure (`protected_branch | auth | network | unknown`) into `.git/tm/push_failure.json`, surfaced via `tm sync` (foreground), `tm status`, and `tm doctor` (§7.1, §10.5, §15). **Shipped.**
 - **Package-manager distribution** — Homebrew and Scoop formulas on top of the existing GoReleaser pipeline, so `brew install teammemory` / `scoop install teammemory` are first-class install paths alongside `go install` and the GitHub Releases archives (§12.2, §16).
 
 **Phase 3 — GitHub workflow:** bring memories onto the PR review surface, not just the live agent hook.
