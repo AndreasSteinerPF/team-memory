@@ -42,7 +42,7 @@ func TestInitPersistsSeparateRemote(t *testing.T) {
 	gitExec(t, bare2, "rev-parse", "--verify", "refs/heads/teammemory") // override target got the branch
 }
 
-// TestSeparateRemoteBranchProtectionDiagnosis exercises prd.md §3.3 / §7.1 end
+// TestSeparateRemoteBranchProtectionDiagnosis exercises prd.md §15 / §7.1 end
 // to end against a real bare remote that rejects pushes to refs/heads/teammemory
 // via a pre-receive hook. It verifies that:
 //   - tm init records the rejection (tm.remote is still stored — URL was

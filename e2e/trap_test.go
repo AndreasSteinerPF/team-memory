@@ -10,7 +10,7 @@ import (
 // a repo seeded with a known pitfall blocks a TeamMemory-equipped agent from
 // repeating the mistake, while a naive agent (no hook) can silently bypass it.
 //
-// PRD §14.1 #5.
+// PRD §14 #5.
 func TestTrapRepoBenchmark(t *testing.T) {
 	dir := newGitRepo(t)
 	writeFile(t, dir, "billing/migrations/001_init.sql", "create table orders (id int);")

@@ -32,8 +32,6 @@ The wedge: **evidence-validated, git-native, governed team memory with a determi
 
 ## 3. Goals
 
-### 3.1 Product Goals
-
 1. Provide a local-first, Git-backed memory ledger for coding agents, stored in the code repo itself without polluting code branches.
 2. Allow agents to propose memories during normal development work.
 3. Let other agents confirm, contradict, adjust, or stale-mark memories when they naturally encounter related work.
@@ -42,13 +40,6 @@ The wedge: **evidence-validated, git-native, governed team memory with a determi
 6. Compute risk, status, confidence, and enforcement deterministically from policy, never from agent self-assessment.
 7. Maintain a conflict-free, auditable Git history of memory evolution.
 8. Avoid becoming a general-purpose personal memory system, generic RAG tool, or agent runtime.
-
-### 3.2 Portfolio / Open-Source Goals
-
-1. Demonstrate a serious applied-AI systems idea: agent memory as collaborative, governed, evolving project judgment.
-2. Provide a runnable demo showing two agents on different branches validating the same provisional memory.
-3. Attract interest from developers using Claude Code, Codex, Cursor, Continue, and other coding agents.
-4. Establish a public technical artifact around agent reliability, memory governance, and action-time context.
 
 ## 4. Non-Goals
 
@@ -603,18 +594,11 @@ The demo shows the deterministic path (hook), not the voluntary one — and ever
 
 ## 14. Success Metrics
 
-### 14.1 Product Success
-
 1. New user completes the quickstart and demo in under 10 minutes.
 2. Hook check completes in under 100ms on a ledger of 1,000 memories.
 3. The full lifecycle works end-to-end: propose → provisional surface → independent confirm → auto-activate → human escalation → requirement block.
 4. Two clones proposing/observing concurrently sync with zero merge conflicts.
-5. **Trap-repo benchmark:** in a seeded repo with a known pitfall, a naive agent repeats the mistake and a TeamMemory-equipped agent avoids it. This is the honest "does memory prevent repeated mistakes" metric, and a demo asset.
-
-### 14.2 Open-Source Success
-
-First 30 days: 100 GitHub stars; 5 meaningful issues; 2 external users on real repos; 1 technical essay; 1 demo video.
-First 90 days: 500 stars; 5 external contributors; documented setups for 2+ coding agents; 3 public references from AI/dev-tool communities.
+5. **Trap-repo benchmark:** in a seeded repo with a known pitfall, a naive agent repeats the mistake and a TeamMemory-equipped agent avoids it — the honest "does memory prevent repeated mistakes" metric.
 
 ## 15. Risks and Mitigations
 
