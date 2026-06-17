@@ -352,7 +352,7 @@ command = ["tm", "brief"]
 
 **Sync is automatic — you rarely run `tm sync` by hand.** Memories flow in both directions in the background:
 
-- **Outgoing:** `tm propose` and `tm observe` push the ledger branch in the background (detached, best-effort). If you're offline or the push is rejected, the record stays local and reconciles later — the command never blocks or fails on the network.
+- **Outgoing:** `tm propose` and `tm observe` push the ledger branch in the background (detached, best-effort). If you're offline or the push is rejected, the record stays local and reconciles later — the command never blocks or fails on the network. Stable rejections (e.g. branch protection) are classified and surfaced through `tm status` and `tm doctor` so you find out without watching git logs — see [Branch protection / separate-remote mode](#branch-protection--separate-remote-mode).
 - **Incoming:** `tm check-action` (including the `PreToolUse` hook) triggers a non-blocking background fetch when the last fetch is older than `sync.auto_fetch_after` (default 5 minutes). Teammates' memories arrive as you work, without anyone running a command.
 
 `tm sync` is the manual **reconciliation fallback** — run it when you were offline and want to flush queued records, when the remote diverged (a background push was rejected), or when you want an immediate refresh instead of waiting for the next opportunistic fetch:
