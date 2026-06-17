@@ -9,11 +9,9 @@
 
 ![TeamMemory in action — four Claude Code agents walk the full validation flywheel: propose, independently confirm, warn, approve, block](demo/hero.gif)
 
-`tm` is a CLI that gives your coding agents a shared, Git-backed memory of project lessons — failed approaches, fragile files, undocumented decisions — surfaced automatically at edit time through a hook.
+`tm` gives your coding agents a shared, Git-backed memory of project lessons — failed approaches, fragile files, undocumented decisions — so the next agent that touches a risky area is warned, or blocked, before repeating a known mistake.
 
-The key idea: a memory stays provisional until an independent agent confirms it with evidence. Only validated memories reach enforcement; no single agent can unilaterally create a binding rule.
-
-TeamMemory is not a general memory system or an agent framework. It is a focused tool for preserving the project judgment that should change what an agent does next.
+Agents propose and confirm memories on their own. A memory only enforces after an independent agent validates it, and only a human can promote it to a hard block. Memories sync across the team in the background — same ledger, same rules, every supported coding agent.
 
 ---
 
