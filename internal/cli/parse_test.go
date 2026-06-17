@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/AndreasSteinerPF/team-memory/internal/sessionid"
 )
 
 // TestEnvSessionPrefersEnvVar pins the precedence: $CLAUDE_SESSION_ID wins
@@ -86,8 +88,8 @@ func TestWriteCurrentSessionRoundtrip(t *testing.T) {
 	}
 	writeCurrentSession(gitDir, "abc-123")
 	chdirTemp(t, repo)
-	if got := currentSessionFromFile(); got != "abc-123" {
-		t.Fatalf("currentSessionFromFile = %q, want %q", got, "abc-123")
+	if got := sessionid.FromFile(); got != "abc-123" {
+		t.Fatalf("sessionid.FromFile = %q, want %q", got, "abc-123")
 	}
 }
 

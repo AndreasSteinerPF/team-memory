@@ -17,6 +17,7 @@ import (
 	"github.com/AndreasSteinerPF/team-memory/internal/model"
 	"github.com/AndreasSteinerPF/team-memory/internal/policy"
 	"github.com/AndreasSteinerPF/team-memory/internal/retrieve"
+	"github.com/AndreasSteinerPF/team-memory/internal/sessionid"
 )
 
 // Version is set at link time; default "dev".
@@ -264,7 +265,7 @@ type proposeArgs struct {
 	Scope    []string `json:"scope,omitempty" jsonschema:"Path globs this memory applies to (e.g. billing/migrations/**)."`
 	Commands []string `json:"commands,omitempty" jsonschema:"Command patterns this memory applies to (e.g. \"pytest *\", \"assistant jira create *\"). Token-aware, leading-subcommand match; a trailing * matches the rest of the command."`
 	Evidence []string `json:"evidence,omitempty" jsonschema:"Evidence as type:ref pairs (e.g. test_failure:logs/rollback.log)."`
-	Session  string   `json:"session,omitempty" jsonschema:"Session ID of the proposing agent for independence tracking. Use $CLAUDE_SESSION_ID."`
+	Session  string   `json:"session,omitempty" jsonschema:"Optional. Leave empty — tm reads the current session id from the hook context. Do not pass the literal '$CLAUDE_SESSION_ID' template; it will be normalized to empty."`
 	Actor    string   `json:"actor,omitempty" jsonschema:"Name of the proposing agent."`
 }
 
@@ -299,7 +300,7 @@ func (s *Server) addProposeTool(srv *sdkmcp.Server) {
 			Summary:  args.Summary,
 			Guidance: args.Guidance,
 			Scope:    model.Scope{Paths: args.Scope, Commands: args.Commands},
-			Actor:    model.Actor{Kind: model.ActorAgent, Name: actor, SessionID: args.Session},
+			Actor:    model.Actor{Kind: model.ActorAgent, Name: actor, SessionID: sessionid.Resolve(args.Session)},
 		}
 		for _, ev := range args.Evidence {
 			m.Evidence = append(m.Evidence, parseEvidence(ev))
@@ -334,7 +335,7 @@ type observeArgs struct {
 	Commands    []string `json:"commands,omitempty" jsonschema:"Suggested command patterns for adjust_scope (use instead of or alongside scope when correcting a command-scoped memory)."`
 	CanonicalID string   `json:"canonical_id,omitempty" jsonschema:"Canonical memory ID for kind=mark_duplicate (required). The memory_id is the duplicate; canonical_id is the kept one."`
 	Supersedes  string   `json:"supersedes,omitempty" jsonschema:"Obsolete memory ID for kind=supersede (required). File the observation on the new canonical (memory_id), naming the obsolete one here."`
-	Session     string   `json:"session,omitempty" jsonschema:"Your session ID for independence tracking. Use $CLAUDE_SESSION_ID."`
+	Session     string   `json:"session,omitempty" jsonschema:"Optional. Leave empty — tm reads the current session id from the hook context. Do not pass the literal '$CLAUDE_SESSION_ID' template; it will be normalized to empty."`
 	Actor       string   `json:"actor,omitempty" jsonschema:"Name of the observing agent."`
 }
 
@@ -395,7 +396,7 @@ Always include evidence when observing. Observations without evidence are less u
 			Target:  args.MemoryID,
 			Kind:    kind,
 			Summary: args.Summary,
-			Actor:   model.Actor{Kind: model.ActorAgent, Name: actor, SessionID: args.Session},
+			Actor:   model.Actor{Kind: model.ActorAgent, Name: actor, SessionID: sessionid.Resolve(args.Session)},
 		}
 		for _, ev := range args.Evidence {
 			o.Evidence = append(o.Evidence, parseEvidence(ev))
