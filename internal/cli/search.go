@@ -22,8 +22,13 @@ func newSearchCmd(g *globalOpts) *cobra.Command {
 			}
 			defer e.close()
 			out := cmd.OutOrStdout()
-			q := retrieve.FTSQuery(strings.Join(args, " "))
+			raw := strings.Join(args, " ")
+			q := retrieve.FTSQuery(raw)
 			if q == "" {
+				if strings.TrimSpace(raw) != "" {
+					fmt.Fprintln(out, "Query has no searchable tokens — search uses lexical keywords, not glob patterns. Try a word from a memory title, or run `tm status` to see what's in the ledger.")
+					return nil
+				}
 				fmt.Fprintln(out, "No results.")
 				return nil
 			}

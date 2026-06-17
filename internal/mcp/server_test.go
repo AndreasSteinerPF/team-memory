@@ -194,6 +194,23 @@ func TestSearchTool(t *testing.T) {
 	if !strings.Contains(resultText(res), "No results") {
 		t.Fatalf("expected no results for non-matching query, got:\n%s", resultText(res))
 	}
+
+	// All-punctuation query (e.g. "*") tokenizes to nothing — distinct from a
+	// genuine miss so callers don't mistake it for an empty ledger.
+	res = callTool(t, ctx, session, "tm_search", map[string]any{"query": "*"})
+	text = resultText(res)
+	if !strings.Contains(text, "no searchable tokens") {
+		t.Fatalf("expected 'no searchable tokens' for %q, got:\n%s", "*", text)
+	}
+	if strings.Contains(text, "No results") {
+		t.Fatalf("all-punctuation query should not fall through to 'No results.', got:\n%s", text)
+	}
+
+	// Empty query stays as the plain no-results message.
+	res = callTool(t, ctx, session, "tm_search", map[string]any{"query": ""})
+	if !strings.Contains(resultText(res), "No results") {
+		t.Fatalf("expected 'No results.' for empty query, got:\n%s", resultText(res))
+	}
 }
 
 func TestProposeTool(t *testing.T) {

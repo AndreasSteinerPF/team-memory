@@ -219,6 +219,9 @@ Use for ad-hoc queries when you know what to look for by keyword. For edit-time 
 		}
 		q := retrieve.FTSQuery(args.Query)
 		if q == "" {
+			if strings.TrimSpace(args.Query) != "" {
+				return textResult("Query has no searchable tokens — tm_search uses lexical keywords, not glob patterns. Try a word from a memory title, or call tm_status to see what's in the ledger.\n"), nil, nil
+			}
 			return textResult("No results.\n"), nil, nil
 		}
 		ids, err := s.deps.Index.SearchIDs(q)
