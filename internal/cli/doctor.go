@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -200,6 +201,46 @@ func checkRemote(repoDir string) checkResult {
 	return r
 }
 
+// checkPushFailures reports the latest recorded push-failure (spec §3.3). A
+// fresh failure of any consecutive count is sevWarn; a missing or stale record
+// is sevOK with detail "none". The hint comes from the shared
+// pushFailureFixHint helper so doctor and status read the same way.
+func checkPushFailures(gitDir string) checkResult {
+	r := checkResult{name: "Recent push failures"}
+	store, err := git.OpenPushFailureStore(gitDir)
+	if err != nil {
+		r.sev, r.detail = sevOK, "none"
+		return r
+	}
+	rec, err := store.ReadFresh(time.Now().UTC(), 7*24*time.Hour)
+	if err != nil || rec == nil {
+		r.sev, r.detail = sevOK, "none"
+		return r
+	}
+	r.sev = sevWarn
+	r.detail = fmt.Sprintf("%dx %s on %q (%s ago)",
+		rec.Consecutive, pushFailureHumanKind(rec.Kind),
+		rec.Remote, humanAgo(time.Since(rec.At)))
+	r.hint = pushFailureFixHint(rec)
+	return r
+}
+
+// humanAgo formats a duration as a short "Nm/Nh/Nd" or "just now" label for
+// doctor output. Sub-minute durations are rare in practice; we still show a
+// readable string.
+func humanAgo(d time.Duration) string {
+	switch {
+	case d < time.Minute:
+		return "just now"
+	case d < time.Hour:
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh", int(d.Hours()))
+	default:
+		return fmt.Sprintf("%dd", int(d.Hours()/24))
+	}
+}
+
 func renderReport(w io.Writer, repoDir, branch string, results []checkResult) {
 	fmt.Fprintf(w, "TeamMemory doctor — %s (branch: %s)\n\n", repoDir, branch)
 	warns, fails := 0, 0
@@ -244,19 +285,25 @@ func newDoctorCmd(g *globalOpts) *cobra.Command {
 			var results []checkResult
 			lc := checkLedger(led)
 			results = append(results, lc)
+			gitDir, gitDirErr := led.GitDir()
 			if lc.sev == sevFail {
 				results = append(results,
 					checkResult{name: "Local index", sev: sevSkip, detail: "ledger not initialized"},
 					checkResult{name: "policy.yaml", sev: sevSkip, detail: "ledger not initialized"},
 				)
 			} else {
-				gitDir, err := led.GitDir()
-				if err != nil {
-					return err
+				if gitDirErr != nil {
+					return gitDirErr
 				}
 				results = append(results, checkIndex(led, gitDir), checkPolicy(led))
 			}
 			results = append(results, checkHooks(repoDir), checkMCP(repoDir), checkRemote(repoDir))
+			if gitDirErr != nil {
+				// degrade gracefully — no gitDir means no failure store to inspect
+				results = append(results, checkResult{name: "Recent push failures", sev: sevOK, detail: "none"})
+			} else {
+				results = append(results, checkPushFailures(gitDir))
+			}
 
 			renderReport(cmd.OutOrStdout(), repoDir, g.branch, results)
 			if anyFailed(results) {
