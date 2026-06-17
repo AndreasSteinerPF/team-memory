@@ -219,6 +219,7 @@ tm observe       add an observation (confirm / contradict / adjust_scope / mark_
 tm ack           session-scoped requirement acknowledgment (local-only, never committed)
 tm approve       activate a memory; set enforcement and confidence (human action)
 tm reject        kill a memory permanently (human action)
+tm remote        show / set / unset the ledger remote (separate-remote mode)
 tm list          list memories (--stale, --contested, --stale-candidates,
                  --duplicate, --superseded, --pending-supersede)
 tm show          full detail: envelope, observations, derived state
@@ -363,7 +364,7 @@ tm sync
 tm sync --remote git@github.com:org/repo-memory.git
 ```
 
-`tm init --remote <name-or-url>` stores a separate ledger remote as `git config tm.remote`; `tm sync`, background fetch, and background push all honor it.
+`tm init --remote <name-or-url>` stores a separate ledger remote as `git config tm.remote`, validates it (`ls-remote`), and seeds the orphan `teammemory` ref with a best-effort push so teammates can fetch immediately. `tm sync`, background fetch, and background push all honor the stored value. Pass `--no-push` for an offline / CI bootstrap.
 
 ### Branch protection / separate-remote mode
 

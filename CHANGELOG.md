@@ -6,6 +6,83 @@
 All notable changes to TeamMemory are documented here. The format is based on
 [Keep a Changelog], and this project adheres to [Semantic Versioning].
 
+## [0.5.0] - 2026-06-17
+
+The "polished separate-remote UX" release. The separate-remote escape hatch
+for teams under branch protection (`prd.md §7.1`) is now a first-class
+surface: a `tm remote` subcommand, validation + push on `tm init`, and a
+push-failure capture pipeline that surfaces stable rejections through
+`tm sync`, `tm status`, and `tm doctor` instead of silently swallowing them.
+
+### Added
+
+- **`tm remote` subcommand** — `tm remote show` prints the current ledger
+  remote and its source (configured vs. default), resolving bare names to
+  URLs via `git remote get-url`. `tm remote set <name-or-url>` validates the
+  target with `git ls-remote` (5s timeout) before writing `git config
+  tm.remote`; `--force` skips validation. `tm remote unset` is idempotent.
+  Bare `tm remote` aliases to `show`. (`prd.md §7.1`, `§10.5`)
+- **`tm init` validates and seeds the remote.** When `--remote <url>` is
+  given (or `origin` is the implicit fallback), `tm init` runs `ls-remote`
+  to confirm reachability, then attempts a best-effort push of the orphan
+  `teammemory` ref so teammates can fetch it immediately. A reachable URL is
+  stored as `tm.remote`; an unreachable URL is **not** stored, and the user
+  sees a one-line `Fix: ... tm remote set ...` hint. `--no-push` skips both
+  steps for offline / CI bootstrap. Init never errors out on remote
+  failures — the local ledger is always usable. (`prd.md §7.1`)
+- **Push-failure capture and classification.** Every push attempt — from
+  `tm sync`, the background pushes after `tm propose` / `tm observe`, and
+  `tm init`'s seed — classifies its stderr into one of four kinds
+  (`protected_branch | auth | network | unknown`) and writes the latest
+  outcome to `.git/tm/push_failure.json` (local-only, same convention as
+  `.git/tm/acks` and `.git/tm/nudge`). Consecutive same-kind failures
+  increment a counter; any successful push clears the record. (`prd.md §7.1`)
+- **Diagnosis on every surface.**
+  - `tm sync` (foreground) prints the classified kind plus a kind-specific
+    fix hint on stderr when its push fails.
+  - `tm status` appends a `⚠ Last N background pushes to "<remote>"
+    rejected (<kind>). Fix: ...` line when consecutive ≥ 2 and the record
+    is fresh (within 7 days). A single transient failure is silent.
+  - `tm doctor` adds a `Recent push failures` check — `sevOK / "none"` when
+    clear, `sevWarn` with the diagnosis when fresh.
+  - On `protected_branch`, the fix hint names `tm remote set` as the
+    recovery path — closing the loop from detection to action.
+- **`ledger.OnPushResult` callback hook.** `internal/ledger.Ledger` gained an
+  `OnPushResult(remote, stderr, err)` field invoked after every push attempt
+  in `doPush`, with best-effort stderr extraction from the wrapped error
+  message. The CLI's `openEnv` installs the callback so every `Sync`
+  (foreground or background) records its outcome — no per-call-site wiring.
+- **`git.ValidateRemote(repoDir, remote, timeout)`** — shared helper for
+  `tm init` and `tm remote set`. Runs `git ls-remote` under a
+  `context.WithTimeout`; returns verbatim stderr on failure so callers can
+  show the user exactly what git said.
+
+### Changed
+
+- **README — separate-remote mode is documented as a recipe**, not just a
+  config-key footnote. New `### Branch protection / separate-remote mode`
+  subsection under `## Sync`. The `tm init --remote` paragraph now mentions
+  validation, the seed push, and `--no-push`. The Commands table lists
+  `tm remote`.
+- **`prd.md`** — §7.1 cross-references the new subcommand; §10.5 bumped to
+  eighteen commands; §15 "Branch protection" risk row now points at
+  `tm remote set` and the new diagnosis surfaces instead of a generic
+  "documented setup note"; §17 Phase 2 marks "Polished separate-remote UX"
+  as **Shipped**.
+
+### Fixed
+
+- **First push from `tm init` no longer races propose's background push.**
+  `tm init`'s seed uses a raw `git push refs/heads/teammemory:refs/heads/teammemory`
+  rather than `ledger.Sync` — `Sync` would fetch-then-push and, on a remote
+  that already had the orphan tip, pull state into the freshly created local
+  ledger before the user's first `tm propose`. The downstream
+  `TestSyncUnionMergeAcrossClonesCLI` e2e exercises the un-merged case and
+  caught this. The `e2e/push_test.go::TestProposeTriggersBackgroundPush`
+  poll was also tightened to wait for the actual memory record rather than
+  branch existence, since init now seeds the branch before propose's
+  background push lands.
+
 ## [0.4.0] - 2026-06-16
 
 The "memory types and cross-memory linking" release. Adds the
@@ -281,6 +358,7 @@ dogfooding on real repositories.
 - **Acceptance tests** — flagship lifecycle demo, trap-repo retrieval benchmark,
   two-clone concurrent-sync convergence, and hook latency budget.
 
+[0.5.0]: https://github.com/AndreasSteinerPF/team-memory/releases/tag/v0.5.0
 [0.4.0]: https://github.com/AndreasSteinerPF/team-memory/releases/tag/v0.4.0
 [0.3.0]: https://github.com/AndreasSteinerPF/team-memory/releases/tag/v0.3.0
 [0.2.0]: https://github.com/AndreasSteinerPF/team-memory/releases/tag/v0.2.0
