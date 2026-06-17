@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 
+	"github.com/AndreasSteinerPF/team-memory/internal/git"
 	"github.com/spf13/cobra"
 )
 
@@ -21,9 +22,19 @@ func newSyncCmd(g *globalOpts) *cobra.Command {
 			if remote == "" {
 				remote = e.ledgerRemote()
 			}
-			res, err := e.led.Sync(remote)
-			if err != nil {
-				return err
+			res, syncErr := e.led.Sync(remote)
+			if syncErr != nil {
+				// The push-failure store is already populated by openEnv's
+				// callback. Read it back and print the same diagnosis the
+				// status/doctor surfaces use.
+				if store, oerr := git.OpenPushFailureStore(e.gitDir); oerr == nil {
+					if rec, rerr := store.Read(); rerr == nil && rec != nil {
+						fmt.Fprintf(cmd.ErrOrStderr(),
+							"sync: push to %q failed (%s).\n  Fix: %s\n",
+							rec.Remote, pushFailureHumanKind(rec.Kind), pushFailureFixHint(rec))
+					}
+				}
+				return syncErr
 			}
 			if err := e.idx.Update(); err != nil {
 				return err
