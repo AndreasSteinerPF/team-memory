@@ -7,4 +7,4 @@ stdout 'rollback failure on migration'
 ! stdout 'caching'
 
 exec tm search '!!!'
-stdout 'No results.'
+stdout 'no searchable tokens'

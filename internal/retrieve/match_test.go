@@ -69,4 +69,9 @@ func TestFTSQuery(t *testing.T) {
 	if ftsQuery("") != "" {
 		t.Errorf("empty description must yield empty query")
 	}
+	// Glob-pattern inputs tokenize to nothing — callers rely on this to
+	// surface the "no searchable tokens" message instead of "no matches".
+	if got := ftsQuery("**"); got != "" {
+		t.Errorf("glob-pattern ftsQuery = %q, want empty", got)
+	}
 }
