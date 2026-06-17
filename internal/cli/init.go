@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -17,6 +18,7 @@ import (
 func newInitCmd(g *globalOpts) *cobra.Command {
 	var remote string
 	var harnessName string
+	var noPush bool
 	cmd := &cobra.Command{
 		Use:   "init",
 		Short: "Create the ledger branch, default policy, and local index",
@@ -47,13 +49,61 @@ func newInitCmd(g *globalOpts) *cobra.Command {
 				if err := led.Init(py); err != nil {
 					return err
 				}
-				if remote != "" {
-					// env isn't open yet (the ledger was just created), so run git
-					// directly rather than through e.git.
-					if _, err := (git.Runner{Dir: repoDir}).Run("config", "tm.remote", remote); err != nil {
-						return err
+				// Resolve the candidate remote: explicit --remote wins; otherwise
+				// default to "origin" if the repo has one configured.
+				candidate := remote
+				if candidate == "" {
+					if _, err := (git.Runner{Dir: repoDir}).Run("remote", "get-url", "origin"); err == nil {
+						candidate = "origin"
 					}
 				}
+
+				if candidate != "" && !noPush {
+					if vErr := git.ValidateRemote(repoDir, candidate, 5*time.Second); vErr != nil {
+						if remote != "" {
+							fmt.Fprintf(out, "Remote %q not reachable (%v); did not store tm.remote.\n", remote, vErr)
+							fmt.Fprintln(out, "Fix the URL, then `tm remote set <value>`.")
+						} else {
+							fmt.Fprintf(out, "origin not reachable (%v); ledger created locally.\n", vErr)
+						}
+						candidate = "" // skip the push below
+					} else if remote != "" {
+						// env isn't open yet (the ledger was just created), so run git
+						// directly rather than through e.git.
+						if _, err := (git.Runner{Dir: repoDir}).Run("config", "tm.remote", remote); err != nil {
+							return err
+						}
+					}
+				}
+
+				if candidate != "" && !noPush {
+					// Best-effort push to seed the remote ref so teammates can fetch
+					// it. Use a raw `git push` (not led.Sync) so init does NOT pull
+					// remote state into the freshly-created orphan ledger — init's
+					// job is to seed, not to reconcile (prd.md §7.4).
+					ref := "refs/heads/" + g.branch
+					_, perr := (git.Runner{Dir: repoDir}).Run("push", "--quiet", candidate, ref+":"+ref)
+					if perr == nil {
+						fmt.Fprintf(out, "Pushed ledger branch to %s. Teammates can fetch it now.\n", candidate)
+					} else {
+						// openEnv's callback isn't installed yet (we did not call
+						// openEnv during init). Record directly so tm status/doctor
+						// see the failure on the next invocation.
+						gitDir, _ := led.GitDir()
+						if store, oerr := git.OpenPushFailureStore(gitDir); oerr == nil {
+							kind := git.ClassifyPushStderr(perr.Error())
+							_ = store.Record(candidate, kind, perr.Error(), time.Now().UTC())
+							if kind == git.KindProtectedBranch {
+								fmt.Fprintf(out, "%s rejects the teammemory branch (branch protection).\n", candidate)
+								fmt.Fprintln(out, "Fix: exempt 'teammemory' from protection rules,")
+								fmt.Fprintln(out, "     or run: tm remote set git@host:org/repo-memory.git")
+							} else {
+								fmt.Fprintf(out, "Push deferred: %v. Will retry on next propose/observe/sync.\n", perr)
+							}
+						}
+					}
+				}
+
 				gitDir, err := led.GitDir()
 				if err != nil {
 					return err
@@ -104,6 +154,7 @@ func newInitCmd(g *globalOpts) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&remote, "remote", "", "optional separate remote for the ledger branch")
 	cmd.Flags().StringVar(&harnessName, "harness", "", "install hooks for this harness (claude, codex, copilot, cursor, gemini)")
+	cmd.Flags().BoolVar(&noPush, "no-push", false, "do not validate or push to the ledger remote (offline/bootstrap)")
 	return cmd
 }
 
@@ -130,7 +181,5 @@ func printSetup(w io.Writer, repoDir, remote string) {
 	} else {
 		fmt.Fprintln(w, "teammemory MCP server already registered in .mcp.json.")
 	}
-	if remote != "" {
-		fmt.Fprintf(w, "Ledger remote stored as git config tm.remote=%s; sync and background fetch/push use it.\n", remote)
-	}
+	_ = remote
 }

@@ -26,25 +26,26 @@ func TestProposeTriggersBackgroundPush(t *testing.T) {
 		t.Fatalf("propose failed: %s", errOut)
 	}
 
-	// The push is detached; poll the bare remote until the branch arrives.
+	// The push is detached; poll the bare remote until the memory record
+	// arrives. (Init may have already seeded refs/heads/teammemory with just
+	// the policy commit, so polling for branch existence alone is insufficient
+	// — we need the propose's background push to land.)
 	deadline := time.Now().Add(15 * time.Second)
+	var out []byte
 	for {
-		if exec.Command("git", "-C", bare, "rev-parse", "--verify", "--quiet",
-			"refs/heads/teammemory").Run() == nil {
+		o, err := exec.Command("git", "-C", bare, "ls-tree", "-r", "--name-only",
+			"refs/heads/teammemory").Output()
+		if err == nil && strings.Contains(string(o), "memories/") {
+			out = o
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatal("ledger branch never arrived on the remote")
+			if err != nil {
+				t.Fatalf("ledger branch never arrived on the remote: %v", err)
+			}
+			t.Fatalf("ledger branch arrived but has no memory record:\n%s", o)
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-
-	out, err := exec.Command("git", "-C", bare, "ls-tree", "-r", "--name-only",
-		"refs/heads/teammemory").Output()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(out), "memories/") {
-		t.Fatalf("pushed tree has no memory record:\n%s", out)
-	}
+	_ = out
 }
