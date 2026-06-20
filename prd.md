@@ -542,10 +542,10 @@ Symbol matching, error-signature matching, and semantic ranking are roadmap.
 1. SaaS backend, web dashboard, GitHub app.
 2. Embeddings / semantic retrieval.
 3. Event-sourcing ledger with materialized state (superseded by derived state).
-4. `ownership` as a dedicated memory type (deferred to Phase 6 — expressible as `decision` today).
+4. `ownership` as a dedicated memory type (deferred to Phase 7 — expressible as `decision` today).
 5. Signed records, multi-human approval.
 6. Symbol-level anchors, content-hash anchor resolution.
-7. Dedicated reviewer agents, multi-agent debate.
+7. Dedicated reviewer agents, multi-agent debate (proactive memory verification via background agents is a Phase 3 deferred item — §17).
 
 ## 13. Flagship Demo
 
@@ -604,9 +604,9 @@ The demo shows the deterministic path (hook), not the voluntary one — and ever
 
 **Agents ignore the tool** → the hook makes `check_action` deterministic in Claude Code (the headline feature, not a mitigation). Other agents: MCP + generated instructions; their experience is honestly documented as degraded. Session-start briefing injects the voluntary-verb instructions deterministically in every major agent CLI.
 
-**Agents ignore the voluntary verbs** → (1) the SessionStart brief injects the when-to-remember instructions every session; (2) a near-moment nudge engine (PostToolUse signal recording + Stop emission, Section 10.1) escalates the highest-value moments to pointed `tm_propose`/`tm_observe` prompts, bounded by an anti-spam budget (max 3/session, cooldown, suppress-if-already-acted) so it never manufactures junk proposals.
+**Agents ignore the voluntary verbs** → (1) the SessionStart brief injects the when-to-remember instructions every session; (2) a near-moment nudge engine (PostToolUse signal recording + Stop emission, Section 10.1) escalates the highest-value moments to pointed `tm_propose`/`tm_observe` prompts, bounded by an anti-spam budget (max 3/session, cooldown, suppress-if-already-acted) so it never manufactures junk proposals. The budget bounds nudge *volume*; its capability cost is measured in Phase 3 (§17).
 
-**Memory spam** → usage-constraining MCP descriptions with explicit non-examples; six types only; provisional memories capped at 2 per check; cheap `reject`; FTS-assisted duplicate warning at propose time ("a similar memory exists — confirm it instead?"). `successful_pattern` carries a type-specific activation gate (§8.2) so unilateral proposals stay provisional until independently confirmed.
+**Memory spam** → usage-constraining MCP descriptions with explicit non-examples; six types only; provisional memories capped at 2 per check; cheap `reject`; FTS-assisted duplicate warning at propose time ("a similar memory exists — confirm it instead?"), extended with a secret/PII scan in Phase 3 (§17). `successful_pattern` carries a type-specific activation gate (§8.2) so unilateral proposals stay provisional until independently confirmed.
 
 **Bad memories poison agents** → active ≠ authoritative; independent confirmation gates medium+ activation; contradictions demote to contested immediately; requirement needs a human; anchor drift is annotated.
 
@@ -639,29 +639,37 @@ The demo shows the deterministic path (hook), not the voluntary one — and ever
 - **Cross-harness E2E test framework** — per-harness payload fixtures (default contract/replay/packaging tiers) plus build-tag-gated live capture and live-firing tiers that pin the remaining live-payload checks (§10.6; `e2e/harness/`, recipes in `docs/verification/cross-harness.md`). **Shipped.**
 - `successful_pattern` memory type with type-specific activation gate; `mark_duplicate` and `supersede` observation kinds with cross-memory linking. **Shipped.**
 
-  Deferred to Phase 6: `ownership` as a dedicated memory type (no concrete use case justifies it over `decision` today).
+  Deferred to Phase 7: `ownership` as a dedicated memory type (no concrete use case justifies it over `decision` today).
 - **Polished separate-remote UX** — `tm remote {show,set,unset}` first-class subcommand, `tm init` validates the remote via `ls-remote` and seeds the ref with a best-effort push (`--no-push` opt-out), and every push attempt classifies its failure (`protected_branch | auth | network | unknown`) into `.git/tm/push_failure.json`, surfaced via `tm sync` (foreground), `tm status`, and `tm doctor` (§7.1, §10.5, §15). **Shipped.**
 - **Package-manager distribution** — Homebrew and Scoop formulas plus a POSIX `install.sh` (checksum-verified, no deps beyond `curl`/`tar`) on top of the existing GoReleaser pipeline, so `brew install AndreasSteinerPF/tm/tm`, `scoop install tm`, and `curl -fsSL …/install.sh | sh` are first-class install paths alongside `go install` and the GitHub Releases archives (§12.2, §16). **Shipped.**
 
-**Phase 3 — GitHub workflow:** bring memories onto the PR review surface, not just the live agent hook.
+**Phase 3 — Memory trust & safety:** _next._ Harden the three trust gaps surfaced by external review — leak prevention, true independent confirmation, and measured nudge cost. These take priority over Phases 4–7 below.
+
+- **Propose-time secret/PII scan** — scan a memory's title/summary/guidance and evidence refs for credential/secret patterns (and optionally PII) before the record is appended, reusing the propose-time checkpoint that already emits the FTS duplicate warning (§15). Records are append-only on the orphan branch (§7.1), so a leaked secret persists in git history, and the contradict/contested lifecycle cannot remove it — a secret is not *wrong*, so no agent ever contradicts it. Prevention at write time is the only cheap remedy; warn-or-block is configurable in `policy.yaml`.
+- **Identity-aware independent confirmation** — independence is currently scoped to `actor.session_id` (§8.2), so one person across two sessions can self-activate a memory (their own agent confirms its own proposal). Add a stricter `different_actor` independence mode keyed on the proposer's git identity — already captured in the ledger commit metadata (the orphan-branch commit author) but not yet in the record envelope (§9.1 `Actor`). Requires surfacing commit-author identity into the derived-state inputs (or stamping it into the envelope). Ships as a policy option, not the default: it must degrade gracefully where identity is shared or absent (solo devs, CI bots, unset `user.email`).
+- **Nudge capability evaluation** — the anti-spam budget (§8.1, §10.1) bounds nudge *volume* but the capability cost of the injected context is unmeasured. Add an A/B eval — identical tasks with nudges on vs off — to quantify the impact beyond the trap-repo mistake-avoidance metric (§14, metric 5), and feed the result back into the budget defaults.
+
+  Deferred: proactive verification via background sub-agents (spin off a cheap agent to reproduce a provisional memory's claim rather than waiting for an organic encounter) — the dedicated-reviewer-agents family held out of MVP scope (§12.3 item 7), held back here in favor of first maximizing in-session participation without extra turns or cost.
+
+**Phase 4 — GitHub workflow:** bring memories onto the PR review surface, not just the live agent hook.
 
 - **PR memory action** — a GitHub Action that runs retrieval against a PR's changed paths/commands and posts the relevant memories as a PR comment/check.
 - **Memory timeline report** — the static HTML timeline (§12.2) visualizing the record/observation history over time.
 
-**Phase 4 — Retrieval depth:** extend V1's precision-first lexical retrieval (§11) with deeper matching and ranking signals.
+**Phase 5 — Retrieval depth:** extend V1's precision-first lexical retrieval (§11) with deeper matching and ranking signals.
 
 - **Symbol anchors** — anchor memories to code symbols (functions/types), not just file paths and line ranges (§9.1).
 - **Error-signature matching** — surface memories by matching error/stack-trace signatures, so a failing command finds the memory about that failure.
 - **Content-hash drift detection** — detect when anchored code *content* has changed via content hashes, beyond line-range drift (§9.1).
 - **Semantic ranking** — embeddings-based ranking of candidates (V1 is lexical only, no embeddings — §11, §12.3).
 
-**Phase 5 — Harness breadth:** extend the §10.6 adapter set to additional coding agents — one adapter plus its packaging per harness, no engine changes.
+**Phase 6 — Harness breadth:** extend the §10.6 adapter set to additional coding agents — one adapter plus its packaging per harness, no engine changes.
 
 - **OpenCode** — hook + MCP adapter and `tm init --harness opencode` packaging.
 - **Pi** — hook + MCP adapter and `tm init --harness pi` packaging.
 - Further open-source coding agents as they gain a hook surface comparable to §10.6's matrix.
 
-**Phase 6 — Governance depth:** signed records, multi-human approval, policy templates, expiry workflows, contested-memory review UI.
+**Phase 7 — Governance depth:** signed records, multi-human approval, policy templates, expiry workflows, contested-memory review UI.
 
 ## 18. Decisions Locked
 
