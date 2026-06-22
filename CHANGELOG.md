@@ -6,6 +6,23 @@
 All notable changes to TeamMemory are documented here. The format is based on
 [Keep a Changelog], and this project adheres to [Semantic Versioning].
 
+## [0.6.3] - 2026-06-22
+
+Bugfix release hardening hook startup and Codex nudge delivery after dogfooding
+with fetched team-memory branches and Codex Stop hooks.
+
+### Fixed
+
+- **Already-fetched ledger branches no longer break hook startup.** When a repo
+  has exactly one remote-tracking `teammemory` branch, `tm init`, `tm doctor`,
+  and hook-time environment opening now adopt it into the local
+  `refs/heads/teammemory` ref instead of treating the ledger as missing. If
+  multiple remote-tracking candidates exist, tm still refuses to guess.
+- **Codex Stop-hook nudges no longer emit invalid JSON.** Codex Stop advisories
+  are now queued silently and drained through the next `UserPromptSubmit`
+  `additionalContext` channel, while requirement blocks still use Codex's
+  supported top-level `decision` / `reason` shape.
+
 ## [0.6.2] - 2026-06-17
 
 Bugfix release closing the third Claude Code surfacing gap (the MCP
@@ -454,6 +471,10 @@ dogfooding on real repositories.
 - **Acceptance tests** — flagship lifecycle demo, trap-repo retrieval benchmark,
   two-clone concurrent-sync convergence, and hook latency budget.
 
+[0.6.3]: https://github.com/AndreasSteinerPF/team-memory/releases/tag/v0.6.3
+[0.6.2]: https://github.com/AndreasSteinerPF/team-memory/releases/tag/v0.6.2
+[0.6.1]: https://github.com/AndreasSteinerPF/team-memory/releases/tag/v0.6.1
+[0.6.0]: https://github.com/AndreasSteinerPF/team-memory/releases/tag/v0.6.0
 [0.5.0]: https://github.com/AndreasSteinerPF/team-memory/releases/tag/v0.5.0
 [0.4.0]: https://github.com/AndreasSteinerPF/team-memory/releases/tag/v0.4.0
 [0.3.0]: https://github.com/AndreasSteinerPF/team-memory/releases/tag/v0.3.0
