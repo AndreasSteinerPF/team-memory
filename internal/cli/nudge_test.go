@@ -76,6 +76,48 @@ func TestNudgeHookQueuesPendingOnClaude(t *testing.T) {
 	}
 }
 
+func TestNudgeHookQueuesPendingOnCodex(t *testing.T) {
+	repo := initRepo(t)
+	feed := func(s string) { runSignalForTest(t, repo, s) }
+	feed(`{"session_id":"s1","tool_name":"Bash","tool_input":{"command":"go test ./..."},"tool_response":{"exit_code":1}}`)
+	feed(`{"session_id":"s1","tool_name":"Edit","tool_input":{"file_path":"internal/index/x.go"}}`)
+	feed(`{"session_id":"s1","tool_name":"Bash","tool_input":{"command":"go test ./..."},"tool_response":{"exit_code":0}}`)
+
+	var out, errb bytes.Buffer
+	code := cli.Run([]string{"--repo", repo, "nudge", "--hook", "--harness", "codex"}, strings.NewReader(`{"session_id":"s1"}`), &out, &errb)
+	if code != 0 {
+		t.Fatalf("codex nudge exit %d: %s", code, errb.String())
+	}
+	if strings.TrimSpace(out.String()) != "" {
+		t.Fatalf("codex Stop nudge should stay silent and queue for prompt drain; got %q", out.String())
+	}
+
+	data, err := os.ReadFile(filepath.Join(repo, ".git", "tm", "nudge", "s1.json"))
+	if err != nil {
+		t.Fatalf("read journal: %v", err)
+	}
+	var j struct {
+		Pending []string `json:"pending"`
+	}
+	if err := json.Unmarshal(data, &j); err != nil {
+		t.Fatal(err)
+	}
+	if len(j.Pending) != 1 || !strings.Contains(j.Pending[0], "tm_propose") {
+		t.Fatalf("expected one tm_propose nudge queued in Pending, got: %v", j.Pending)
+	}
+
+	var promptOut bytes.Buffer
+	code = cli.Run([]string{"--repo", repo, "signal", "--hook", "--prompt", "--harness", "codex"}, strings.NewReader(`{"session_id":"s1"}`), &promptOut, &errb)
+	if code != 0 {
+		t.Fatalf("codex prompt signal exit %d: %s", code, errb.String())
+	}
+	if !strings.Contains(promptOut.String(), `"hookEventName":"UserPromptSubmit"`) ||
+		!strings.Contains(promptOut.String(), `"additionalContext"`) ||
+		!strings.Contains(promptOut.String(), "tm_propose") {
+		t.Fatalf("expected codex prompt drain via additionalContext, got %q", promptOut.String())
+	}
+}
+
 // TestPromptSignalDrainsPendingViaAdditionalContext pins the surfacing path on
 // Claude: a queued nudge from a prior Stop event must be re-emitted on the
 // next UserPromptSubmit inside hookSpecificOutput.additionalContext (the

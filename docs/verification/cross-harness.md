@@ -97,22 +97,15 @@ against the repo root (codex emits relative `apply_patch` paths) via the shared
   `codex` row's `PostToolFailureSensor` was set to **no**, and the `fail_pass_nudge`
   scenario is not applicable to codex. (Claude Code was later found to share this
   exact behavior — see the Claude section below — and was flipped to `no` too.)
-- **Stop hook output shape — preemptively aligned with Claude Code (2026-06-16):**
-  Claude Code's Stop hook was found live to reject `hookSpecificOutput`
-  (`(root): Invalid input`); see the Claude section below for the full payload
-  and resolution. Codex's Stop schema is **not yet live-captured**, but every
-  other shared wire shape has matched Claude Code exactly, so `codex.go` was
-  updated alongside `claude.go` to render Stop advisories as plain text to
-  stdout and a defensive Stop-block as top-level `{decision,reason}`. Pin a
-  live capture during the next `TM_CODEX_LIVE_REPO` session and either confirm
-  this or peel it back if Codex actually accepts `hookSpecificOutput` on Stop.
-  Pinned by `harness.TestCodexRenderStopAdvisoryUsesPlainStdout`.
-  **Update (2026-06-17):** the matching question is now *whether Codex
-  surfaces Stop-hook stdout to the next agent turn at all*. Claude Code does
-  NOT (see the Claude Stop section below — three fired nudges, zero visible),
-  and `tm` was patched to queue + re-inject via UserPromptSubmit
-  `additionalContext`. The same gap may apply to Codex; recipe and remediation
-  pointer are in the second Codex Stop block further below.
+- **Stop hook output shape — contradicted live for Codex (2026-06-22):**
+  Codex rejected a TeamMemory Stop nudge rendered as plain text with
+  `error: hook returned invalid stop hook JSON output`. Codex also does not
+  accept `hookSpecificOutput.additionalContext` on Stop. `codex.go` now renders
+  advisory Stop nudges as silence, while `tm nudge` queues the text and the next
+  `UserPromptSubmit` drains it through `hookSpecificOutput.additionalContext`;
+  defensive Stop blocks remain top-level `{decision,reason}`. Pinned by
+  `harness.TestCodexRenderStopAdvisoryWritesNothing` and
+  `cli.TestNudgeHookQueuesPendingOnCodex`.
 
 **Automated codex live test (`TestLive/codex`).** Because each `TestLive` run
 uses a fresh, untrusted temp repo, codex's subtest can't fire there. Instead it is
@@ -648,25 +641,12 @@ verified or contradicted. Original assertion pinned by
 `harness.TestClaudeRenderStopAdvisoryUsesPlainStdout` (which still passes —
 the rendered bytes are correct; only the downstream surfacing is broken).
 
-**Stop hook output shape — OPEN for Codex (TODO, 2026-06-17):** Codex's
-Stop-hook schema has never been live-captured. The adapter at
-`internal/harness/codex.go:102-108` mirrors Claude Code's plain-text-on-Stop
-shape "preemptively" on the assumption that every other shared wire shape
-matches Claude (PostToolUse-on-success-only, etc.). With Claude's Stop-stdout
-surfacing now contradicted (§ above), Codex plausibly shares the same gap —
-i.e. `tm nudge --hook --harness codex` emits the nudge to stdout but it never
-reaches the agent's next turn. **Recipe to settle it:** in a fresh `codex exec`
-session (with hooks trusted per `~/.codex/config.toml`, see existing capture
-notes), drive enough PostToolUse events to cross `SelfReviewEvery=8` plus at
-least one edit, then submit a follow-up prompt. Inspect (a) the session's
-`.git/tm/nudge/<sess>.json` `fired` list and (b) the second turn's injected
-context for a `tm:`-prefixed line. If `fired` is populated but no `tm:` text
-appeared, the gap is confirmed — mirror Claude's workaround at
-`internal/cli/nudge.go` by extending the `a.Name() == "claude"` branch to also
-cover `"codex"`, and verify with a new test pair parallel to
-`TestNudgeHookQueuesPendingOnClaude` / `TestPromptSignalDrainsPendingViaAdditionalContext`.
-If the `tm:` text DOES appear, leave the adapter as-is and note the contrast
-here (codex Stop surfacing differs from Claude's despite shape parity).
+**Stop hook output shape — Codex fixed (2026-06-22):** Codex's Stop schema
+differs from Claude Code's: plain text stdout is rejected as invalid Stop hook
+JSON, and `hookSpecificOutput` is not accepted for Stop advisory context.
+Codex Stop advisories must stay silent and use the pending-queue path in
+`internal/cli/nudge.go`; the following `UserPromptSubmit` hook drains the
+queued text via `additionalContext`.
 
 ---
 

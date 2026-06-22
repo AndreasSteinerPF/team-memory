@@ -116,6 +116,7 @@ func init() {
 			{Verb: "signal-prompt", Fixture: "prompt"},
 			{Verb: "signal", Fixture: "edit"},
 			{Verb: "nudge", Fixture: "stop"},
+			{Verb: "signal-prompt", Fixture: "prompt"},
 		},
 		Expect: func(t TestingT, d HarnessDescriptor, out []byte, _ map[string]string) {
 			ctx := d.AdvisoryContext(out)

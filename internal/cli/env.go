@@ -40,7 +40,17 @@ func openEnv(g *globalOpts) (*env, error) {
 		return nil, err
 	}
 	if !led.Exists() {
-		return nil, fmt.Errorf("no ledger on branch %q; run `tm init` first", g.branch)
+		adopted, err := adoptFetchedLedgerBranch(repoDir, g.branch)
+		if err != nil {
+			return nil, err
+		}
+		if !adopted {
+			return nil, fmt.Errorf("no ledger on branch %q; run `tm init` first", g.branch)
+		}
+		led, err = ledger.Open(repoDir, g.branch)
+		if err != nil {
+			return nil, err
+		}
 	}
 	// Cache gitDir once to avoid repeated git subprocess calls in later operations.
 	gitDir, err := led.GitDir()
@@ -82,6 +92,39 @@ func openEnv(g *globalOpts) (*env, error) {
 		idx:     idx,
 		pol:     pol,
 	}, nil
+}
+
+func adoptFetchedLedgerBranch(repoDir, branch string) (bool, error) {
+	gr := git.Runner{Dir: repoDir}
+	out, err := gr.Run("for-each-ref", "--format=%(refname) %(objectname)", "refs/remotes")
+	if err != nil {
+		return false, nil
+	}
+	var candidates []string
+	for _, line := range strings.Split(out, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) != 2 {
+			continue
+		}
+		ref := fields[0]
+		if strings.HasSuffix(ref, "/"+branch) {
+			candidates = append(candidates, ref)
+		}
+	}
+	if len(candidates) == 0 {
+		return false, nil
+	}
+	if len(candidates) > 1 {
+		return false, fmt.Errorf("no local ledger branch %q; multiple fetched remote ledger refs found (%s); create the local branch explicitly", branch, strings.Join(candidates, ", "))
+	}
+	// A normal clone fetches the orphan ledger as refs/remotes/<remote>/<branch>
+	// but does not create refs/heads/<branch>. Adopt the already-fetched ref
+	// locally so hooks can read memories without network or checkout (prd.md
+	// §7.1, §10.1).
+	if _, err := gr.Run("update-ref", "refs/heads/"+branch, candidates[0]); err != nil {
+		return false, fmt.Errorf("adopt fetched ledger branch %q from %s: %w", branch, candidates[0], err)
+	}
+	return true, nil
 }
 
 func (e *env) close() {

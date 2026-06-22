@@ -3,7 +3,6 @@ package harness
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"io"
 	"strings"
 )
@@ -99,13 +98,11 @@ func codexCommandFailed(rawResp json.RawMessage) bool {
 // hook docs). See prd.md §10.6 for the live findings and the failure-sensing
 // caveat (failed tool calls emit no PostToolUse).
 //
-// Stop is special, mirroring the Claude Code finding (live-verified 2026-06-16,
-// docs/verification/cross-harness.md): a Stop hook output of
-// `{"hookSpecificOutput":{...,"additionalContext":...}}` is rejected by Claude
-// Code's schema. Codex's Stop schema is not yet live-captured, but every other
-// wire-shape behavior has matched Claude Code exactly (PostToolUse-on-success-
-// only, etc.), so we render Stop advisories as plain text to stdout
-// preemptively — and a defensive block as top-level `{decision,reason}`.
+// Codex Stop hook stdout is schema-checked separately from prompt/tool
+// additionalContext. Plain text is rejected as "invalid stop hook JSON output",
+// and hookSpecificOutput is not accepted for Stop. Advisory Stop nudges
+// therefore render nothing here and are re-injected on UserPromptSubmit by the
+// nudge command's pending queue.
 func (codex) Render(kind EventKind, d Decision, w io.Writer) error {
 	if d.Empty() {
 		return nil
@@ -117,8 +114,7 @@ func (codex) Render(kind EventKind, d Decision, w io.Writer) error {
 				Reason   string `json:"reason"`
 			}{"block", d.Reason})
 		}
-		_, err := fmt.Fprintln(w, d.Context)
-		return err
+		return nil
 	}
 	type spec struct {
 		HookEventName            string `json:"hookEventName"`

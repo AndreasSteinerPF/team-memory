@@ -16,7 +16,7 @@ func TestDescriptorDecoders(t *testing.T) {
 			"blocked by mem X", "tm_propose failed_attempt"},
 		{"codex",
 			`{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"blocked by mem X"}}`,
-			"tm_propose failed_attempt\n", // Stop renders plain text on stdout (mirrors Claude Code fix; codex Stop schema not yet live-captured but adapter is aligned preemptively)
+			`{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"tm_propose failed_attempt"}}`,
 			"blocked by mem X", "tm_propose failed_attempt"},
 		{"copilot",
 			`{"permissionDecision":"deny","permissionDecisionReason":"blocked by mem X"}`,

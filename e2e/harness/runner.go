@@ -128,7 +128,7 @@ func runOneScenario(t *testing.T, d HarnessDescriptor, harnessName string, sc Sc
 		captures = sc.Setup(t, tm)
 	}
 
-	var lastOut []byte
+	var combinedOut []byte
 	for _, step := range sc.Steps {
 		base, err := verbToArgs(step.Verb)
 		if err != nil {
@@ -149,9 +149,9 @@ func runOneScenario(t *testing.T, d HarnessDescriptor, harnessName string, sc Sc
 				scenarioDir, step.Fixture, fixedSessionID)
 		}
 		out, _ := tm(payload, args...)
-		lastOut = []byte(out)
+		combinedOut = append(combinedOut, []byte(out)...)
 	}
 	if sc.Expect != nil {
-		sc.Expect(t, d, lastOut, captures)
+		sc.Expect(t, d, combinedOut, captures)
 	}
 }

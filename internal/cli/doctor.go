@@ -281,6 +281,18 @@ func newDoctorCmd(g *globalOpts) *cobra.Command {
 				renderReport(cmd.OutOrStdout(), repoDir, g.branch, results)
 				return errDoctorFailed
 			}
+			if !led.Exists() {
+				adopted, err := adoptFetchedLedgerBranch(repoDir, g.branch)
+				if err != nil {
+					return err
+				}
+				if adopted {
+					led, err = ledger.Open(repoDir, g.branch)
+					if err != nil {
+						return err
+					}
+				}
+			}
 
 			var results []checkResult
 			lc := checkLedger(led)

@@ -42,78 +42,90 @@ func newInitCmd(g *globalOpts) *cobra.Command {
 			}
 			out := cmd.OutOrStdout()
 			if !led.Exists() {
-				py, err := policy.DefaultYAML()
+				adopted, err := adoptFetchedLedgerBranch(repoDir, g.branch)
 				if err != nil {
 					return err
 				}
-				if err := led.Init(py); err != nil {
-					return err
-				}
-				// Resolve the candidate remote: explicit --remote wins; otherwise
-				// default to "origin" if the repo has one configured.
-				candidate := remote
-				if candidate == "" {
-					if _, err := (git.Runner{Dir: repoDir}).Run("remote", "get-url", "origin"); err == nil {
-						candidate = "origin"
+				if adopted {
+					led, err = ledger.Open(repoDir, g.branch)
+					if err != nil {
+						return err
 					}
-				}
-
-				if candidate != "" && !noPush {
-					if vErr := git.ValidateRemote(repoDir, candidate, 5*time.Second); vErr != nil {
-						if remote != "" {
-							fmt.Fprintf(out, "Remote %q not reachable (%v); did not store tm.remote.\n", remote, vErr)
-							fmt.Fprintln(out, "Fix the URL, then `tm remote set <value>`.")
-						} else {
-							fmt.Fprintf(out, "origin not reachable (%v); ledger created locally.\n", vErr)
-						}
-						candidate = "" // skip the push below
-					} else if remote != "" {
-						// env isn't open yet (the ledger was just created), so run git
-						// directly rather than through e.git.
-						if _, err := (git.Runner{Dir: repoDir}).Run("config", "tm.remote", remote); err != nil {
-							return err
+					fmt.Fprintf(out, "Adopted fetched TeamMemory ledger on branch %q.\n", g.branch)
+				} else {
+					py, err := policy.DefaultYAML()
+					if err != nil {
+						return err
+					}
+					if err := led.Init(py); err != nil {
+						return err
+					}
+					// Resolve the candidate remote: explicit --remote wins; otherwise
+					// default to "origin" if the repo has one configured.
+					candidate := remote
+					if candidate == "" {
+						if _, err := (git.Runner{Dir: repoDir}).Run("remote", "get-url", "origin"); err == nil {
+							candidate = "origin"
 						}
 					}
-				}
 
-				if candidate != "" && !noPush {
-					// Best-effort push to seed the remote ref so teammates can fetch
-					// it. Use a raw `git push` (not led.Sync) so init does NOT pull
-					// remote state into the freshly-created orphan ledger — init's
-					// job is to seed, not to reconcile (prd.md §7.4).
-					ref := "refs/heads/" + g.branch
-					_, perr := (git.Runner{Dir: repoDir}).Run("push", "--quiet", candidate, ref+":"+ref)
-					if perr == nil {
-						fmt.Fprintf(out, "Pushed ledger branch to %s. Teammates can fetch it now.\n", candidate)
-					} else {
-						// openEnv's callback isn't installed yet (we did not call
-						// openEnv during init). Record directly so tm status/doctor
-						// see the failure on the next invocation.
-						gitDir, _ := led.GitDir()
-						if store, oerr := git.OpenPushFailureStore(gitDir); oerr == nil {
-							kind := git.ClassifyPushStderr(perr.Error())
-							_ = store.Record(candidate, kind, perr.Error(), time.Now().UTC())
-							if kind == git.KindProtectedBranch {
-								fmt.Fprintf(out, "%s rejects the teammemory branch (branch protection).\n", candidate)
-								fmt.Fprintln(out, "Fix: exempt 'teammemory' from protection rules,")
-								fmt.Fprintln(out, "     or run: tm remote set git@host:org/repo-memory.git")
+					if candidate != "" && !noPush {
+						if vErr := git.ValidateRemote(repoDir, candidate, 5*time.Second); vErr != nil {
+							if remote != "" {
+								fmt.Fprintf(out, "Remote %q not reachable (%v); did not store tm.remote.\n", remote, vErr)
+								fmt.Fprintln(out, "Fix the URL, then `tm remote set <value>`.")
 							} else {
-								fmt.Fprintf(out, "Push deferred: %v. Will retry on next propose/observe/sync.\n", perr)
+								fmt.Fprintf(out, "origin not reachable (%v); ledger created locally.\n", vErr)
+							}
+							candidate = "" // skip the push below
+						} else if remote != "" {
+							// env isn't open yet (the ledger was just created), so run git
+							// directly rather than through e.git.
+							if _, err := (git.Runner{Dir: repoDir}).Run("config", "tm.remote", remote); err != nil {
+								return err
 							}
 						}
 					}
-				}
 
-				gitDir, err := led.GitDir()
-				if err != nil {
-					return err
+					if candidate != "" && !noPush {
+						// Best-effort push to seed the remote ref so teammates can fetch
+						// it. Use a raw `git push` (not led.Sync) so init does NOT pull
+						// remote state into the freshly-created orphan ledger — init's
+						// job is to seed, not to reconcile (prd.md §7.4).
+						ref := "refs/heads/" + g.branch
+						_, perr := (git.Runner{Dir: repoDir}).Run("push", "--quiet", candidate, ref+":"+ref)
+						if perr == nil {
+							fmt.Fprintf(out, "Pushed ledger branch to %s. Teammates can fetch it now.\n", candidate)
+						} else {
+							// openEnv's callback isn't installed yet (we did not call
+							// openEnv during init). Record directly so tm status/doctor
+							// see the failure on the next invocation.
+							gitDir, _ := led.GitDir()
+							if store, oerr := git.OpenPushFailureStore(gitDir); oerr == nil {
+								kind := git.ClassifyPushStderr(perr.Error())
+								_ = store.Record(candidate, kind, perr.Error(), time.Now().UTC())
+								if kind == git.KindProtectedBranch {
+									fmt.Fprintf(out, "%s rejects the teammemory branch (branch protection).\n", candidate)
+									fmt.Fprintln(out, "Fix: exempt 'teammemory' from protection rules,")
+									fmt.Fprintln(out, "     or run: tm remote set git@host:org/repo-memory.git")
+								} else {
+									fmt.Fprintf(out, "Push deferred: %v. Will retry on next propose/observe/sync.\n", perr)
+								}
+							}
+						}
+					}
+
+					gitDir, err := led.GitDir()
+					if err != nil {
+						return err
+					}
+					idx, err := index.Open(index.PathFor(gitDir), led)
+					if err != nil {
+						return err
+					}
+					defer idx.Close()
+					fmt.Fprintf(out, "Initialized TeamMemory ledger on branch %q.\n", g.branch)
 				}
-				idx, err := index.Open(index.PathFor(gitDir), led)
-				if err != nil {
-					return err
-				}
-				defer idx.Close()
-				fmt.Fprintf(out, "Initialized TeamMemory ledger on branch %q.\n", g.branch)
 			} else {
 				fmt.Fprintf(out, "ledger already initialized on branch %q\n", g.branch)
 			}

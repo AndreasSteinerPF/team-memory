@@ -25,8 +25,6 @@ func (codexDescriptor) BlockReason(out []byte) string {
 	return hsoDecode(out).HookSpecificOutput.PermissionDecisionReason
 }
 func (codexDescriptor) AdvisoryContext(out []byte) string {
-	// Stop hooks render as plain text (mirrors the Claude Code fix in
-	// descriptor_claude.go); PostTool/PromptSubmit still use hsoEnvelope.
 	if ctx := hsoDecode(out).HookSpecificOutput.AdditionalContext; ctx != "" {
 		return ctx
 	}
