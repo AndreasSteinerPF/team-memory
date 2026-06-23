@@ -31,7 +31,7 @@ type SensitivePath struct {
 }
 
 type Activation struct {
-	Independence string              `yaml:"independence"` // different_session | different_session_and_branch
+	Independence string              `yaml:"independence"` // different_session | different_session_and_branch | different_actor
 	Tiers        map[model.Risk]Tier `yaml:"tiers"`
 }
 

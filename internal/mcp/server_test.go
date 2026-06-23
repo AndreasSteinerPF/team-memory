@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -62,7 +63,7 @@ func testEnv(t *testing.T) (string, Deps, func()) {
 	if err != nil {
 		t.Fatalf("acks.Open: %v", err)
 	}
-	d := Deps{Ledger: led, Index: idx, Policy: pol, Engine: eng, AckStore: store}
+	d := Deps{Ledger: led, Index: idx, Policy: pol, Engine: eng, AckStore: store, Git: g}
 	return dir, d, func() { idx.Close() }
 }
 
@@ -456,6 +457,106 @@ func TestObserveTool(t *testing.T) {
 	if !res3.IsError {
 		t.Fatalf("expected IsError=true for unknown memory, got: %s", resultText(res3))
 	}
+}
+
+func TestMCPDifferentActorIndependenceRequiresDifferentEmail(t *testing.T) {
+	ctx := context.Background()
+	dir, d, cleanup := testEnv(t)
+	defer cleanup()
+	enableDifferentActorPolicyMCP(t, dir)
+	d.Policy = policyWithDifferentActor()
+
+	session := startServer(t, ctx, d)
+
+	gitExecTest(t, dir, "config", "user.email", "dev@example.com")
+	res := callTool(t, ctx, session, "tm_propose", map[string]any{
+		"type":    "failed_attempt",
+		"title":   "rollback needs downgrade tests",
+		"scope":   []string{"billing/**"},
+		"session": "s1",
+		"actor":   "test",
+	})
+	id := strings.TrimSpace(strings.SplitN(resultText(res), "\n", 2)[0])
+	m, ok, err := d.Ledger.Memory(id)
+	if err != nil || !ok {
+		t.Fatalf("memory %s not found: %v", id, err)
+	}
+	if m.Actor.Email != "dev@example.com" {
+		t.Fatalf("MCP proposal actor email = %q, want dev@example.com", m.Actor.Email)
+	}
+
+	res = callTool(t, ctx, session, "tm_observe", map[string]any{
+		"memory_id": id,
+		"kind":      "confirm",
+		"summary":   "same person different session",
+		"session":   "s2",
+		"actor":     "test",
+	})
+	if !strings.Contains(resultText(res), "status: provisional") {
+		t.Fatalf("same git email must not count as independent under different_actor, got:\n%s", resultText(res))
+	}
+	obs, err := d.Ledger.Observations()
+	if err != nil {
+		t.Fatalf("Observations: %v", err)
+	}
+	if len(obs) != 1 || obs[0].Actor.Email != "dev@example.com" {
+		t.Fatalf("MCP observation actor email not stamped, got %+v", obs)
+	}
+
+	gitExecTest(t, dir, "config", "user.email", "reviewer@example.com")
+	res = callTool(t, ctx, session, "tm_observe", map[string]any{
+		"memory_id": id,
+		"kind":      "confirm",
+		"summary":   "different person reproduced it",
+		"session":   "s3",
+		"actor":     "test",
+	})
+	if !strings.Contains(resultText(res), "status: active") {
+		t.Fatalf("different git email should activate under different_actor, got:\n%s", resultText(res))
+	}
+}
+
+func policyWithDifferentActor() policy.Policy {
+	p := policy.Default()
+	p.Activation.Independence = "different_actor"
+	return p
+}
+
+func enableDifferentActorPolicyMCP(t *testing.T, dir string) {
+	t.Helper()
+	policyYAML := gitExecTest(t, dir, "cat-file", "-p", "teammemory:policy.yaml")
+	policyYAML = strings.Replace(policyYAML, "independence: different_session", "independence: different_actor", 1)
+	parent := gitExecTest(t, dir, "rev-parse", "refs/heads/teammemory")
+	blob := gitExecInputTest(t, dir, []byte(policyYAML), "hash-object", "-w", "--stdin")
+	indexFile := filepath.Join(t.TempDir(), "index")
+	env := []string{"GIT_INDEX_FILE=" + indexFile}
+	gitExecEnvTest(t, dir, env, "read-tree", parent)
+	gitExecEnvTest(t, dir, env, "update-index", "--add", "--cacheinfo", "100644,"+blob+",policy.yaml")
+	tree := gitExecEnvTest(t, dir, env, "write-tree")
+	commit := gitExecTest(t, dir, "commit-tree", tree, "-p", parent, "-m", "test: enable different_actor policy")
+	gitExecTest(t, dir, "update-ref", "refs/heads/teammemory", commit)
+}
+
+func gitExecInputTest(t *testing.T, dir string, stdin []byte, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	cmd.Stdin = strings.NewReader(string(stdin))
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v: %v: %s", args, err, out)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+func gitExecEnvTest(t *testing.T, dir string, env []string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	cmd.Env = append(os.Environ(), env...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v: %v: %s", args, err, out)
+	}
+	return strings.TrimSpace(string(out))
 }
 
 // TestObserveToolMarkDuplicateAndSupersede exercises the new observation kinds

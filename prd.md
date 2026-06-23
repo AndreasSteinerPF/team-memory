@@ -230,7 +230,7 @@ escalators:
       min_risk: critical
 
 activation:
-  independence: different_session   # or: different_session_and_branch
+  independence: different_session   # or: different_session_and_branch | different_actor
   tiers:
     low:      { auto: immediate,           max_auto_enforcement: recommendation }
     medium:   { auto: independent_confirm, max_auto_enforcement: warning }
@@ -277,7 +277,7 @@ Evaluated in precedence order:
    * `critical`: active once ≥2 *independent* `confirm`s exist, or a human `approve` exists.
 7. **provisional** — otherwise.
 
-**Independence (default):** an observation is independent if its `actor.session_id` is present and differs from the memory's `actor.session_id`. The stricter `different_session_and_branch` mode additionally requires the observation's `code_context.branch` to differ from the memory's `code_context.branch`; if either branch is absent, this mode degrades to session-only.
+**Independence (default):** an observation is independent if its `actor.session_id` is present and differs from the memory's `actor.session_id`. The stricter `different_session_and_branch` mode additionally requires the observation's `code_context.branch` to differ from the memory's `code_context.branch`; if either branch is absent, this mode degrades to session-only. The optional `different_actor` mode compares `actor.email` (stamped from `git config user.email` for CLI/MCP-created agent records, prd.md §9.1): when both records have email, the values must differ; when either email is absent, it degrades to session-only so old ledgers, solo devs, CI bots, and unset Git identities keep working.
 
 **Type-specific activation gate (§5.2 `successful_pattern`).** Despite being low-risk, `successful_pattern` memories stay provisional until ≥1 independent confirm exists (per the standard independence rule above) or a human `approve` is issued. This is the only type that overrides its risk tier's activation rule. Once activated, enforcement follows the normal low-tier ceiling (`recommendation`).
 
@@ -353,6 +353,7 @@ code_context:           # optional: where the memory was proposed
 actor:
   kind: agent            # agent | human
   name: claude-code
+  email: dev@example.com # optional: git identity for different_actor independence
   session_id: session_123
 created_at: "2026-06-15T10:00:00Z"
 ```
@@ -382,6 +383,7 @@ code_context:
 actor:
   kind: agent
   name: codex
+  email: reviewer@example.com
   session_id: session_456
 created_at: "2026-06-15T11:20:00Z"
 
@@ -654,7 +656,7 @@ The demo shows the deterministic path (hook), not the voluntary one — and ever
 **Phase 3 — Memory trust & safety:** _next._ Harden the three trust gaps surfaced by external review — leak prevention, true independent confirmation, and measured nudge cost. These take priority over Phases 4–7 below.
 
 - **Propose-time secret/PII scan** — **Shipped.** Scans a memory's title/summary/guidance and evidence refs for credential/secret patterns and conservative PII before the record is appended, reusing the propose-time checkpoint that already emits the FTS duplicate warning (§15). Records are append-only on the orphan branch (§7.1), so a leaked secret persists in git history, and the contradict/contested lifecycle cannot remove it — a secret is not *wrong*, so no agent ever contradicts it. Prevention at write time is the only cheap remedy; warn-or-block is configurable in `policy.yaml` (`secret_action: block`, `pii_action: warn` by default).
-- **Identity-aware independent confirmation** — independence is currently scoped to `actor.session_id` (§8.2), so one person across two sessions can self-activate a memory (their own agent confirms its own proposal). Add a stricter `different_actor` independence mode keyed on the proposer's git identity — already captured in the ledger commit metadata (the orphan-branch commit author) but not yet in the record envelope (§9.1 `Actor`). Requires surfacing commit-author identity into the derived-state inputs (or stamping it into the envelope). Ships as a policy option, not the default: it must degrade gracefully where identity is shared or absent (solo devs, CI bots, unset `user.email`).
+- **Identity-aware independent confirmation** — **Shipped.** Independence can now use a stricter `different_actor` policy mode keyed on `actor.email` (§8.2, §9.1), preventing one Git identity from self-activating a memory across sessions. CLI/MCP-created agent records stamp `actor.email` from `git config user.email`; old ledgers and records without email degrade to the existing session-only rule, preserving compatibility for solo devs, CI bots, and unset Git identities. The default remains `different_session`, so teams opt into the stricter behavior deliberately.
 - **Nudge capability evaluation** — the anti-spam budget (§8.1, §10.1) bounds nudge *volume* but the capability cost of the injected context is unmeasured. Add an A/B eval — identical tasks with nudges on vs off — to quantify the impact beyond the trap-repo mistake-avoidance metric (§14, metric 5), and feed the result back into the budget defaults.
 
   Deferred: proactive verification via background sub-agents (spin off a cheap agent to reproduce a provisional memory's claim rather than waiting for an organic encounter) — the dedicated-reviewer-agents family held out of MVP scope (§12.3 item 7), held back here in favor of first maximizing in-session participation without extra turns or cost.

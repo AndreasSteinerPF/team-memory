@@ -13,6 +13,12 @@ func isIndependent(o model.Observation, m model.Memory, mode string) bool {
 	if o.Actor.SessionID == "" || o.Actor.SessionID == m.Actor.SessionID {
 		return false
 	}
+	if mode == "different_actor" {
+		if o.Actor.Email == "" || m.Actor.Email == "" {
+			return true // degrade to session-only when identity is unavailable
+		}
+		return o.Actor.Email != m.Actor.Email
+	}
 	if mode == "different_session_and_branch" {
 		mb, ob := "", ""
 		if m.CodeContext != nil {

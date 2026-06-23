@@ -35,6 +35,7 @@ func newMCPCmd(g *globalOpts) *cobra.Command {
 				Policy:   e.pol,
 				Engine:   e.engine(),
 				AckStore: store,
+				Git:      e.git,
 			})
 			return srv.Run(cmd.Context())
 		},

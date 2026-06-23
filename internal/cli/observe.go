@@ -38,7 +38,7 @@ func newObserveCmd(g *globalOpts) *cobra.Command {
 				Target:  target,
 				Kind:    kind,
 				Summary: summary,
-				Actor:   agentActor(actor, session),
+				Actor:   agentActor(e.git, actor, session),
 			}
 			for _, ev := range evidence {
 				o.Evidence = append(o.Evidence, parseEvidence(ev))

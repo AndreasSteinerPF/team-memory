@@ -12,6 +12,7 @@ import (
 
 	"github.com/AndreasSteinerPF/team-memory/internal/acks"
 	"github.com/AndreasSteinerPF/team-memory/internal/derive"
+	"github.com/AndreasSteinerPF/team-memory/internal/git"
 	"github.com/AndreasSteinerPF/team-memory/internal/index"
 	"github.com/AndreasSteinerPF/team-memory/internal/ledger"
 	"github.com/AndreasSteinerPF/team-memory/internal/model"
@@ -32,6 +33,7 @@ type Deps struct {
 	Policy   policy.Policy
 	Engine   *retrieve.Engine
 	AckStore *acks.Store
+	Git      git.Runner
 }
 
 // Server wraps an sdkmcp.Server with the 5 TeamMemory tools.
@@ -94,6 +96,18 @@ func parseEvidence(s string) model.Evidence {
 		return model.Evidence{Type: s[:i], Ref: s[i+1:]}
 	}
 	return model.Evidence{Type: s}
+}
+
+func (s *Server) agentActor(name, session string) model.Actor {
+	return model.Actor{Kind: model.ActorAgent, Name: name, Email: s.actorEmail(), SessionID: session}
+}
+
+func (s *Server) actorEmail() string {
+	email, err := s.deps.Git.Run("config", "--get", "user.email")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(email)
 }
 
 // stateStr formats the four derived-state fields as a single line.
@@ -301,7 +315,7 @@ func (s *Server) addProposeTool(srv *sdkmcp.Server) {
 			Summary:  args.Summary,
 			Guidance: args.Guidance,
 			Scope:    model.Scope{Paths: args.Scope, Commands: args.Commands},
-			Actor:    model.Actor{Kind: model.ActorAgent, Name: actor, SessionID: sessionid.Resolve(args.Session)},
+			Actor:    s.agentActor(actor, sessionid.Resolve(args.Session)),
 		}
 		for _, ev := range args.Evidence {
 			m.Evidence = append(m.Evidence, parseEvidence(ev))
@@ -410,7 +424,7 @@ Always include evidence when observing. Observations without evidence are less u
 			Target:  args.MemoryID,
 			Kind:    kind,
 			Summary: args.Summary,
-			Actor:   model.Actor{Kind: model.ActorAgent, Name: actor, SessionID: sessionid.Resolve(args.Session)},
+			Actor:   s.agentActor(actor, sessionid.Resolve(args.Session)),
 		}
 		for _, ev := range args.Evidence {
 			o.Evidence = append(o.Evidence, parseEvidence(ev))

@@ -38,7 +38,7 @@ func newProposeCmd(g *globalOpts) *cobra.Command {
 				Summary:  summary,
 				Guidance: guidance,
 				Scope:    model.Scope{Paths: scope, Commands: scopeCommands},
-				Actor:    agentActor(actor, session),
+				Actor:    agentActor(e.git, actor, session),
 			}
 			for _, ev := range evidence {
 				m.Evidence = append(m.Evidence, parseEvidence(ev))

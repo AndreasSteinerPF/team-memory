@@ -44,8 +44,16 @@ func observationsFor(obs []model.Observation, target string) []model.Observation
 	return out
 }
 
-func agentActor(name, session string) model.Actor {
-	return model.Actor{Kind: model.ActorAgent, Name: name, SessionID: session}
+func agentActor(g git.Runner, name, session string) model.Actor {
+	return model.Actor{Kind: model.ActorAgent, Name: name, Email: actorEmail(g), SessionID: session}
+}
+
+func actorEmail(g git.Runner) string {
+	email, err := g.Run("config", "--get", "user.email")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(email)
 }
 
 func humanActor(name string) model.Actor {

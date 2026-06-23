@@ -373,6 +373,15 @@ By default, likely credentials are blocked so they do not enter the append-only 
 
 `critical` memories need two independent confirmations to auto-activate — more evidence than any other tier — and no tier can reach `requirement` without `tm approve`, so agents alone can never create a binding rule.
 
+Teams that want confirmation to mean "different Git identity", not just "different session", can opt in:
+
+```yaml
+activation:
+  independence: different_actor
+```
+
+With `different_actor`, CLI/MCP-created agent records stamp `actor.email` from `git config user.email`. A confirmation is independent only when the memory and observation have different emails; if either record has no email, TeamMemory falls back to the default session-based check so existing ledgers and CI/solo setups keep working.
+
 ---
 
 ## Context cost

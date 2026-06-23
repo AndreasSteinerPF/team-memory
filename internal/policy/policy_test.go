@@ -54,7 +54,7 @@ func TestLoadOverridesDefaults(t *testing.T) {
 base_risk:
   failed_attempt: high
 activation:
-  independence: different_session_and_branch
+  independence: different_actor
 `)
 	p, err := Load(yml)
 	if err != nil {
@@ -67,7 +67,7 @@ activation:
 	if p.BaseRisk[model.TypeStaleDoc] != model.RiskLow {
 		t.Errorf("merged stale_doc = %q, want low", p.BaseRisk[model.TypeStaleDoc])
 	}
-	if p.Activation.Independence != "different_session_and_branch" {
+	if p.Activation.Independence != "different_actor" {
 		t.Errorf("independence = %q", p.Activation.Independence)
 	}
 }

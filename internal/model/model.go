@@ -102,6 +102,7 @@ type Scope struct {
 type Actor struct {
 	Kind      ActorKind `yaml:"kind"`
 	Name      string    `yaml:"name"`
+	Email     string    `yaml:"email,omitempty"` // optional Git identity for prd.md §9.1 different_actor independence
 	SessionID string    `yaml:"session_id,omitempty"`
 }
 

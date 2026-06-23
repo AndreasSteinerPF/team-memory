@@ -27,6 +27,27 @@ func TestIndependence(t *testing.T) {
 	}
 }
 
+func TestDifferentActorIndependenceUsesEmailWhenAvailable(t *testing.T) {
+	m := model.Memory{Actor: model.Actor{SessionID: "s1", Email: "dev@example.com"}}
+	sameEmail := model.Observation{Actor: model.Actor{SessionID: "s2", Email: "dev@example.com"}}
+	diffEmail := model.Observation{Actor: model.Actor{SessionID: "s3", Email: "reviewer@example.com"}}
+	missingEmail := model.Observation{Actor: model.Actor{SessionID: "s4"}}
+	sameSessionMissingEmail := model.Observation{Actor: model.Actor{SessionID: "s1"}}
+
+	if isIndependent(sameEmail, m, "different_actor") {
+		t.Error("same actor email is not independent even across sessions")
+	}
+	if !isIndependent(diffEmail, m, "different_actor") {
+		t.Error("different actor email is independent")
+	}
+	if !isIndependent(missingEmail, m, "different_actor") {
+		t.Error("missing email falls back to different-session independence")
+	}
+	if isIndependent(sameSessionMissingEmail, m, "different_actor") {
+		t.Error("missing email fallback still rejects same-session observations")
+	}
+}
+
 func TestStatusProgression(t *testing.T) {
 	p := policy.Default()
 	// High-risk memory (migrations) — needs one independent confirm to activate.

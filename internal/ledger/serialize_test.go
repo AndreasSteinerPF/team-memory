@@ -14,7 +14,7 @@ func TestMemoryRoundTrip(t *testing.T) {
 		Title:     "Billing migrations require downgrade-path tests",
 		Summary:   "Rollback failed when invoice_state migration lacked a downgrade path.",
 		Scope:     model.Scope{Paths: []string{"billing/migrations/**"}},
-		Actor:     model.Actor{Kind: model.ActorAgent, Name: "claude-code", SessionID: "s1"},
+		Actor:     model.Actor{Kind: model.ActorAgent, Name: "claude-code", Email: "dev@example.com", SessionID: "s1"},
 		CreatedAt: time.Date(2026, 6, 15, 10, 0, 0, 0, time.UTC),
 	}
 
@@ -77,7 +77,7 @@ func TestObservationRoundTrip(t *testing.T) {
 		Target:    "01J8X4QZ7M9FKE2V3R5T8WYBCD",
 		Kind:      model.KindConfirm,
 		Summary:   "Same rollback failure reproduced on revenue-reporting branch.",
-		Actor:     model.Actor{Kind: model.ActorAgent, Name: "codex", SessionID: "s2"},
+		Actor:     model.Actor{Kind: model.ActorAgent, Name: "codex", Email: "reviewer@example.com", SessionID: "s2"},
 		CreatedAt: time.Date(2026, 6, 15, 11, 20, 0, 0, time.UTC),
 	}
 
