@@ -190,3 +190,54 @@ func TestPromptSignalDrainsPendingViaAdditionalContext(t *testing.T) {
 		t.Errorf("second prompt should emit nothing, got: %q", out2.String())
 	}
 }
+
+func TestNudgeReportPrintsSummary(t *testing.T) {
+	repo := initRepo(t)
+	feed := func(s string) { runSignalForTest(t, repo, s) }
+	feed(`{"session_id":"s1","tool_name":"Bash","tool_input":{"command":"go test ./..."},"tool_response":{"exit_code":1}}`)
+	feed(`{"session_id":"s1","tool_name":"Edit","tool_input":{"file_path":"internal/index/x.go"}}`)
+	feed(`{"session_id":"s1","tool_name":"Bash","tool_input":{"command":"go test ./..."},"tool_response":{"exit_code":0}}`)
+	if _, code := runNudge(t, repo, `{"session_id":"s1"}`); code != 0 {
+		t.Fatalf("nudge exit %d", code)
+	}
+
+	var out, errb bytes.Buffer
+	code := cli.Run([]string{"--repo", repo, "nudge", "report"}, strings.NewReader(""), &out, &errb)
+	if code != 0 {
+		t.Fatalf("report exit %d: %s", code, errb.String())
+	}
+	body := out.String()
+	for _, want := range []string{"Nudge report", "Sessions: 1", "fired: 1", "queued: 1", "Follow-through:"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("report missing %q:\n%s", want, body)
+		}
+	}
+}
+
+func TestNudgeReportJSON(t *testing.T) {
+	repo := initRepo(t)
+	feed := func(s string) { runSignalForTest(t, repo, s) }
+	feed(`{"session_id":"s1","tool_name":"Bash","tool_input":{"command":"go test ./..."},"tool_response":{"exit_code":1}}`)
+	feed(`{"session_id":"s1","tool_name":"Edit","tool_input":{"file_path":"internal/index/x.go"}}`)
+	feed(`{"session_id":"s1","tool_name":"Bash","tool_input":{"command":"go test ./..."},"tool_response":{"exit_code":0}}`)
+	if _, code := runNudge(t, repo, `{"session_id":"s1"}`); code != 0 {
+		t.Fatalf("nudge exit %d", code)
+	}
+
+	var out, errb bytes.Buffer
+	code := cli.Run([]string{"--repo", repo, "nudge", "report", "--json"}, strings.NewReader(""), &out, &errb)
+	if code != 0 {
+		t.Fatalf("report exit %d: %s", code, errb.String())
+	}
+	var got struct {
+		Sessions int `json:"sessions"`
+		Fired    int `json:"fired"`
+		Queued   int `json:"queued"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("invalid JSON %q: %v", out.String(), err)
+	}
+	if got.Sessions != 1 || got.Fired != 1 || got.Queued != 1 {
+		t.Fatalf("JSON summary mismatch: %+v", got)
+	}
+}

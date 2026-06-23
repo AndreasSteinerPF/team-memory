@@ -1,12 +1,18 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/AndreasSteinerPF/team-memory/internal/harness"
+	"github.com/AndreasSteinerPF/team-memory/internal/model"
 	"github.com/AndreasSteinerPF/team-memory/internal/nudge"
 )
 
@@ -83,7 +89,128 @@ func newNudgeCmd(g *globalOpts) *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&hook, "hook", false, "read a Stop event on stdin and emit at most one nudge")
 	cmd.Flags().StringVar(&harnessName, "harness", "claude", "harness adapter (claude, codex, copilot, cursor, gemini)")
+	cmd.AddCommand(newNudgeReportCmd(g))
 	return cmd
+}
+
+func newNudgeReportCmd(g *globalOpts) *cobra.Command {
+	var session string
+	var jsonOut bool
+	cmd := &cobra.Command{
+		Use:   "report",
+		Short: "Report local nudge outcome counts",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			e, err := openEnv(g)
+			if err != nil {
+				return err
+			}
+			defer e.close()
+			journals, warnings, err := loadNudgeJournals(e.gitDir, session)
+			if err != nil {
+				return err
+			}
+			for _, w := range warnings {
+				fmt.Fprintln(cmd.ErrOrStderr(), w)
+			}
+			mems, obs, ledgerOK := loadReportLedger(e)
+			report := nudge.BuildReport(journals, mems, obs, ledgerOK)
+			if jsonOut {
+				enc := json.NewEncoder(cmd.OutOrStdout())
+				enc.SetIndent("", "  ")
+				return enc.Encode(report)
+			}
+			printNudgeReport(cmd.OutOrStdout(), report)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&session, "session", "", "report one session id")
+	cmd.Flags().BoolVar(&jsonOut, "json", false, "print machine-readable JSON")
+	return cmd
+}
+
+func loadNudgeJournals(gitDir, session string) ([]nudge.Journal, []string, error) {
+	dir := filepath.Join(gitDir, "tm", "nudge")
+	if session != "" {
+		j, err := loadNudgeJournalPath(filepath.Join(dir, session+".json"))
+		if os.IsNotExist(err) {
+			return nil, nil, nil
+		}
+		if err != nil {
+			return nil, []string{fmt.Sprintf("Warning: skipped corrupt nudge journal %s: %v", session, err)}, nil
+		}
+		return []nudge.Journal{j}, nil, nil
+	}
+	entries, err := os.ReadDir(dir)
+	if os.IsNotExist(err) {
+		return nil, nil, nil
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+	var journals []nudge.Journal
+	var warnings []string
+	for _, ent := range entries {
+		if ent.IsDir() || !strings.HasSuffix(ent.Name(), ".json") {
+			continue
+		}
+		j, err := loadNudgeJournalPath(filepath.Join(dir, ent.Name()))
+		if err != nil {
+			warnings = append(warnings, fmt.Sprintf("Warning: skipped corrupt nudge journal %s: %v", ent.Name(), err))
+			continue
+		}
+		journals = append(journals, j)
+	}
+	return journals, warnings, nil
+}
+
+func loadNudgeJournalPath(path string) (nudge.Journal, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nudge.Journal{}, err
+	}
+	var j nudge.Journal
+	if err := json.Unmarshal(data, &j); err != nil {
+		return nudge.Journal{}, err
+	}
+	return j, nil
+}
+
+func loadReportLedger(e *env) ([]model.Memory, []model.Observation, bool) {
+	mems, merr := e.led.Memories()
+	obs, oerr := e.led.Observations()
+	if merr != nil || oerr != nil {
+		return nil, nil, false
+	}
+	return mems, obs, true
+}
+
+func printNudgeReport(w io.Writer, r nudge.Report) {
+	fmt.Fprintln(w, "Nudge report (.git/tm/nudge)")
+	fmt.Fprintln(w)
+	fmt.Fprintf(w, "Sessions: %d\n", r.Sessions)
+	fmt.Fprintf(w, "Turns: %d\n", r.Turns)
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Candidates:")
+	fmt.Fprintf(w, "  detected: %d\n", r.Detected)
+	fmt.Fprintf(w, "  fired: %d\n", r.Fired)
+	fmt.Fprintf(w, "  suppressed: %d\n", r.Suppressed)
+	for _, reason := range []string{"disabled", "max_per_session", "cooldown", "dedup", "already_acted"} {
+		if n := r.SuppressedByReason[reason]; n > 0 {
+			fmt.Fprintf(w, "    %s: %d\n", reason, n)
+		}
+	}
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Delivery:")
+	fmt.Fprintf(w, "  rendered: %d\n", r.Rendered)
+	fmt.Fprintf(w, "  queued: %d\n", r.Queued)
+	fmt.Fprintf(w, "  drained: %d\n", r.Drained)
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Follow-through:")
+	fmt.Fprintf(w, "  target-matched: %d\n", r.FollowThrough.TargetMatched)
+	fmt.Fprintf(w, "  session-level: %d\n", r.FollowThrough.SessionLevel)
+	fmt.Fprintf(w, "  none: %d\n", r.FollowThrough.None)
+	fmt.Fprintf(w, "  unavailable: %d\n", r.FollowThrough.Unavailable)
 }
 
 // actedPredicate returns a function reporting whether this session has already
