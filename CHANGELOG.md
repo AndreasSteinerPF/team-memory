@@ -6,6 +6,33 @@
 All notable changes to TeamMemory are documented here. The format is based on
 [Keep a Changelog], and this project adheres to [Semantic Versioning].
 
+## [0.7.0] - 2026-06-23
+
+The first Phase 3 trust-and-safety release. It closes the cheap leak-prevention
+gap before records enter the append-only Git ledger, and adds an opt-in
+identity-aware confirmation mode so teams can require confirmations from a
+different Git identity, not merely a different session.
+
+### Added
+
+- **Propose-time secret/PII scanning.** `tm propose` and `tm_propose` now scan
+  memory titles, summaries, guidance, and evidence refs before appending the
+  record. Secrets block by default; conservative PII findings warn by default.
+  The behavior is policy-controlled via `propose_safety.secret_action` and
+  `propose_safety.pii_action`.
+- **Identity-aware independent confirmation.** Policies may now set
+  `activation.independence: different_actor`. CLI and MCP-created agent records
+  stamp `actor.email` from `git config user.email`; when both memory and
+  observation have email, confirmations only count as independent if the email
+  values differ. Records without email degrade to the existing session-based
+  independence rule for compatibility with old ledgers, CI bots, and unset Git
+  identities.
+
+### Changed
+
+- `prd.md` marks both Phase 3 trust-and-safety items as shipped, and `README.md`
+  documents the new `different_actor` policy option.
+
 ## [0.6.3] - 2026-06-22
 
 Bugfix release hardening hook startup and Codex nudge delivery after dogfooding
@@ -471,6 +498,7 @@ dogfooding on real repositories.
 - **Acceptance tests** — flagship lifecycle demo, trap-repo retrieval benchmark,
   two-clone concurrent-sync convergence, and hook latency budget.
 
+[0.7.0]: https://github.com/AndreasSteinerPF/team-memory/releases/tag/v0.7.0
 [0.6.3]: https://github.com/AndreasSteinerPF/team-memory/releases/tag/v0.6.3
 [0.6.2]: https://github.com/AndreasSteinerPF/team-memory/releases/tag/v0.6.2
 [0.6.1]: https://github.com/AndreasSteinerPF/team-memory/releases/tag/v0.6.1
