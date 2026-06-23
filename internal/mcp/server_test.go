@@ -112,6 +112,18 @@ func resultText(res *sdkmcp.CallToolResult) string {
 	return b.String()
 }
 
+func ulidLike(s string) bool {
+	if len(s) != 26 {
+		return false
+	}
+	for _, r := range s {
+		if !strings.ContainsRune("0123456789ABCDEFGHJKMNPQRSTVWXYZ", r) {
+			return false
+		}
+	}
+	return true
+}
+
 // gitExecTest runs git in dir and fails the test on error.
 func gitExecTest(t *testing.T, dir string, args ...string) string {
 	t.Helper()
@@ -272,6 +284,77 @@ func TestProposeTool(t *testing.T) {
 	}
 	if !res2.IsError {
 		t.Fatalf("expected IsError=true for unknown type, got text: %s", resultText(res2))
+	}
+}
+
+func TestProposeToolBlocksSecretByDefault(t *testing.T) {
+	ctx := context.Background()
+	_, d, cleanup := testEnv(t)
+	defer cleanup()
+
+	session := startServer(t, ctx, d)
+
+	res, err := session.CallTool(ctx, &sdkmcp.CallToolParams{
+		Name: "tm_propose",
+		Arguments: map[string]any{
+			"type":    "decision",
+			"title":   "Leaked token ghp_1234567890abcdef1234567890abcdef1234",
+			"scope":   []string{"docs/**"},
+			"session": "s1",
+		},
+	})
+	if err != nil {
+		t.Fatalf("CallTool returned transport error (want IsError=true): %v", err)
+	}
+	if !res.IsError {
+		t.Fatalf("expected IsError=true for secret-bearing proposal, got: %s", resultText(res))
+	}
+	text := resultText(res)
+	if !strings.Contains(text, "blocked") || !strings.Contains(strings.ToLower(text), "secret") {
+		t.Fatalf("error text lacks blocking secret warning: %s", text)
+	}
+	if strings.Contains(text, "ghp_1234567890abcdef1234567890abcdef1234") {
+		t.Fatalf("error text echoed secret: %s", text)
+	}
+	mems, err := d.Ledger.Memories()
+	if err != nil {
+		t.Fatalf("Memories: %v", err)
+	}
+	if len(mems) != 0 {
+		t.Fatalf("blocked proposal appended %d memories: %+v", len(mems), mems)
+	}
+}
+
+func TestProposeToolWarnsPIIWithoutChangingIDFirstOutput(t *testing.T) {
+	ctx := context.Background()
+	_, d, cleanup := testEnv(t)
+	defer cleanup()
+
+	session := startServer(t, ctx, d)
+
+	res := callTool(t, ctx, session, "tm_propose", map[string]any{
+		"type":    "decision",
+		"title":   "Notify alice@example.com about docs",
+		"scope":   []string{"docs/**"},
+		"session": "s1",
+	})
+	text := resultText(res)
+	id := strings.TrimSpace(strings.SplitN(text, "\n", 2)[0])
+	if !ulidLike(id) {
+		t.Fatalf("first line should remain the memory ID, got response:\n%s", text)
+	}
+	if !strings.Contains(text, "Warning: propose safety scan") || !strings.Contains(text, "PII detected in title") {
+		t.Fatalf("response missing PII warning:\n%s", text)
+	}
+	if strings.Contains(text, "alice@example.com") {
+		t.Fatalf("response echoed PII value:\n%s", text)
+	}
+	mems, err := d.Ledger.Memories()
+	if err != nil {
+		t.Fatalf("Memories: %v", err)
+	}
+	if len(mems) != 1 || mems[0].ID != id {
+		t.Fatalf("warning proposal should append memory %s, got %+v", id, mems)
 	}
 }
 

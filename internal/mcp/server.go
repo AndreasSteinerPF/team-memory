@@ -17,6 +17,7 @@ import (
 	"github.com/AndreasSteinerPF/team-memory/internal/model"
 	"github.com/AndreasSteinerPF/team-memory/internal/policy"
 	"github.com/AndreasSteinerPF/team-memory/internal/retrieve"
+	"github.com/AndreasSteinerPF/team-memory/internal/safety"
 	"github.com/AndreasSteinerPF/team-memory/internal/sessionid"
 )
 
@@ -306,6 +307,16 @@ func (s *Server) addProposeTool(srv *sdkmcp.Server) {
 			m.Evidence = append(m.Evidence, parseEvidence(ev))
 		}
 
+		decision := safety.Decide(safety.ScanMemory(m), s.deps.Policy.ProposeSafety.SecretAction, s.deps.Policy.ProposeSafety.PIIAction)
+		if len(decision.Block) > 0 {
+			return &sdkmcp.CallToolResult{
+				IsError: true,
+				Content: []sdkmcp.Content{&sdkmcp.TextContent{
+					Text: fmt.Sprintf("blocked by propose safety scan:\n%s\n", safety.FormatFindings(decision.Block)),
+				}},
+			}, nil, nil
+		}
+
 		id, err := s.deps.Ledger.AppendMemory(m)
 		if err != nil {
 			return nil, nil, err
@@ -320,6 +331,9 @@ func (s *Server) addProposeTool(srv *sdkmcp.Server) {
 		fmt.Fprintln(&b, id)
 		fmt.Fprintln(&b, stateStr(st.Status, st.Risk, st.Confidence, st.Enforcement))
 		fmt.Fprintf(&b, "reason: %s\n", st.Reason)
+		if len(decision.Warn) > 0 {
+			fmt.Fprintf(&b, "Warning: propose safety scan found possible sensitive content:\n%s\n", safety.FormatFindings(decision.Warn))
+		}
 		return textResult(b.String()), nil, nil
 	})
 }

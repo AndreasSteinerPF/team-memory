@@ -361,6 +361,16 @@ activation:
       max_auto_enforcement: warning
 ```
 
+Proposals are also scanned before they are appended to the Git ledger:
+
+```yaml
+propose_safety:
+  secret_action: block   # block | warn | off
+  pii_action: warn       # block | warn | off
+```
+
+By default, likely credentials are blocked so they do not enter the append-only ledger history. Conservative PII matches warn but still allow the proposal.
+
 `critical` memories need two independent confirmations to auto-activate — more evidence than any other tier — and no tier can reach `requirement` without `tm approve`, so agents alone can never create a binding rule.
 
 ---

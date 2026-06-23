@@ -18,3 +18,13 @@ func TestDefaultYAMLRoundTrips(t *testing.T) {
 		t.Fatalf("round trip mismatch:\n got %+v\nwant %+v", got, Default())
 	}
 }
+
+func TestDefaultProposeSafetyPolicy(t *testing.T) {
+	p := Default()
+	if p.ProposeSafety.SecretAction != "block" {
+		t.Fatalf("secret action = %q, want block", p.ProposeSafety.SecretAction)
+	}
+	if p.ProposeSafety.PIIAction != "warn" {
+		t.Fatalf("PII action = %q, want warn", p.ProposeSafety.PIIAction)
+	}
+}

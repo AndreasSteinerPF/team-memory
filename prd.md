@@ -245,6 +245,10 @@ retrieval:
   max_provisional: 2
   provisional_mode: related   # never | related | always
 
+propose_safety:
+  secret_action: block   # block | warn | off
+  pii_action: warn       # block | warn | off
+
 sync:
   auto_fetch_after: 5m
 
@@ -649,7 +653,7 @@ The demo shows the deterministic path (hook), not the voluntary one — and ever
 
 **Phase 3 — Memory trust & safety:** _next._ Harden the three trust gaps surfaced by external review — leak prevention, true independent confirmation, and measured nudge cost. These take priority over Phases 4–7 below.
 
-- **Propose-time secret/PII scan** — scan a memory's title/summary/guidance and evidence refs for credential/secret patterns (and optionally PII) before the record is appended, reusing the propose-time checkpoint that already emits the FTS duplicate warning (§15). Records are append-only on the orphan branch (§7.1), so a leaked secret persists in git history, and the contradict/contested lifecycle cannot remove it — a secret is not *wrong*, so no agent ever contradicts it. Prevention at write time is the only cheap remedy; warn-or-block is configurable in `policy.yaml`.
+- **Propose-time secret/PII scan** — **Shipped.** Scans a memory's title/summary/guidance and evidence refs for credential/secret patterns and conservative PII before the record is appended, reusing the propose-time checkpoint that already emits the FTS duplicate warning (§15). Records are append-only on the orphan branch (§7.1), so a leaked secret persists in git history, and the contradict/contested lifecycle cannot remove it — a secret is not *wrong*, so no agent ever contradicts it. Prevention at write time is the only cheap remedy; warn-or-block is configurable in `policy.yaml` (`secret_action: block`, `pii_action: warn` by default).
 - **Identity-aware independent confirmation** — independence is currently scoped to `actor.session_id` (§8.2), so one person across two sessions can self-activate a memory (their own agent confirms its own proposal). Add a stricter `different_actor` independence mode keyed on the proposer's git identity — already captured in the ledger commit metadata (the orphan-branch commit author) but not yet in the record envelope (§9.1 `Actor`). Requires surfacing commit-author identity into the derived-state inputs (or stamping it into the envelope). Ships as a policy option, not the default: it must degrade gracefully where identity is shared or absent (solo devs, CI bots, unset `user.email`).
 - **Nudge capability evaluation** — the anti-spam budget (§8.1, §10.1) bounds nudge *volume* but the capability cost of the injected context is unmeasured. Add an A/B eval — identical tasks with nudges on vs off — to quantify the impact beyond the trap-repo mistake-avoidance metric (§14, metric 5), and feed the result back into the budget defaults.
 

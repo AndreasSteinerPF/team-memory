@@ -17,6 +17,7 @@ type Policy struct {
 	Sync                   Sync                            `yaml:"sync"`
 	Nudge                  Nudge                           `yaml:"nudge"`
 	Inject                 Inject                          `yaml:"inject"`
+	ProposeSafety          ProposeSafety                   `yaml:"propose_safety"`
 }
 
 type Escalators struct {
@@ -61,6 +62,12 @@ type Sync struct {
 // Inject configures post-tool advisory memory injection (prd.md §8.1 config, §10.6 cross-harness).
 type Inject struct {
 	AdvisoryMaxPerSession int `yaml:"advisory_max_per_session"`
+}
+
+// ProposeSafety configures propose-time leak prevention (prd.md §17).
+type ProposeSafety struct {
+	SecretAction string `yaml:"secret_action"` // block | warn | off
+	PIIAction    string `yaml:"pii_action"`    // block | warn | off
 }
 
 // Nudge configures the near-moment proposing/observing nudge engine (prd.md §8.1 config, §10.1 hooks).
@@ -111,6 +118,10 @@ func Default() Policy {
 			ChurnThreshold:  3,
 		},
 		Inject: Inject{AdvisoryMaxPerSession: 5},
+		ProposeSafety: ProposeSafety{
+			SecretAction: "block",
+			PIIAction:    "warn",
+		},
 	}
 }
 
@@ -133,6 +144,6 @@ func DefaultYAML() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	header := "# TeamMemory policy (prd.md §8.1). Edit to tune risk, activation, retrieval, and sync.\n"
+	header := "# TeamMemory policy (prd.md §8.1). Edit to tune risk, activation, retrieval, safety, and sync.\n"
 	return append([]byte(header), body...), nil
 }

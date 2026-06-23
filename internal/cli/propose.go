@@ -10,6 +10,7 @@ import (
 
 	"github.com/AndreasSteinerPF/team-memory/internal/derive"
 	"github.com/AndreasSteinerPF/team-memory/internal/model"
+	"github.com/AndreasSteinerPF/team-memory/internal/safety"
 )
 
 func newProposeCmd(g *globalOpts) *cobra.Command {
@@ -53,6 +54,9 @@ func newProposeCmd(g *globalOpts) *cobra.Command {
 				m.CodeContext = &model.CodeContext{Branch: ctxBranch, Paths: ctxPaths}
 			}
 
+			if err := enforceProposeSafety(cmd, e, m); err != nil {
+				return err
+			}
 			warnSimilar(cmd, e, title)
 
 			id, err := e.led.AppendMemory(m)
@@ -95,6 +99,20 @@ func validType(t model.MemoryType) bool {
 		return true
 	}
 	return false
+}
+
+func enforceProposeSafety(cmd *cobra.Command, e *env, m model.Memory) error {
+	findings := safety.ScanMemory(m)
+	decision := safety.Decide(findings, e.pol.ProposeSafety.SecretAction, e.pol.ProposeSafety.PIIAction)
+	w := cmd.ErrOrStderr()
+	if len(decision.Warn) > 0 {
+		fmt.Fprintf(w, "Warning: propose safety scan found possible sensitive content:\n%s\n", safety.FormatFindings(decision.Warn))
+	}
+	if len(decision.Block) > 0 {
+		fmt.Fprintf(w, "Blocked: propose safety scan found sensitive content that must not be written to the ledger:\n%s\n", safety.FormatFindings(decision.Block))
+		return fmt.Errorf("blocked by propose safety scan")
+	}
+	return nil
 }
 
 // warnSimilar searches the FTS index for memories similar to title and prints a
