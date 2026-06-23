@@ -555,7 +555,7 @@ Symbol matching, error-signature matching, and semantic ranking are roadmap.
 4. `ownership` as a dedicated memory type (deferred to Phase 7 — expressible as `decision` today).
 5. Signed records, multi-human approval.
 6. Symbol-level anchors, content-hash anchor resolution.
-7. Dedicated reviewer agents, multi-agent debate (proactive memory verification via background agents is a Phase 3 deferred item — §17).
+7. Dedicated reviewer agents, multi-agent debate (proactive memory verification via background agents is deferred to Phase 7 — §17).
 
 ## 13. Flagship Demo
 
@@ -614,7 +614,7 @@ The demo shows the deterministic path (hook), not the voluntary one — and ever
 
 **Agents ignore the tool** → the hook makes `check_action` deterministic in Claude Code (the headline feature, not a mitigation). Other agents: MCP + generated instructions; their experience is honestly documented as degraded. Session-start briefing injects the voluntary-verb instructions deterministically in every major agent CLI.
 
-**Agents ignore the voluntary verbs** → (1) the SessionStart brief injects the when-to-remember instructions every session; (2) a near-moment nudge engine (PostToolUse signal recording + Stop emission, Section 10.1) escalates the highest-value moments to pointed `tm_propose`/`tm_observe` prompts, bounded by an anti-spam budget (max 3/session, cooldown, suppress-if-already-acted) so it never manufactures junk proposals. The budget bounds nudge *volume*; its capability cost is measured in Phase 3 (§17).
+**Agents ignore the voluntary verbs** → (1) the SessionStart brief injects the when-to-remember instructions every session; (2) a near-moment nudge engine (PostToolUse signal recording + Stop emission, Section 10.1) escalates the highest-value moments to pointed `tm_propose`/`tm_observe` prompts, bounded by an anti-spam budget (max 3/session, cooldown, suppress-if-already-acted) so it never manufactures junk proposals. The budget bounds nudge *volume*; Phase 3 adds lightweight outcome instrumentation before any formal A/B capability evaluation (§17).
 
 **Memory spam** → usage-constraining MCP descriptions with explicit non-examples; six types only; provisional memories capped at 2 per check; cheap `reject`; FTS-assisted duplicate warning at propose time ("a similar memory exists — confirm it instead?"), extended with a secret/PII scan in Phase 3 (§17). `successful_pattern` carries a type-specific activation gate (§8.2) so unilateral proposals stay provisional until independently confirmed.
 
@@ -643,7 +643,7 @@ The demo shows the deterministic path (hook), not the voluntary one — and ever
 
 **Phase 1 — MVP:** everything in Section 12.1. **Shipped** (v0.0.1: orphan-branch ledger, SQLite index, derived state, risk/policy, MCP server, Claude Code hook + nudge engine, `tm export`, retrieval, `tm brief`, `tm doctor`).
 
-**Phase 2 — Breadth:** _in progress._
+**Phase 2 — Breadth:** **Shipped.**
 
 - **Cross-harness adapter layer** — Codex, Copilot, Cursor, and Gemini hook/MCP adapters with `tm init --harness {codex,copilot,cursor,gemini}` packaging (§6.2–§6.5, §10.6). **Shipped.**
 - **Cross-harness E2E test framework** — per-harness payload fixtures (default contract/replay/packaging tiers) plus build-tag-gated live capture and live-firing tiers that pin the remaining live-payload checks (§10.6; `e2e/harness/`, recipes in `docs/verification/cross-harness.md`). **Shipped.**
@@ -653,15 +653,17 @@ The demo shows the deterministic path (hook), not the voluntary one — and ever
 - **Polished separate-remote UX** — `tm remote {show,set,unset}` first-class subcommand, `tm init` validates the remote via `ls-remote` and seeds the ref with a best-effort push (`--no-push` opt-out), and every push attempt classifies its failure (`protected_branch | auth | network | unknown`) into `.git/tm/push_failure.json`, surfaced via `tm sync` (foreground), `tm status`, and `tm doctor` (§7.1, §10.5, §15). **Shipped.**
 - **Package-manager distribution** — Homebrew and Scoop formulas plus a POSIX `install.sh` (checksum-verified, no deps beyond `curl`/`tar`) on top of the existing GoReleaser pipeline, so `brew install AndreasSteinerPF/tm/tm`, `scoop install tm`, and `curl -fsSL …/install.sh | sh` are first-class install paths alongside `go install` and the GitHub Releases archives (§12.2, §16). **Shipped.**
 
-**Phase 3 — Memory trust & safety:** _next._ Harden the three trust gaps surfaced by external review — leak prevention, true independent confirmation, and measured nudge cost. These take priority over Phases 4–7 below.
+**Phase 3 — Memory trust & safety:** _wrapping up._ Harden the trust gaps surfaced by external review — leak prevention, true independent confirmation, and bounded nudge cost. The first two are shipped. The remaining work is deliberately lightweight: instrument nudge outcomes now, then defer a formal A/B capability evaluation until there is enough product usage or a concrete product decision blocked by it.
 
 - **Propose-time secret/PII scan** — **Shipped.** Scans a memory's title/summary/guidance and evidence refs for credential/secret patterns and conservative PII before the record is appended, reusing the propose-time checkpoint that already emits the FTS duplicate warning (§15). Records are append-only on the orphan branch (§7.1), so a leaked secret persists in git history, and the contradict/contested lifecycle cannot remove it — a secret is not *wrong*, so no agent ever contradicts it. Prevention at write time is the only cheap remedy; warn-or-block is configurable in `policy.yaml` (`secret_action: block`, `pii_action: warn` by default).
 - **Identity-aware independent confirmation** — **Shipped.** Independence can now use a stricter `different_actor` policy mode keyed on `actor.email` (§8.2, §9.1), preventing one Git identity from self-activating a memory across sessions. CLI/MCP-created agent records stamp `actor.email` from `git config user.email`; old ledgers and records without email degrade to the existing session-only rule, preserving compatibility for solo devs, CI bots, and unset Git identities. The default remains `different_session`, so teams opt into the stricter behavior deliberately.
-- **Nudge capability evaluation** — the anti-spam budget (§8.1, §10.1) bounds nudge *volume* but the capability cost of the injected context is unmeasured. Add an A/B eval — identical tasks with nudges on vs off — to quantify the impact beyond the trap-repo mistake-avoidance metric (§14, metric 5), and feed the result back into the budget defaults.
+- **Lightweight nudge outcome instrumentation** — _next._ The anti-spam budget (§8.1, §10.1) bounds nudge *volume*, but today the project cannot cheaply answer whether nudges lead to useful `tm_propose`/`tm_observe` follow-through or whether they are too noisy. Add local reporting over the existing nudge journal: nudges fired, suppressions by reason, pending/drained delivery counts, follow-up `propose`/`observe` actions in the same session, and approximate injected-context size. Keep this out of the synced ledger; it is diagnostic local state like acks and the nudge journal (§10.1, §10.2). Use the first pass to tune defaults only when the signal is obvious; otherwise carry the measurements into the later A/B eval.
 
-  Deferred: proactive verification via background sub-agents (spin off a cheap agent to reproduce a provisional memory's claim rather than waiting for an organic encounter) — the dedicated-reviewer-agents family held out of MVP scope (§12.3 item 7), held back here in favor of first maximizing in-session participation without extra turns or cost.
+  Deferred: formal nudge A/B capability evaluation — identical tasks with nudges on vs off, comparing useful memory follow-through, repeated-mistake avoidance, and context/turn cost beyond the trap-repo mistake-avoidance metric (§14, metric 5). This is valuable, but noisy and easy to overfit before the product has enough live usage. Defer it until lightweight telemetry shows a concrete budget/defaults question worth answering or a product decision depends on it.
 
-**Phase 4 — GitHub workflow:** bring memories onto the PR review surface, not just the live agent hook.
+  Deferred: proactive verification via background sub-agents (spin off a cheap agent to reproduce a provisional memory's claim rather than waiting for an organic encounter) — the dedicated-reviewer-agents family held out of MVP scope (§12.3 item 7), held back here in favor of first maximizing in-session participation without extra turns or cost. Revisit in Phase 7 governance depth.
+
+**Phase 4 — GitHub workflow:** _next after lightweight nudge instrumentation._ Bring memories onto the PR review surface, not just the live agent hook. This is the most visible next product surface: it lets teams see relevant project judgment during review even when the active coding agent did not surface it, and it creates a natural place for humans to approve, reject, or discuss memory quality.
 
 - **PR memory action** — a GitHub Action that runs retrieval against a PR's changed paths/commands and posts the relevant memories as a PR comment/check.
 - **Memory timeline report** — the static HTML timeline (§12.2) visualizing the record/observation history over time.
