@@ -13,6 +13,80 @@ func cfg() nudge.Config {
 
 func never(nudge.Signal) bool { return false }
 
+func TestDecideReturnsFiredMetadata(t *testing.T) {
+	j := &nudge.Journal{Session: "s"}
+	j.Turn = 1
+	j.RecordCommand("go test ./...", true)
+	j.Turn = 2
+	j.RecordEdit("internal/index/x.go")
+	j.RecordCommand("go test ./...", false)
+	j.Turn = 3
+
+	dec := nudge.Decide(j, cfg(), never)
+	if !dec.Fired {
+		t.Fatal("expected a fired nudge")
+	}
+	if dec.Nudge.Type != nudge.SigFailPass {
+		t.Fatalf("Type = %q, want %q", dec.Nudge.Type, nudge.SigFailPass)
+	}
+	if dec.Nudge.Verb != "propose" {
+		t.Fatalf("Verb = %q, want propose", dec.Nudge.Verb)
+	}
+	if dec.Nudge.Path != "internal/index/x.go" {
+		t.Fatalf("Path = %q, want internal/index/x.go", dec.Nudge.Path)
+	}
+	if dec.Nudge.MemoryID != "" {
+		t.Fatalf("MemoryID = %q, want empty", dec.Nudge.MemoryID)
+	}
+	if dec.Nudge.Key == "" || dec.Nudge.Text == "" {
+		t.Fatalf("nudge missing key/text: %+v", dec.Nudge)
+	}
+}
+
+func TestDecideRecordsCooldownSuppression(t *testing.T) {
+	j := &nudge.Journal{Session: "s", Turn: 2}
+	j.Fired = append(j.Fired, nudge.FiredNudge{Key: "prior", Turn: 1})
+	for i := 0; i < 3; i++ {
+		j.RecordEdit("hot.go")
+	}
+
+	dec := nudge.Decide(j, cfg(), never)
+	if dec.Fired {
+		t.Fatalf("expected no fired nudge: %+v", dec)
+	}
+	if len(dec.Suppressions) != 1 {
+		t.Fatalf("Suppressions = %+v, want one cooldown suppression", dec.Suppressions)
+	}
+	if dec.Suppressions[0].Reason != nudge.SuppressCooldown {
+		t.Fatalf("Reason = %q, want %q", dec.Suppressions[0].Reason, nudge.SuppressCooldown)
+	}
+	if dec.Suppressions[0].Type != nudge.SigChurn || dec.Suppressions[0].Path != "hot.go" {
+		t.Fatalf("suppression metadata mismatch: %+v", dec.Suppressions[0])
+	}
+}
+
+func TestDecideRecordsAlreadyActedSuppression(t *testing.T) {
+	j := &nudge.Journal{Session: "s"}
+	j.Turn = 1
+	j.RecordCommand("go test", true)
+	j.Turn = 2
+	j.RecordEdit("x.go")
+	j.RecordCommand("go test", false)
+	j.Turn = 3
+
+	always := func(nudge.Signal) bool { return true }
+	dec := nudge.Decide(j, cfg(), always)
+	if dec.Fired {
+		t.Fatalf("expected no fired nudge: %+v", dec)
+	}
+	if len(dec.Suppressions) != 1 {
+		t.Fatalf("Suppressions = %+v, want one already_acted suppression", dec.Suppressions)
+	}
+	if dec.Suppressions[0].Reason != nudge.SuppressAlreadyActed {
+		t.Fatalf("Reason = %q, want %q", dec.Suppressions[0].Reason, nudge.SuppressAlreadyActed)
+	}
+}
+
 func TestDecideEmitsPointedNudgeForFailPass(t *testing.T) {
 	j := &nudge.Journal{Session: "s"}
 	j.Turn = 1
@@ -21,7 +95,8 @@ func TestDecideEmitsPointedNudgeForFailPass(t *testing.T) {
 	j.RecordEdit("internal/index/x.go")
 	j.RecordCommand("go test", false)
 	j.Turn = 3
-	out, ok := nudge.Decide(j, cfg(), never)
+	dec := nudge.Decide(j, cfg(), never)
+	out, ok := dec.Nudge, dec.Fired
 	if !ok {
 		t.Fatal("expected a nudge")
 	}
@@ -39,7 +114,7 @@ func TestDecideSuppressesWhenActed(t *testing.T) {
 	j.RecordCommand("go test", false)
 	j.Turn = 3
 	always := func(nudge.Signal) bool { return true }
-	if _, ok := nudge.Decide(j, cfg(), always); ok {
+	if dec := nudge.Decide(j, cfg(), always); dec.Fired {
 		t.Error("expected suppression when the agent already acted")
 	}
 }
@@ -53,7 +128,8 @@ func TestDecideObserveOutranksPropose(t *testing.T) {
 		j.RecordEdit("b.go")
 	}
 	j.Turn = 5
-	out, ok := nudge.Decide(j, cfg(), never)
+	dec := nudge.Decide(j, cfg(), never)
+	out, ok := dec.Nudge, dec.Fired
 	if !ok || out.Verb != "observe" {
 		t.Errorf("expected observe to win, got %+v ok=%v", out, ok)
 	}
@@ -65,7 +141,7 @@ func TestDecideRespectsCooldown(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		j.RecordEdit("hot.go")
 	}
-	if _, ok := nudge.Decide(j, cfg(), never); ok {
+	if dec := nudge.Decide(j, cfg(), never); dec.Fired {
 		t.Error("expected cooldown to suppress a nudge")
 	}
 }
@@ -76,7 +152,7 @@ func TestDecideRespectsMaxPerSession(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		j.RecordEdit("hot.go")
 	}
-	if _, ok := nudge.Decide(j, cfg(), never); ok {
+	if dec := nudge.Decide(j, cfg(), never); dec.Fired {
 		t.Error("expected max-per-session ceiling to suppress")
 	}
 }
@@ -84,7 +160,8 @@ func TestDecideRespectsMaxPerSession(t *testing.T) {
 func TestDecidePeriodicSelfReview(t *testing.T) {
 	j := &nudge.Journal{Session: "s", Turn: 9} // 9 >= SelfReviewEvery, no prior nudge
 	j.RecordEdit("a.go")                       // session has ≥1 edit
-	out, ok := nudge.Decide(j, cfg(), never)
+	dec := nudge.Decide(j, cfg(), never)
+	out, ok := dec.Nudge, dec.Fired
 	if !ok || !strings.Contains(out.Text, "memory-worthy") {
 		t.Errorf("expected a periodic self-review, got %+v ok=%v", out, ok)
 	}

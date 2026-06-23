@@ -2,12 +2,43 @@ package nudge
 
 import "fmt"
 
+// SuppressionReason identifies why a candidate nudge did not fire.
+type SuppressionReason string
+
+const (
+	SuppressDisabled      SuppressionReason = "disabled"
+	SuppressMaxPerSession SuppressionReason = "max_per_session"
+	SuppressCooldown      SuppressionReason = "cooldown"
+	SuppressDedup         SuppressionReason = "dedup"
+	SuppressAlreadyActed  SuppressionReason = "already_acted"
+)
+
 // Nudge is the engine's output: one line of context to inject, plus metadata so
-// the caller can record it in the journal for dedup/budget.
+// the caller can record it in the journal for dedup, budget, and reporting.
 type Nudge struct {
-	Text string
-	Verb string // "propose" | "observe" | "" (self-review)
-	Key  string // dedup key recorded into FiredNudge
+	Text     string
+	Verb     string // "propose" | "observe" | "" (self-review)
+	Key      string // dedup key recorded into FiredNudge
+	Type     SignalType
+	Path     string
+	MemoryID string
+}
+
+// Suppression records a candidate nudge suppressed by policy.
+type Suppression struct {
+	Reason   SuppressionReason `json:"reason"`
+	Type     SignalType        `json:"type,omitempty"`
+	Verb     string            `json:"verb,omitempty"`
+	Path     string            `json:"path,omitempty"`
+	MemoryID string            `json:"memory_id,omitempty"`
+	Turn     int               `json:"turn"`
+}
+
+// Decision is the complete policy result for one Stop-hook turn.
+type Decision struct {
+	Nudge        Nudge
+	Fired        bool
+	Suppressions []Suppression
 }
 
 // priority orders surviving signals: observe signals first (they unblock
@@ -16,63 +47,85 @@ var priority = map[SignalType]int{
 	SigUnobserved: 0, SigDrift: 1, SigFailPass: 2, SigRevert: 3, SigChurn: 4,
 }
 
-// Decide applies the anti-spam policy and returns at most one nudge for the
-// turn. acted(s) reports whether the agent already proposed/observed for signal
-// s this session (injected so this package needs no ledger/index dependency).
-func Decide(j *Journal, cfg Config, acted func(Signal) bool) (Nudge, bool) {
+// Decide applies the anti-spam policy and returns at most one nudge for the turn
+// plus any candidate suppressions. acted(s) reports whether the agent already
+// proposed/observed for signal s this session (injected so this package needs no
+// ledger/index dependency).
+func Decide(j *Journal, cfg Config, acted func(Signal) bool) Decision {
+	sigs := Detect(j, cfg)
 	if !cfg.Enabled {
-		return Nudge{}, false
+		return Decision{Suppressions: suppressAll(SuppressDisabled, j.Turn, sigs)}
 	}
 	if len(j.Fired) >= cfg.MaxPerSession {
-		return Nudge{}, false
+		return Decision{Suppressions: suppressAll(SuppressMaxPerSession, j.Turn, sigs)}
 	}
 	if lastFiredTurn(j) >= 0 && j.Turn-lastFiredTurn(j) < cfg.CooldownTurns {
-		return Nudge{}, false
+		return Decision{Suppressions: suppressAll(SuppressCooldown, j.Turn, sigs)}
 	}
 
-	sigs := Detect(j, cfg)
-
 	// Tier A: self-classifying. Drop already-nudged (dedup) and already-acted.
-	best, ok := bestTierA(j, sigs, acted)
-	if ok {
-		return renderTierA(best), true
+	best, suppressed := bestTierA(j, sigs, acted)
+	if best.Type != "" {
+		return Decision{Nudge: renderTierA(best), Fired: true, Suppressions: suppressed}
+	}
+	if len(suppressed) > 0 {
+		return Decision{Suppressions: suppressed}
 	}
 
 	// Tier B: attention-flag → aimed self-review.
 	for _, s := range sigs {
 		if s.Type == SigIntervened && !firedKey(j, s.Key()) {
-			return Nudge{
+			return Decision{Nudge: Nudge{
 				Text: fmt.Sprintf("tm: the user redirected you while editing %s — was there a constraint or decision worth recording? If so, tm_propose it; otherwise ignore.", s.Path),
-				Verb: "", Key: s.Key(),
-			}, true
+				Verb: "", Key: s.Key(), Type: s.Type, Path: s.Path,
+			}, Fired: true}
 		}
+		if s.Type == SigIntervened {
+			suppressed = append(suppressed, suppression(SuppressDedup, j.Turn, s))
+		}
+	}
+	if len(suppressed) > 0 {
+		return Decision{Suppressions: suppressed}
 	}
 
 	// Periodic generic self-review.
 	if j.Turn >= cfg.SelfReviewEvery && len(j.Edits) > 0 {
-		return Nudge{
+		return Decision{Nudge: Nudge{
 			Text: "tm: anything memory-worthy this session — a non-obvious failure, a hidden constraint, a fragile area? If so, tm_propose it; otherwise ignore.",
-			Verb: "", Key: fmt.Sprintf("self_review:%d", j.Turn),
-		}, true
+			Verb: "", Key: fmt.Sprintf("self_review:%d", j.Turn), Type: SignalType("self_review"),
+		}, Fired: true}
 	}
-	return Nudge{}, false
+	return Decision{}
 }
 
-func bestTierA(j *Journal, sigs []Signal, acted func(Signal) bool) (Signal, bool) {
+func suppressAll(reason SuppressionReason, turn int, sigs []Signal) []Suppression {
+	out := make([]Suppression, 0, len(sigs))
+	for _, s := range sigs {
+		out = append(out, suppression(reason, turn, s))
+	}
+	return out
+}
+
+func bestTierA(j *Journal, sigs []Signal, acted func(Signal) bool) (Signal, []Suppression) {
 	var best Signal
-	found := false
+	var suppressed []Suppression
 	for _, s := range sigs {
 		if s.Type == SigIntervened {
 			continue
 		}
-		if firedKey(j, s.Key()) || acted(s) {
+		if firedKey(j, s.Key()) {
+			suppressed = append(suppressed, suppression(SuppressDedup, j.Turn, s))
 			continue
 		}
-		if !found || priority[s.Type] < priority[best.Type] {
-			best, found = s, true
+		if acted(s) {
+			suppressed = append(suppressed, suppression(SuppressAlreadyActed, j.Turn, s))
+			continue
+		}
+		if best.Type == "" || priority[s.Type] < priority[best.Type] {
+			best = s
 		}
 	}
-	return best, found
+	return best, suppressed
 }
 
 func renderTierA(s Signal) Nudge {
@@ -89,7 +142,7 @@ func renderTierA(s Signal) Nudge {
 	case SigDrift:
 		text = fmt.Sprintf("tm: memory %s is anchored to %s, which has drifted, and you just edited it — tm_observe mark_stale or adjust_scope; otherwise ignore.", s.Memory, s.Path)
 	}
-	return Nudge{Text: text, Verb: s.Verb, Key: s.Key()}
+	return Nudge{Text: text, Verb: s.Verb, Key: s.Key(), Type: s.Type, Path: s.Path, MemoryID: s.Memory}
 }
 
 func lastFiredTurn(j *Journal) int {

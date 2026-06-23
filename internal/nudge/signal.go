@@ -42,6 +42,17 @@ func (s Signal) Key() string {
 	return string(s.Type) + ":" + id
 }
 
+func suppression(reason SuppressionReason, turn int, s Signal) Suppression {
+	return Suppression{
+		Reason:   reason,
+		Type:     s.Type,
+		Verb:     s.Verb,
+		Path:     s.Path,
+		MemoryID: s.Memory,
+		Turn:     turn,
+	}
+}
+
 // Detect returns all signals currently present in the journal. Pure: no I/O,
 // no ledger access. Suppress-if-acted and budget are applied later in Decide.
 func Detect(j *Journal, cfg Config) []Signal {
