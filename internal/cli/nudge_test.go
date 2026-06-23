@@ -67,12 +67,19 @@ func TestNudgeHookQueuesPendingOnClaude(t *testing.T) {
 	}
 	var j struct {
 		Pending []string `json:"pending"`
+		Fired   []struct {
+			Delivery  string `json:"delivery"`
+			TextBytes int    `json:"text_bytes"`
+		} `json:"fired"`
 	}
 	if err := json.Unmarshal(data, &j); err != nil {
 		t.Fatal(err)
 	}
 	if len(j.Pending) != 1 || !strings.Contains(j.Pending[0], "tm_propose") {
 		t.Fatalf("expected one tm_propose nudge queued in Pending, got: %v", j.Pending)
+	}
+	if len(j.Fired) != 1 || j.Fired[0].Delivery != "queued" || j.Fired[0].TextBytes == 0 {
+		t.Fatalf("expected queued fired metadata, got: %+v", j.Fired)
 	}
 }
 
@@ -98,6 +105,9 @@ func TestNudgeHookQueuesPendingOnCodex(t *testing.T) {
 	}
 	var j struct {
 		Pending []string `json:"pending"`
+		Fired   []struct {
+			DrainedTurn int `json:"drained_turn"`
+		} `json:"fired"`
 	}
 	if err := json.Unmarshal(data, &j); err != nil {
 		t.Fatal(err)
@@ -157,12 +167,18 @@ func TestPromptSignalDrainsPendingViaAdditionalContext(t *testing.T) {
 	}
 	var j struct {
 		Pending []string `json:"pending"`
+		Fired   []struct {
+			DrainedTurn int `json:"drained_turn"`
+		} `json:"fired"`
 	}
 	if err := json.Unmarshal(data, &j); err != nil {
 		t.Fatal(err)
 	}
 	if len(j.Pending) != 0 {
 		t.Errorf("Pending must be cleared after drain, got: %v", j.Pending)
+	}
+	if len(j.Fired) != 1 || j.Fired[0].DrainedTurn == 0 {
+		t.Fatalf("expected queued nudge to be marked drained, got: %+v", j.Fired)
 	}
 
 	// A second prompt with no new Stop nudge must NOT re-emit (idempotent drain).

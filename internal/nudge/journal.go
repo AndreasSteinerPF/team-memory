@@ -32,24 +32,40 @@ type Surfaced struct {
 	Drift    bool   `json:"drift"` // surfaced with a drift annotation
 }
 
-// FiredNudge records a nudge already emitted, for dedup and budget.
+type DeliveryMode string
+
+const (
+	DeliveryRendered DeliveryMode = "rendered"
+	DeliveryQueued   DeliveryMode = "queued"
+)
+
+// FiredNudge records a nudge already emitted, for dedup, budget, and reporting.
 type FiredNudge struct {
-	Key  string `json:"key"` // "<signaltype>:<path-or-memory>"
-	Turn int    `json:"turn"`
+	Key         string       `json:"key"` // "<signaltype>:<path-or-memory>"
+	Turn        int          `json:"turn"`
+	Type        SignalType   `json:"type,omitempty"`
+	Verb        string       `json:"verb,omitempty"`
+	Path        string       `json:"path,omitempty"`
+	MemoryID    string       `json:"memory_id,omitempty"`
+	TextBytes   int          `json:"text_bytes,omitempty"`
+	Delivery    DeliveryMode `json:"delivery,omitempty"`
+	FiredAt     time.Time    `json:"fired_at,omitempty"`
+	DrainedTurn int          `json:"drained_turn,omitempty"`
 }
 
 // Journal is the per-session local state. Keyed by session id, TTL-expired like
 // acks. Never a ledger record.
 type Journal struct {
-	Session     string       `json:"session"`
-	Turn        int          `json:"turn"`
-	Edits       []EditRecord `json:"edits,omitempty"`
-	Commands    []CmdOutcome `json:"commands,omitempty"`
-	Reverts     []int        `json:"reverts,omitempty"`      // turns a revert happened
-	Surfaced    []Surfaced   `json:"surfaced,omitempty"`     // memories shown this session
-	PromptTurns []int        `json:"prompt_turns,omitempty"` // turns a user prompt landed
-	Fired       []FiredNudge `json:"fired,omitempty"`
-	Injected    []string     `json:"injected,omitempty"`     // advisory memory ids delivered
+	Session      string        `json:"session"`
+	Turn         int           `json:"turn"`
+	Edits        []EditRecord  `json:"edits,omitempty"`
+	Commands     []CmdOutcome  `json:"commands,omitempty"`
+	Reverts      []int         `json:"reverts,omitempty"`      // turns a revert happened
+	Surfaced     []Surfaced    `json:"surfaced,omitempty"`     // memories shown this session
+	PromptTurns  []int         `json:"prompt_turns,omitempty"` // turns a user prompt landed
+	Fired        []FiredNudge  `json:"fired,omitempty"`
+	Suppressions []Suppression `json:"suppressions,omitempty"`
+	Injected     []string      `json:"injected,omitempty"` // advisory memory ids delivered
 	// Pending holds nudge text emitted at Stop that needs to be re-injected at
 	// the next UserPromptSubmit. Stop-hook stdout does not actually surface to
 	// the agent on Claude Code (contested 2026-06-17 — see ledger memory
@@ -58,6 +74,32 @@ type Journal struct {
 	// (a channel verified to surface).
 	Pending   []string  `json:"pending,omitempty"`
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+func FiredFromNudge(n Nudge, turn int, delivery DeliveryMode, firedAt time.Time) FiredNudge {
+	return FiredNudge{
+		Key:       n.Key,
+		Turn:      turn,
+		Type:      n.Type,
+		Verb:      n.Verb,
+		Path:      n.Path,
+		MemoryID:  n.MemoryID,
+		TextBytes: len([]byte(n.Text)),
+		Delivery:  delivery,
+		FiredAt:   firedAt,
+	}
+}
+
+func (j *Journal) RecordSuppressions(s []Suppression) {
+	j.Suppressions = append(j.Suppressions, s...)
+}
+
+func (j *Journal) MarkQueuedDrained(turn int) {
+	for i := range j.Fired {
+		if j.Fired[i].Delivery == DeliveryQueued && j.Fired[i].DrainedTurn == 0 {
+			j.Fired[i].DrainedTurn = turn
+		}
+	}
 }
 
 // Store is a directory of journal files keyed by session id.

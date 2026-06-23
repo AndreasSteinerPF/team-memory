@@ -142,6 +142,7 @@ func recordPromptSignal(cmd *cobra.Command, g *globalOpts, a harness.Adapter) er
 	if len(j.Pending) > 0 {
 		pending = j.Pending
 		j.Pending = nil
+		j.MarkQueuedDrained(j.Turn)
 	}
 	if err := store.Save(j); err != nil {
 		return err

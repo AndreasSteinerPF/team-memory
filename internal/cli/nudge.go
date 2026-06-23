@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -47,19 +48,30 @@ func newNudgeCmd(g *globalOpts) *cobra.Command {
 			}
 
 			acted := e.actedPredicate(ev.SessionID)
-			n, ok := nudge.Decide(j, e.nudgeConfig(), acted)
-			if !ok {
+			dec := nudge.Decide(j, e.nudgeConfig(), acted)
+			if len(dec.Suppressions) > 0 {
+				j.RecordSuppressions(dec.Suppressions)
+			}
+			if !dec.Fired {
+				if len(dec.Suppressions) > 0 {
+					return store.Save(j)
+				}
 				return nil // stay silent
 			}
 
-			// Record the fired nudge for dedup + budget, then persist.
-			j.Fired = append(j.Fired, nudge.FiredNudge{Key: n.Key, Turn: j.Turn})
+			n := dec.Nudge
+			delivery := nudge.DeliveryRendered
+			if a.Name() == "claude" || a.Name() == "codex" {
+				delivery = nudge.DeliveryQueued
+			}
+			// Record the fired nudge for dedup, budget, and reporting.
+			j.Fired = append(j.Fired, nudge.FiredFromNudge(n, j.Turn, delivery, time.Now().UTC()))
 			// On Claude Code, Stop-hook stdout does not actually surface to the
 			// agent's next turn (live-verified 2026-06-17). Codex Stop hooks are
 			// also unsuitable for advisory context: plain text is rejected, and
 			// additionalContext belongs on UserPromptSubmit. Queue the text here
 			// so the next prompt hook re-injects it through the surfaced channel.
-			if a.Name() == "claude" || a.Name() == "codex" {
+			if delivery == nudge.DeliveryQueued {
 				j.Pending = append(j.Pending, n.Text)
 			}
 			if err := store.Save(j); err != nil {

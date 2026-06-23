@@ -2,6 +2,7 @@ package nudge_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/AndreasSteinerPF/team-memory/internal/nudge"
 )
@@ -40,6 +41,37 @@ func TestStoreSaveLoadRoundTrip(t *testing.T) {
 	}
 	if got.Turn != 4 || len(got.Edits) != 1 || got.Edits[0].Path != "a/b.go" {
 		t.Errorf("round-trip mismatch: %+v", got)
+	}
+}
+
+func TestStoreSaveLoadRoundTripOutcomeFields(t *testing.T) {
+	s, err := nudge.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	firedAt := time.Date(2026, 6, 23, 12, 0, 0, 0, time.UTC)
+	j := &nudge.Journal{Session: "sess-1", Turn: 4}
+	j.Fired = append(j.Fired, nudge.FiredNudge{
+		Key: "fail_pass:internal/index/x.go", Turn: 4, Type: nudge.SigFailPass,
+		Verb: "propose", Path: "internal/index/x.go", TextBytes: 120,
+		Delivery: nudge.DeliveryQueued, FiredAt: firedAt,
+	})
+	j.Suppressions = append(j.Suppressions, nudge.Suppression{
+		Reason: nudge.SuppressCooldown, Type: nudge.SigChurn, Verb: "propose",
+		Path: "hot.go", Turn: 4,
+	})
+	if err := s.Save(j); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.Load("sess-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Fired) != 1 || got.Fired[0].Delivery != nudge.DeliveryQueued || !got.Fired[0].FiredAt.Equal(firedAt) {
+		t.Fatalf("fired outcome round-trip mismatch: %+v", got.Fired)
+	}
+	if len(got.Suppressions) != 1 || got.Suppressions[0].Reason != nudge.SuppressCooldown {
+		t.Fatalf("suppression round-trip mismatch: %+v", got.Suppressions)
 	}
 }
 
