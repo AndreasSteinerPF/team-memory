@@ -11,7 +11,10 @@
 
 `tm` gives your coding agents a shared, Git-backed memory of project lessons — failed approaches, fragile files, undocumented decisions — so the next agent that touches a risky area is warned, or blocked, before repeating a known mistake.
 
-Agents propose and confirm memories on their own. A memory only enforces after an independent agent validates it, and only a human can promote it to a hard block. Memories sync across the team in the background — same ledger, same rules, every supported coding agent.
+Agents propose and confirm memories on their own. Policy-derived risk determines
+whether a memory activates immediately or needs independent confirmation; only
+a human can promote it to a hard block. Memories sync across the team in the
+background—same ledger and rules, with delivery shaped by each agent's hook API.
 
 ---
 
@@ -59,7 +62,7 @@ cd your-repo
 tm init
 ```
 
-For agents other than Claude Code: `tm init --harness {codex,copilot,cursor,gemini,continue}`.
+For agents other than Claude Code: `tm init --harness {codex,copilot,cursor,gemini}`.
 
 This creates an orphan `teammemory` branch (the ledger), a local SQLite index under `.git/tm/`, and wires the hooks + MCP server into your agent's config. Idempotent; safe to re-run.
 
@@ -119,8 +122,15 @@ bash demo/run.sh
 
 - **Stop repeating known-bad approaches.** An agent records a failed approach with evidence; the next agent that opens the same area is warned before it tries again.
 - **Block bad moves at edit and command time.** Validated memories promoted to `requirement` make the `PreToolUse` hook deny matching edits and Bash commands until acknowledged.
-- **Independent confirmation required.** A memory stays provisional until another agent (different session, different branch) confirms it. No single agent can unilaterally create a binding rule; only humans can promote to `requirement`.
-- **One ledger, every coding agent.** Claude Code, Codex, Cursor, Continue, Copilot, and Gemini CLI all share the same memories — same rules, same enforcement, same Git-backed audit trail.
+- **Risk-tiered activation.** Low-risk memories normally activate immediately;
+  medium and high risk require one independent confirmation, and critical risk
+  requires two. Independence defaults to a different session; policy can require
+  a different branch or actor identity. No agent can unilaterally create a
+  binding rule—only humans can promote to `requirement`.
+- **One ledger across coding agents.** Claude Code, Codex, Cursor, Continue,
+  Copilot, and Gemini CLI can share the same memories, rules, and Git-backed
+  audit trail; delivery and enforcement capabilities vary with each agent's
+  hook surface.
 - **Audit every change as plain Git.** The ledger is an append-only orphan branch; `git log teammemory` shows who proposed what, who confirmed it, and when it became binding.
 
 ---
@@ -135,7 +145,7 @@ Memory tools for coding agents make different tradeoffs. tm is designed for **pr
 | Hosted team memory (Cloudflare Agent Memory, Supermemory) | Team, cross-project | Vendor-defined | Hosted API |
 | Platform-native (Claude managed memory, Cursor memories) | Personal, per-platform | None | Vendor-managed |
 | Static context files (`CLAUDE.md`, `AGENTS.md`, `.cursor/rules`) | Project | None — hand-curated | Git in repo |
-| **TeamMemory** | **Project, team-scoped** | **Independent confirmation required** | **Git in repo (orphan branch)** |
+| **TeamMemory** | **Project, team-scoped** | **Risk-tiered activation; human-only hard blocks** | **Git in repo (orphan branch)** |
 
 **When to pick something else:** if you want semantic recall over months of chat history, Mem0 or Cipher are designed for that. If you want zero-config sharing without touching Git, a hosted team service fits better.
 
@@ -146,9 +156,15 @@ Memory tools for coding agents make different tradeoffs. tm is designed for **pr
 ## Memory lifecycle
 
 ```
-propose → provisional
-  + independent confirmation (different session, different branch)
-    → active (warning enforcement)
+propose
+  + low-risk type without a type-specific gate
+    → active immediately by default
+  + otherwise → provisional
+  + policy threshold
+    - low risk: immediate by default
+    - medium/high: 1 independent confirmation by default
+    - critical: 2 independent confirmations by default
+    → active (recommendation or warning enforcement)
   + human approve --enforcement requirement
     → active (requirement enforcement) — hook blocks matching edits and commands until acked
   + observe contradict (from any session)
@@ -164,7 +180,9 @@ propose → provisional
 
 `successful_pattern` is the one type that overrides its risk tier: even though it is low-risk, it stays `provisional` until at least one independent session confirms it (or a maintainer approves it). The intent is to keep unilateral pattern proposals from auto-activating without evidence.
 
-- **Status:** `provisional` → `active` → `contested` / `stale` / `duplicate` / `superseded` / `rejected`.
+- **Status:** a proposal derives as `active` or `provisional` from type, risk,
+  policy, confirmations, and approvals; later observations can derive
+  `contested`, `stale`, `duplicate`, `superseded`, or `rejected`.
 - **Enforcement:** `hint` → `recommendation` → `warning` → `requirement`. Only a human can set `requirement`.
 - **Risk** (`low` / `medium` / `high` / `critical`) is computed deterministically from `policy.yaml` — never from agent self-assessment. High-risk paths (e.g. `**/migrations/**`) escalate automatically, as do broad command scopes (a bare-binary pattern like `pytest *`).
 
@@ -295,19 +313,27 @@ evaluation.
 
 Every agent reads the same ledger; what differs is the delivery guarantee:
 
-| Agent | Hook enforcement (edit + command) | Session briefing | Near-moment nudges | Voluntary verbs (MCP) | Static fallback |
+| Agent | Requirement enforcement | Session briefing | Near-moment nudges | Voluntary verbs (MCP) | Static fallback |
 |---|:---:|:---:|:---:|:---:|:---:|
 | Claude Code | ✅ | ✅ | ✅ † | ✅ | ✅ |
 | Codex CLI | ✅ | ✅ | ✅ † | ✅ | ✅ |
 | Continue CLI | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Copilot CLI | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Cursor | ✅ | ✅ | ✅ | ✅ | ✅ (`.cursor/rules`) |
+| Cursor | Commands only †† | ✅ | ✅ | ✅ | ✅ (`.cursor/rules`) |
 | Gemini CLI | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Other MCP / hook-less | — | — | — | ✅ | ✅ (only path) |
 
 > † The **fail→fix→pass** nudge detector does not fire on Claude Code or Codex: both run `PostToolUse` only on tool *success*, so a failed command is never observed. Every other nudge detector — reverted change, repeated edit churn on one path, user redirected mid-edit, surfaced-but-unobserved memory, anchor drift — works on both. (See `prd.md §10.6`.)
+>
+> †† Cursor exposes a pre-shell hook but no pre-edit hook. Command-scoped
+> requirements block before execution; path-scoped memories can surface only
+> after an edit and therefore cannot prevent that edit.
 
-`tm init --harness <name>` wires up each agent natively — same engine, same enforcement, rendered in each harness's hook format. For agents without hooks, the MCP server still works and `tm export` generates instruction blocks for `AGENTS.md` / `.cursor/rules`.
+`tm init --harness <name>` supports Codex, Copilot, Cursor, and Gemini (Claude
+Code is the default). Continue can reuse the Claude-compatible hook schema, but
+does not currently have a dedicated `tm init --harness continue` installer.
+For agents without hooks, the MCP server still works and `tm export` generates
+instruction blocks for `AGENTS.md` / `.cursor/rules`.
 
 See **[docs/harnesses.md](docs/harnesses.md)** for per-tool hook configs, session-start briefing formats, and packaging details.
 
@@ -430,6 +456,19 @@ Every cap is policy-driven (`retrieval.max_results`, `retrieval.max_provisional`
 - **Sync:** union-merge of the orphan branch. Concurrent proposals never conflict because each record is an append-only ULID file.
 - **Hook:** the `PreToolUse` hook (on edits and Bash commands) reads the index (no network, no ledger-branch checkout) and completes in under 100 ms.
 - **Nudge engine:** `PostToolUse`/`UserPromptSubmit` record raw events to a per-session journal under `.git/tm/nudge`; the `Stop` hook detects the memory-worthy patterns and emits at most one bounded propose/observe nudge. Detection is pure and the journal is local-only — never a ledger record.
+
+---
+
+## Technical docs
+
+These documents are explanatory projections of the authoritative
+[`prd.md`](prd.md):
+
+- [Architecture](docs/architecture.md)
+- [Design principles](docs/design-principles.md)
+- [Threat model](docs/threat-model.md)
+- [Evaluation](docs/evaluation.md)
+- [Roadmap](docs/roadmap.md)
 
 ---
 

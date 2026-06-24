@@ -1,10 +1,20 @@
 # Cross-harness configuration
 
-TeamMemory works the same across all hook-capable coding agents — same ledger, same memories, same enforcement. `tm init --harness <name>` writes the right config for each. This page covers the per-harness specifics; the README's [Other agents](../README.md#other-agents) section has the high-level capability matrix.
+TeamMemory uses the same ledger, memories, policy, and shared engine across
+supported coding agents. Delivery and enforcement capabilities vary with each
+agent's hook API. `tm init --harness <name>` writes the relevant configuration.
+This page covers those differences; the README's
+[Other agents](../README.md#other-agents) section has the high-level matrix.
 
 ## How enforcement works across harnesses
 
-Every hook-capable agent enforces `requirement` memories deterministically: `tm init --harness <name>` installs a pre-tool hook — Claude Code's `PreToolUse` and the equivalent on Codex, Copilot, Cursor, and Gemini (Continue reuses Claude Code's hook schema) — that **blocks** a matching edit or Bash command until it's acked, rendering the deny in each harness's native hook format. Only genuinely hook-less agents fall back to a voluntary `check_action` over MCP — same knowledge, but a voluntary call rather than a guaranteed one.
+Claude Code, Codex, Copilot, and Gemini install pre-tool enforcement for the
+actions their hook APIs expose. Cursor is the exception: its pre-tool surface is
+`beforeShellExecution`, so command-scoped requirements block before execution,
+while path-scoped memories can surface only after `afterFileEdit` and cannot
+prevent that edit (`prd.md §10.6`). Continue can reuse Claude Code's hook schema
+but has no dedicated `tm init --harness continue` installer. Genuinely hook-less
+agents fall back to voluntary `check_action` over MCP.
 
 The near-moment nudge engine is harness-neutral: a thin adapter maps each tool's post-tool, prompt, and turn-end events onto the same `tm signal` / `tm nudge` verbs, so Codex, Copilot, Cursor, and Gemini get the same propose/observe nudges as Claude Code. `tm init --harness <name>` wires the per-tool hooks (event names differ; the engine and anti-spam budget do not).
 
