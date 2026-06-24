@@ -135,6 +135,31 @@ bash demo/run.sh
 
 ---
 
+## Technical docs
+
+For readers evaluating TeamMemory as agent infrastructure, the design notes are
+organized by intent:
+
+**System design**
+
+- [Architecture](docs/architecture.md) — components, data flow, Git-backed ledger, lifecycle, and enforcement model.
+- [Design principles](docs/design-principles.md) — rationale for treating project memory as governed, reviewable state rather than passive retrieval.
+
+**Safety and evaluation**
+
+- [Threat model](docs/threat-model.md) — risks around incorrect memories, poisoning, stale constraints, prompt injection, sensitive data, and noisy enforcement.
+- [Evaluation](docs/evaluation.md) — scenarios and metrics for measuring whether TeamMemory reduces repeated project mistakes.
+
+**Users and contributors**
+
+- [Harness compatibility](docs/harnesses.md) — how enforcement differs across Claude Code, Codex, Cursor, Continue, Copilot, Gemini CLI, and generic MCP clients.
+- [Roadmap](docs/roadmap.md) — current status, near-term priorities, long-term questions, and non-goals.
+
+These documents are explanatory projections of the authoritative
+[`prd.md`](prd.md).
+
+---
+
 ## How it compares
 
 Memory tools for coding agents make different tradeoffs. tm is designed for **project-scoped lessons with enforcement** — not personal recall, not chat history.
@@ -456,19 +481,6 @@ Every cap is policy-driven (`retrieval.max_results`, `retrieval.max_provisional`
 - **Sync:** union-merge of the orphan branch. Concurrent proposals never conflict because each record is an append-only ULID file.
 - **Hook:** the `PreToolUse` hook (on edits and Bash commands) reads the index (no network, no ledger-branch checkout) and completes in under 100 ms.
 - **Nudge engine:** `PostToolUse`/`UserPromptSubmit` record raw events to a per-session journal under `.git/tm/nudge`; the `Stop` hook detects the memory-worthy patterns and emits at most one bounded propose/observe nudge. Detection is pure and the journal is local-only — never a ledger record.
-
----
-
-## Technical docs
-
-These documents are explanatory projections of the authoritative
-[`prd.md`](prd.md):
-
-- [Architecture](docs/architecture.md)
-- [Design principles](docs/design-principles.md)
-- [Threat model](docs/threat-model.md)
-- [Evaluation](docs/evaluation.md)
-- [Roadmap](docs/roadmap.md)
 
 ---
 
