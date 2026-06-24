@@ -3,13 +3,21 @@ package cli_test
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/AndreasSteinerPF/team-memory/internal/cli"
 )
+
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) {
+	return 0, errors.New("write failed")
+}
 
 func runNudge(t *testing.T, repo, stdin string) (string, int) {
 	t.Helper()
@@ -42,6 +50,42 @@ func TestNudgeHookSilentWithNoSignal(t *testing.T) {
 	}
 	if strings.TrimSpace(out) != "" {
 		t.Errorf("expected silence on a fresh session, got: %q", out)
+	}
+}
+
+func TestNudgeHookDoesNotRecordFailedRenderedDelivery(t *testing.T) {
+	repo := initRepo(t)
+	feed := func(s string) { runSignalForTest(t, repo, s) }
+	feed(`{"session_id":"s1","tool_name":"Bash","tool_input":{"command":"go test ./..."},"tool_response":{"exit_code":1}}`)
+	feed(`{"session_id":"s1","tool_name":"Edit","tool_input":{"file_path":"internal/index/x.go"}}`)
+	feed(`{"session_id":"s1","tool_name":"Bash","tool_input":{"command":"go test ./..."},"tool_response":{"exit_code":0}}`)
+
+	var errb bytes.Buffer
+	code := cli.Run(
+		[]string{"--repo", repo, "nudge", "--hook", "--harness", "gemini"},
+		strings.NewReader(`{"session_id":"s1"}`),
+		failingWriter{},
+		&errb,
+	)
+	if code == 0 {
+		t.Fatal("expected rendered delivery failure")
+	}
+
+	data, err := os.ReadFile(filepath.Join(repo, ".git", "tm", "nudge", "s1.json"))
+	if err != nil {
+		t.Fatalf("read journal: %v", err)
+	}
+	var j struct {
+		Fired []struct {
+			PendingDelivery bool      `json:"pending_delivery"`
+			DeliveredAt     time.Time `json:"delivered_at"`
+		} `json:"fired"`
+	}
+	if err := json.Unmarshal(data, &j); err != nil {
+		t.Fatal(err)
+	}
+	if len(j.Fired) != 1 || !j.Fired[0].PendingDelivery || !j.Fired[0].DeliveredAt.IsZero() {
+		t.Fatalf("failed rendered delivery must remain a retryable attempt: %+v", j.Fired)
 	}
 }
 
@@ -191,6 +235,48 @@ func TestPromptSignalDrainsPendingViaAdditionalContext(t *testing.T) {
 	}
 }
 
+func TestPromptSignalRetainsPendingWhenRenderFails(t *testing.T) {
+	repo := initRepo(t)
+	feed := func(s string) { runSignalForTest(t, repo, s) }
+	feed(`{"session_id":"s1","tool_name":"Bash","tool_input":{"command":"go test ./..."},"tool_response":{"exit_code":1}}`)
+	feed(`{"session_id":"s1","tool_name":"Edit","tool_input":{"file_path":"internal/index/x.go"}}`)
+	feed(`{"session_id":"s1","tool_name":"Bash","tool_input":{"command":"go test ./..."},"tool_response":{"exit_code":0}}`)
+	if _, code := runNudge(t, repo, `{"session_id":"s1"}`); code != 0 {
+		t.Fatalf("nudge exit %d", code)
+	}
+
+	var errb bytes.Buffer
+	code := cli.Run(
+		[]string{"--repo", repo, "signal", "--hook", "--prompt"},
+		strings.NewReader(`{"session_id":"s1"}`),
+		failingWriter{},
+		&errb,
+	)
+	if code == 0 {
+		t.Fatal("expected render failure")
+	}
+
+	data, err := os.ReadFile(filepath.Join(repo, ".git", "tm", "nudge", "s1.json"))
+	if err != nil {
+		t.Fatalf("read journal: %v", err)
+	}
+	var j struct {
+		Pending []string `json:"pending"`
+		Fired   []struct {
+			DrainedTurn int `json:"drained_turn"`
+		} `json:"fired"`
+	}
+	if err := json.Unmarshal(data, &j); err != nil {
+		t.Fatal(err)
+	}
+	if len(j.Pending) != 1 {
+		t.Fatalf("pending nudge lost after render failure: %+v", j)
+	}
+	if len(j.Fired) != 1 || j.Fired[0].DrainedTurn != 0 {
+		t.Fatalf("failed render must not mark nudge drained: %+v", j.Fired)
+	}
+}
+
 func TestNudgeReportPrintsSummary(t *testing.T) {
 	repo := initRepo(t)
 	feed := func(s string) { runSignalForTest(t, repo, s) }
@@ -207,7 +293,7 @@ func TestNudgeReportPrintsSummary(t *testing.T) {
 		t.Fatalf("report exit %d: %s", code, errb.String())
 	}
 	body := out.String()
-	for _, want := range []string{"Nudge report", "Sessions: 1", "fired: 1", "queued: 1", "Follow-through:"} {
+	for _, want := range []string{"Nudge report", "Sessions: 1", "fired: 1", "queued: 1", "pending: 1", "approx context bytes:", "Follow-through:"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("report missing %q:\n%s", want, body)
 		}
@@ -230,14 +316,16 @@ func TestNudgeReportJSON(t *testing.T) {
 		t.Fatalf("report exit %d: %s", code, errb.String())
 	}
 	var got struct {
-		Sessions int `json:"sessions"`
-		Fired    int `json:"fired"`
-		Queued   int `json:"queued"`
+		Sessions           int `json:"sessions"`
+		Fired              int `json:"fired"`
+		Queued             int `json:"queued"`
+		Pending            int `json:"pending"`
+		ApproxContextBytes int `json:"approx_context_bytes"`
 	}
 	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
 		t.Fatalf("invalid JSON %q: %v", out.String(), err)
 	}
-	if got.Sessions != 1 || got.Fired != 1 || got.Queued != 1 {
+	if got.Sessions != 1 || got.Fired != 1 || got.Queued != 1 || got.Pending != 1 || got.ApproxContextBytes != 0 {
 		t.Fatalf("JSON summary mismatch: %+v", got)
 	}
 }

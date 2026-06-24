@@ -87,6 +87,47 @@ func TestDecideRecordsAlreadyActedSuppression(t *testing.T) {
 	}
 }
 
+func TestDecideContinuesToTierBAfterTierASuppression(t *testing.T) {
+	j := &nudge.Journal{Session: "s"}
+	j.Turn = 1
+	j.RecordCommand("go test", true)
+	j.RecordEdit("auth/login.go")
+	j.Turn = 2
+	j.RecordPrompt()
+	j.Turn = 3
+	j.RecordEdit("auth/login.go")
+	j.RecordCommand("go test", false)
+
+	dec := nudge.Decide(j, cfg(), func(s nudge.Signal) bool {
+		return s.Type == nudge.SigFailPass
+	})
+	if !dec.Fired || dec.Nudge.Type != nudge.SigIntervened {
+		t.Fatalf("expected Tier B nudge after suppressed Tier A signal, got %+v", dec)
+	}
+	if len(dec.Suppressions) != 1 || dec.Suppressions[0].Reason != nudge.SuppressAlreadyActed {
+		t.Fatalf("expected retained Tier A suppression, got %+v", dec.Suppressions)
+	}
+}
+
+func TestDecideContinuesToSelfReviewAfterDedupedTierB(t *testing.T) {
+	j := &nudge.Journal{Session: "s", Turn: 1}
+	j.RecordEdit("auth/login.go")
+	j.Turn = 2
+	j.RecordPrompt()
+	j.Turn = 3
+	j.RecordEdit("auth/login.go")
+	j.Turn = 9
+	j.Fired = append(j.Fired, nudge.FiredNudge{Key: "intervened:auth/login.go", Turn: 1})
+
+	dec := nudge.Decide(j, cfg(), never)
+	if !dec.Fired || dec.Nudge.Type != nudge.SignalType("self_review") {
+		t.Fatalf("expected self-review after deduped Tier B signal, got %+v", dec)
+	}
+	if len(dec.Suppressions) != 1 || dec.Suppressions[0].Reason != nudge.SuppressDedup {
+		t.Fatalf("expected retained Tier B suppression, got %+v", dec.Suppressions)
+	}
+}
+
 func TestDecideEmitsPointedNudgeForFailPass(t *testing.T) {
 	j := &nudge.Journal{Session: "s"}
 	j.Turn = 1
@@ -154,6 +195,23 @@ func TestDecideRespectsMaxPerSession(t *testing.T) {
 	}
 	if dec := nudge.Decide(j, cfg(), never); dec.Fired {
 		t.Error("expected max-per-session ceiling to suppress")
+	}
+}
+
+func TestDecideIgnoresUndeliveredRenderedAttemptForBudgetAndDedup(t *testing.T) {
+	j := &nudge.Journal{Session: "s", Turn: 3}
+	j.RecordCommand("go test", true)
+	j.RecordEdit("x.go")
+	j.RecordCommand("go test", false)
+	j.Fired = []nudge.FiredNudge{{
+		Key: "fail_pass:x.go", Turn: 3, Delivery: nudge.DeliveryRendered, PendingDelivery: true,
+	}}
+
+	dec := nudge.Decide(j, nudge.Config{
+		Enabled: true, MaxPerSession: 1, CooldownTurns: 3, SelfReviewEvery: 8, ChurnThreshold: 3,
+	}, never)
+	if !dec.Fired || dec.Nudge.Type != nudge.SigFailPass {
+		t.Fatalf("undelivered attempt must remain retryable, got %+v", dec)
 	}
 }
 

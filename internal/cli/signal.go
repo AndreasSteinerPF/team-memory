@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -138,19 +139,21 @@ func recordPromptSignal(cmd *cobra.Command, g *globalOpts, a harness.Adapter) er
 	// this UserPromptSubmit injection re-delivers it via additionalContext,
 	// the channel that does reach the agent. See ledger memory
 	// 01KV84H0XQTPVWVNR65PG1TD2A.
-	var pending []string
-	if len(j.Pending) > 0 {
-		pending = j.Pending
-		j.Pending = nil
-		j.MarkQueuedDrained(j.Turn)
-	}
 	if err := store.Save(j); err != nil {
 		return err
 	}
-	if len(pending) == 0 {
+	if len(j.Pending) == 0 {
 		return nil
 	}
-	return a.Render(harness.PromptSubmit, harness.Decision{Context: strings.Join(pending, "\n")}, cmd.OutOrStdout())
+	if err := a.Render(harness.PromptSubmit, harness.Decision{Context: strings.Join(j.Pending, "\n")}, cmd.OutOrStdout()); err != nil {
+		return err
+	}
+	j.Pending = nil
+	j.MarkQueuedDrained(j.Turn, time.Now().UTC())
+	// Rendering happens before persistence, so a save failure may re-deliver
+	// the context on the next prompt. This intentionally favors at-least-once
+	// advisory delivery over silently losing a nudge.
+	return store.Save(j)
 }
 
 // relPath converts an absolute or repo-relative path to a forward-slash repo path.

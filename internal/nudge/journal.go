@@ -1,5 +1,5 @@
-// Package nudge owns the near-moment proposing/observing nudge engine (prd.md
-// §10.1). It keeps a per-session journal under .git/tm/nudge, detects
+// Package nudge owns the near-moment proposing/observing nudge engine
+// (prd.md §10.1). It keeps a per-session journal under .git/tm/nudge, detects
 // memory-worthy signals from hook events, and decides at most one nudge per
 // turn. Local state only, never a ledger record — like internal/acks.
 package nudge
@@ -50,7 +50,11 @@ type FiredNudge struct {
 	TextBytes   int          `json:"text_bytes,omitempty"`
 	Delivery    DeliveryMode `json:"delivery,omitempty"`
 	FiredAt     time.Time    `json:"fired_at,omitempty"`
-	DrainedTurn int          `json:"drained_turn,omitempty"`
+	DeliveredAt time.Time    `json:"delivered_at,omitempty"`
+	// PendingDelivery marks a directly rendered attempt persisted before output.
+	// It remains retryable until rendering succeeds and the delivered state saves.
+	PendingDelivery bool `json:"pending_delivery,omitempty"`
+	DrainedTurn     int  `json:"drained_turn,omitempty"`
 }
 
 // Journal is the per-session local state. Keyed by session id, TTL-expired like
@@ -94,10 +98,11 @@ func (j *Journal) RecordSuppressions(s []Suppression) {
 	j.Suppressions = append(j.Suppressions, s...)
 }
 
-func (j *Journal) MarkQueuedDrained(turn int) {
+func (j *Journal) MarkQueuedDrained(turn int, deliveredAt time.Time) {
 	for i := range j.Fired {
 		if j.Fired[i].Delivery == DeliveryQueued && j.Fired[i].DrainedTurn == 0 {
 			j.Fired[i].DrainedTurn = turn
+			j.Fired[i].DeliveredAt = deliveredAt
 		}
 	}
 }

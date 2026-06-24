@@ -56,7 +56,7 @@ func Decide(j *Journal, cfg Config, acted func(Signal) bool) Decision {
 	if !cfg.Enabled {
 		return Decision{Suppressions: suppressAll(SuppressDisabled, j.Turn, sigs)}
 	}
-	if len(j.Fired) >= cfg.MaxPerSession {
+	if policyFiredCount(j) >= cfg.MaxPerSession {
 		return Decision{Suppressions: suppressAll(SuppressMaxPerSession, j.Turn, sigs)}
 	}
 	if lastFiredTurn(j) >= 0 && j.Turn-lastFiredTurn(j) < cfg.CooldownTurns {
@@ -68,9 +68,6 @@ func Decide(j *Journal, cfg Config, acted func(Signal) bool) Decision {
 	if best.Type != "" {
 		return Decision{Nudge: renderTierA(best), Fired: true, Suppressions: suppressed}
 	}
-	if len(suppressed) > 0 {
-		return Decision{Suppressions: suppressed}
-	}
 
 	// Tier B: attention-flag → aimed self-review.
 	for _, s := range sigs {
@@ -78,14 +75,11 @@ func Decide(j *Journal, cfg Config, acted func(Signal) bool) Decision {
 			return Decision{Nudge: Nudge{
 				Text: fmt.Sprintf("tm: the user redirected you while editing %s — was there a constraint or decision worth recording? If so, tm_propose it; otherwise ignore.", s.Path),
 				Verb: "", Key: s.Key(), Type: s.Type, Path: s.Path,
-			}, Fired: true}
+			}, Fired: true, Suppressions: suppressed}
 		}
 		if s.Type == SigIntervened {
 			suppressed = append(suppressed, suppression(SuppressDedup, j.Turn, s))
 		}
-	}
-	if len(suppressed) > 0 {
-		return Decision{Suppressions: suppressed}
 	}
 
 	// Periodic generic self-review.
@@ -93,9 +87,9 @@ func Decide(j *Journal, cfg Config, acted func(Signal) bool) Decision {
 		return Decision{Nudge: Nudge{
 			Text: "tm: anything memory-worthy this session — a non-obvious failure, a hidden constraint, a fragile area? If so, tm_propose it; otherwise ignore.",
 			Verb: "", Key: fmt.Sprintf("self_review:%d", j.Turn), Type: SignalType("self_review"),
-		}, Fired: true}
+		}, Fired: true, Suppressions: suppressed}
 	}
-	return Decision{}
+	return Decision{Suppressions: suppressed}
 }
 
 func suppressAll(reason SuppressionReason, turn int, sigs []Signal) []Suppression {
@@ -148,7 +142,7 @@ func renderTierA(s Signal) Nudge {
 func lastFiredTurn(j *Journal) int {
 	last := -1
 	for _, f := range j.Fired {
-		if f.Turn > last {
+		if countsForPolicy(f) && f.Turn > last {
 			last = f.Turn
 		}
 	}
@@ -157,9 +151,23 @@ func lastFiredTurn(j *Journal) int {
 
 func firedKey(j *Journal, key string) bool {
 	for _, f := range j.Fired {
-		if f.Key == key {
+		if countsForPolicy(f) && f.Key == key {
 			return true
 		}
 	}
 	return false
+}
+
+func policyFiredCount(j *Journal) int {
+	n := 0
+	for _, f := range j.Fired {
+		if countsForPolicy(f) {
+			n++
+		}
+	}
+	return n
+}
+
+func countsForPolicy(f FiredNudge) bool {
+	return f.Delivery == DeliveryQueued || !f.PendingDelivery
 }

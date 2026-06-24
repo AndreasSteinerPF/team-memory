@@ -11,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/AndreasSteinerPF/team-memory/internal/derive"
 	"github.com/AndreasSteinerPF/team-memory/internal/harness"
 	"github.com/AndreasSteinerPF/team-memory/internal/model"
 	"github.com/AndreasSteinerPF/team-memory/internal/nudge"
@@ -70,21 +71,32 @@ func newNudgeCmd(g *globalOpts) *cobra.Command {
 			if a.Name() == "claude" || a.Name() == "codex" {
 				delivery = nudge.DeliveryQueued
 			}
-			// Record the fired nudge for dedup, budget, and reporting.
-			j.Fired = append(j.Fired, nudge.FiredFromNudge(n, j.Turn, delivery, time.Now().UTC()))
 			// On Claude Code, Stop-hook stdout does not actually surface to the
 			// agent's next turn (live-verified 2026-06-17). Codex Stop hooks are
 			// also unsuitable for advisory context: plain text is rejected, and
 			// additionalContext belongs on UserPromptSubmit. Queue the text here
 			// so the next prompt hook re-injects it through the surfaced channel.
 			if delivery == nudge.DeliveryQueued {
+				j.Fired = append(j.Fired, nudge.FiredFromNudge(n, j.Turn, delivery, time.Now().UTC()))
 				j.Pending = append(j.Pending, n.Text)
+				if err := store.Save(j); err != nil {
+					return err
+				}
+				return a.Render(harness.Stop, harness.Decision{Context: n.Text}, cmd.OutOrStdout())
 			}
+
+			attempt := nudge.FiredFromNudge(n, j.Turn, delivery, time.Now().UTC())
+			attempt.PendingDelivery = true
+			j.Fired = append(j.Fired, attempt)
 			if err := store.Save(j); err != nil {
 				return err
 			}
-
-			return a.Render(harness.Stop, harness.Decision{Context: n.Text}, cmd.OutOrStdout())
+			if err := a.Render(harness.Stop, harness.Decision{Context: n.Text}, cmd.OutOrStdout()); err != nil {
+				return err
+			}
+			j.Fired[len(j.Fired)-1].PendingDelivery = false
+			j.Fired[len(j.Fired)-1].DeliveredAt = time.Now().UTC()
+			return store.Save(j)
 		},
 	}
 	cmd.Flags().BoolVar(&hook, "hook", false, "read a Stop event on stdin and emit at most one nudge")
@@ -204,7 +216,9 @@ func printNudgeReport(w io.Writer, r nudge.Report) {
 	fmt.Fprintln(w, "Delivery:")
 	fmt.Fprintf(w, "  rendered: %d\n", r.Rendered)
 	fmt.Fprintf(w, "  queued: %d\n", r.Queued)
+	fmt.Fprintf(w, "  pending: %d\n", r.Pending)
 	fmt.Fprintf(w, "  drained: %d\n", r.Drained)
+	fmt.Fprintf(w, "  approx context bytes: %d\n", r.ApproxContextBytes)
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Follow-through:")
 	fmt.Fprintf(w, "  target-matched: %d\n", r.FollowThrough.TargetMatched)
@@ -224,24 +238,26 @@ func (e *env) actedPredicate(sessionID string) func(nudge.Signal) bool {
 	}
 	obs, _ := e.led.Observations()
 	return func(s nudge.Signal) bool {
-		if s.Verb == "observe" {
-			for _, o := range obs {
-				if o.Target == s.Memory && o.Actor.SessionID == sessionID {
-					return true
-				}
-			}
-			return false
-		}
-		for _, m := range mems {
-			if m.Actor.SessionID != sessionID {
-				continue
-			}
-			for _, p := range m.Scope.Paths {
-				if p == s.Path {
-					return true
-				}
+		return actedOnSignal(sessionID, s, mems, obs)
+	}
+}
+
+func actedOnSignal(sessionID string, s nudge.Signal, mems []model.Memory, obs []model.Observation) bool {
+	if s.Verb == "observe" {
+		for _, o := range obs {
+			if o.Target == s.Memory && o.Actor.SessionID == sessionID {
+				return true
 			}
 		}
 		return false
 	}
+	if s.Path == "" {
+		return false
+	}
+	for _, m := range mems {
+		if m.Actor.SessionID == sessionID && derive.MatchPath(s.Path, m.Scope) {
+			return true
+		}
+	}
+	return false
 }
