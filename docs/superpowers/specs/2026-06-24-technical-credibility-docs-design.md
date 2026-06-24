@@ -8,9 +8,10 @@ recruiters. The documentation must explain the system precisely without
 presenting planned work as shipped behavior or overstating the beta product's
 safety guarantees.
 
-The authoritative product behavior remains `prd.md`. New documents will cite
-relevant sections as `prd.md §X.Y` and use the implementation and tests as
-evidence that the documented behavior exists.
+The authoritative product behavior remains `prd.md`. The new documents are
+**explanatory projections** of that specification, not parallel normative
+sources. They will cite relevant sections as `prd.md §X.Y` and use the
+implementation and tests as evidence that the documented behavior exists.
 
 ## Approach
 
@@ -47,6 +48,11 @@ When these disagree, the code and tests determine what is implemented, while
 `prd.md` determines intended behavior. Confirmed documentation errors will be
 corrected. Unresolved differences will be stated as documented discrepancies
 rather than silently harmonized.
+
+High-churn facts should be linked to their authoritative PRD section instead of
+copied when readers do not need the complete value inline. When a value must be
+repeated for comprehension, it will carry a nearby section citation and, where
+practical, a conformance assertion.
 
 ## Architecture Document
 
@@ -183,6 +189,8 @@ No feature implementation or broad README rewrite is in scope.
 Verification will include:
 
 - link/path checks for all new README links and internal relative links;
+- a bounded Go conformance test for machine-checkable documentation facts,
+  following the existing `e2e/harness/conformance_test.go` pattern;
 - searches for unsupported absolute claims and ambiguous future tense;
 - Markdown cleanliness checks available in the repository/environment;
 - `go test ./...` and `go build ./...`, because documentation corrections may
@@ -193,3 +201,20 @@ Verification will include:
 Any review finding will be corrected and the revised final changes reviewed
 again. The temporary files under `docs/superpowers/` will be removed before the
 completed work is delivered.
+
+### Documentation conformance test
+
+The test will intentionally check only facts that can be verified without
+interpreting prose:
+
+- every local Markdown link added to the README resolves to a file;
+- the README's documented `tm init --harness` values match the set accepted by
+  the CLI;
+- the documented MCP tool list matches the five tools registered by the MCP
+  server;
+- each new technical document identifies itself as an explanatory projection
+  of `prd.md` and contains at least one `prd.md §X.Y` citation.
+
+It will not attempt to prove semantic equivalence between prose and the PRD.
+That remains the role of review, with the repository's required independent
+spec-compliance approval serving as the final drift check.
