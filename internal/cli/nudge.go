@@ -85,17 +85,21 @@ func newNudgeCmd(g *globalOpts) *cobra.Command {
 				return a.Render(harness.Stop, harness.Decision{Context: n.Text}, cmd.OutOrStdout())
 			}
 
-			attempt := nudge.FiredFromNudge(n, j.Turn, delivery, time.Now().UTC())
-			attempt.PendingDelivery = true
-			j.Fired = append(j.Fired, attempt)
+			attemptIndex := pendingRenderedAttempt(j, n.Key)
+			if attemptIndex < 0 {
+				attempt := nudge.FiredFromNudge(n, j.Turn, delivery, time.Now().UTC())
+				attempt.PendingDelivery = true
+				j.Fired = append(j.Fired, attempt)
+				attemptIndex = len(j.Fired) - 1
+			}
 			if err := store.Save(j); err != nil {
 				return err
 			}
 			if err := a.Render(harness.Stop, harness.Decision{Context: n.Text}, cmd.OutOrStdout()); err != nil {
 				return err
 			}
-			j.Fired[len(j.Fired)-1].PendingDelivery = false
-			j.Fired[len(j.Fired)-1].DeliveredAt = time.Now().UTC()
+			j.Fired[attemptIndex].PendingDelivery = false
+			j.Fired[attemptIndex].DeliveredAt = time.Now().UTC()
 			return store.Save(j)
 		},
 	}
@@ -103,6 +107,16 @@ func newNudgeCmd(g *globalOpts) *cobra.Command {
 	cmd.Flags().StringVar(&harnessName, "harness", "claude", "harness adapter (claude, codex, copilot, cursor, gemini)")
 	cmd.AddCommand(newNudgeReportCmd(g))
 	return cmd
+}
+
+func pendingRenderedAttempt(j *nudge.Journal, key string) int {
+	for i := len(j.Fired) - 1; i >= 0; i-- {
+		f := j.Fired[i]
+		if f.Key == key && f.Delivery == nudge.DeliveryRendered && f.PendingDelivery {
+			return i
+		}
+	}
+	return -1
 }
 
 func newNudgeReportCmd(g *globalOpts) *cobra.Command {

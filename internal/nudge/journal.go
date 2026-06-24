@@ -108,7 +108,10 @@ func (j *Journal) MarkQueuedDrained(turn int, deliveredAt time.Time) {
 }
 
 // Store is a directory of journal files keyed by session id.
-type Store struct{ dir string }
+type Store struct {
+	dir    string
+	rename func(string, string) error
+}
 
 // Open creates (if needed) and returns the journal store under gitDir/tm/nudge.
 func Open(gitDir string) (*Store, error) {
@@ -140,14 +143,40 @@ func (s *Store) Load(session string) (*Journal, error) {
 	return &j, nil
 }
 
-// Save writes the journal atomically-enough for local single-writer use.
+// Save replaces the journal atomically so a failed persistence attempt leaves
+// the prior valid journal intact (prd.md §10.1).
 func (s *Store) Save(j *Journal) error {
 	j.UpdatedAt = time.Now().UTC()
 	data, err := json.Marshal(j)
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(s.path(j.Session), data, 0o644)
+	tmp, err := os.CreateTemp(s.dir, ".nudge-*.tmp")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+	if err := tmp.Chmod(0o644); err != nil {
+		tmp.Close()
+		return err
+	}
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	rename := s.rename
+	if rename == nil {
+		rename = os.Rename
+	}
+	return rename(tmpPath, s.path(j.Session))
 }
 
 // RecordEdit logs an edit to path at the current turn.

@@ -89,6 +89,44 @@ func TestNudgeHookDoesNotRecordFailedRenderedDelivery(t *testing.T) {
 	}
 }
 
+func TestNudgeHookSuccessfulRetryClearsDirectPendingDelivery(t *testing.T) {
+	repo := initRepo(t)
+	feed := func(s string) { runSignalForTest(t, repo, s) }
+	feed(`{"session_id":"s1","tool_name":"Bash","tool_input":{"command":"go test ./..."},"tool_response":{"exit_code":1}}`)
+	feed(`{"session_id":"s1","tool_name":"Edit","tool_input":{"file_path":"internal/index/x.go"}}`)
+	feed(`{"session_id":"s1","tool_name":"Bash","tool_input":{"command":"go test ./..."},"tool_response":{"exit_code":0}}`)
+
+	var errb bytes.Buffer
+	args := []string{"--repo", repo, "nudge", "--hook", "--harness", "gemini"}
+	if code := cli.Run(args, strings.NewReader(`{"session_id":"s1"}`), failingWriter{}, &errb); code == 0 {
+		t.Fatal("expected initial render failure")
+	}
+	var retryOut bytes.Buffer
+	if code := cli.Run(args, strings.NewReader(`{"session_id":"s1"}`), &retryOut, &errb); code != 0 {
+		t.Fatalf("retry exit %d: %s", code, errb.String())
+	}
+
+	var reportOut bytes.Buffer
+	if code := cli.Run(
+		[]string{"--repo", repo, "nudge", "report", "--session", "s1", "--json"},
+		strings.NewReader(""),
+		&reportOut,
+		&errb,
+	); code != 0 {
+		t.Fatalf("report exit %d: %s", code, errb.String())
+	}
+	var got struct {
+		Fired   int `json:"fired"`
+		Pending int `json:"pending"`
+	}
+	if err := json.Unmarshal(reportOut.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Fired != 1 || got.Pending != 0 {
+		t.Fatalf("retry report mismatch: %+v", got)
+	}
+}
+
 // TestNudgeHookQueuesPendingOnClaude pins the Stop→UserPromptSubmit re-delivery
 // path required when the harness's Stop hook does not surface stdout to the
 // agent (Claude Code; contested ledger memory 01KV84H0XQTPVWVNR65PG1TD2A). The

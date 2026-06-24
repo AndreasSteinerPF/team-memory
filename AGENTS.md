@@ -16,3 +16,13 @@
   remove any `docs/superpowers/specs/` and `docs/superpowers/plans/` files the
   work produced. The durable intent belongs in `prd.md` and the code/tests, not
   in process docs.
+
+## Independent review before completion
+
+- Do not declare a substantial implementation complete until an independent
+  reviewer returns an explicit `APPROVED` verdict on the final changes.
+- When the implementation changes behavior documented in `prd.md`, obtain both
+  a code review and a spec-compliance review; each must explicitly approve.
+- If independent review is unavailable, interrupted, or returns findings, report
+  the work as pending review rather than done. Address findings and request a
+  fresh review of the revised final changes.

@@ -44,6 +44,7 @@ func BuildReport(journals []Journal, mems []model.Memory, obs []model.Observatio
 		}
 		for _, f := range j.Fired {
 			if f.Delivery == DeliveryRendered && f.PendingDelivery {
+				r.Pending++
 				continue
 			}
 			r.Fired++
@@ -77,7 +78,9 @@ func classifyFollowThrough(r *Report, f FiredNudge, session string, mems []model
 	}
 	deliveredAt := f.FiredAt
 	if f.Delivery == DeliveryQueued {
-		deliveredAt = f.DeliveredAt
+		if !f.DeliveredAt.IsZero() {
+			deliveredAt = f.DeliveredAt
+		}
 	} else if !f.DeliveredAt.IsZero() {
 		deliveredAt = f.DeliveredAt
 	}

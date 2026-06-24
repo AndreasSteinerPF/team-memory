@@ -69,6 +69,20 @@ func TestBuildReportCountsPendingQueuedNudges(t *testing.T) {
 	}
 }
 
+func TestBuildReportCountsPendingDirectDelivery(t *testing.T) {
+	j := nudge.Journal{
+		Session: "s1",
+		Fired: []nudge.FiredNudge{{
+			Key: "churn:hot.go", Type: nudge.SigChurn, Verb: "propose",
+			Path: "hot.go", Delivery: nudge.DeliveryRendered, PendingDelivery: true,
+		}},
+	}
+	r := nudge.BuildReport([]nudge.Journal{j}, nil, nil, false)
+	if r.Pending != 1 || r.Fired != 0 || r.Rendered != 0 {
+		t.Fatalf("direct pending mismatch: %+v", r)
+	}
+}
+
 func TestBuildReportMarksPendingQueuedFollowThroughUnavailable(t *testing.T) {
 	firedAt := time.Date(2026, 6, 23, 12, 0, 0, 0, time.UTC)
 	j := nudge.Journal{
@@ -109,6 +123,26 @@ func TestBuildReportUsesQueuedDeliveryTimeForFollowThrough(t *testing.T) {
 	r := nudge.BuildReport([]nudge.Journal{j}, mems, nil, true)
 	if r.FollowThrough.None != 1 || r.FollowThrough.TargetMatched != 0 {
 		t.Fatalf("pre-delivery record must not count as follow-through: %+v", r.FollowThrough)
+	}
+}
+
+func TestBuildReportUsesFiredTimeForLegacyDrainedFollowThrough(t *testing.T) {
+	firedAt := time.Date(2026, 6, 23, 12, 0, 0, 0, time.UTC)
+	j := nudge.Journal{
+		Session: "s1",
+		Fired: []nudge.FiredNudge{{
+			Type: nudge.SigChurn, Verb: "propose", Path: "hot.go",
+			Delivery: nudge.DeliveryQueued, FiredAt: firedAt, DrainedTurn: 2,
+		}},
+	}
+	mems := []model.Memory{{
+		Scope:     model.Scope{Paths: []string{"hot.go"}},
+		Actor:     model.Actor{SessionID: "s1"},
+		CreatedAt: firedAt.Add(time.Minute),
+	}}
+	r := nudge.BuildReport([]nudge.Journal{j}, mems, nil, true)
+	if r.FollowThrough.TargetMatched != 1 || r.FollowThrough.Unavailable != 0 {
+		t.Fatalf("legacy drained follow-through mismatch: %+v", r.FollowThrough)
 	}
 }
 
