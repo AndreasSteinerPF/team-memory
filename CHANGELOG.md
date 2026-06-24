@@ -6,6 +6,44 @@
 All notable changes to TeamMemory are documented here. The format is based on
 [Keep a Changelog], and this project adheres to [Semantic Versioning].
 
+## [0.7.1] - 2026-06-24
+
+Operational hardening for near-moment nudges. This release adds local outcome
+reporting for tuning the existing nudge policy and closes delivery/accounting
+edge cases found during independent review.
+
+### Added
+
+- **Local nudge outcome report.** `tm nudge report` summarizes retained local
+  sessions, fired and suppressed candidates, suppression reasons,
+  rendered/queued/pending/drained delivery, approximate rendered or injected
+  context bytes, and same-session `propose`/`observe` follow-through. Use
+  `--session <id>` to select one session or `--json` for machine-readable output.
+  The report reads `.git/tm/nudge`; it does not transmit telemetry or write
+  records to the synced ledger.
+
+### Fixed
+
+- Suppressed higher-priority candidates no longer prevent valid lower-tier or
+  periodic self-review nudges from firing.
+- Scope-aware suppression and follow-through now honor TeamMemory path globs,
+  while pathless revert signals are not accidentally matched by catch-all scopes.
+- Direct and queued delivery use atomic local journal replacement and
+  at-least-once retry semantics. Pending direct-render attempts do not consume
+  nudge budget, cooldown, or dedup, and successful retries no longer leave
+  stale pending counts.
+- Follow-through is anchored to successful delivery time, with compatibility
+  fallback for journals written before delivery timestamps were recorded.
+
+### Changed
+
+- `prd.md` marks Phase 3 and lightweight nudge outcome instrumentation shipped;
+  formal nudge A/B capability evaluation remains deferred until local
+  diagnostics expose a concrete product decision.
+- Contributor guidance now requires explicit independent code and
+  spec-compliance approval before substantial behavior changes are declared
+  complete.
+
 ## [0.7.0] - 2026-06-23
 
 The first Phase 3 trust-and-safety release. It closes the cheap leak-prevention
@@ -498,6 +536,7 @@ dogfooding on real repositories.
 - **Acceptance tests** — flagship lifecycle demo, trap-repo retrieval benchmark,
   two-clone concurrent-sync convergence, and hook latency budget.
 
+[0.7.1]: https://github.com/AndreasSteinerPF/team-memory/releases/tag/v0.7.1
 [0.7.0]: https://github.com/AndreasSteinerPF/team-memory/releases/tag/v0.7.0
 [0.6.3]: https://github.com/AndreasSteinerPF/team-memory/releases/tag/v0.6.3
 [0.6.2]: https://github.com/AndreasSteinerPF/team-memory/releases/tag/v0.6.2

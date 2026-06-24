@@ -1,5 +1,5 @@
 // Package cli is the entry point for the tm command: a cobra application that
-// exposes TeamMemory's 16 commands (prd.md §10.5) over the internal packages.
+// exposes TeamMemory's 20 commands (prd.md §10.5) over the internal packages.
 package cli
 
 import (

@@ -447,7 +447,7 @@ Same MCP server. As of 2026, Codex CLI, Copilot CLI, Cursor, Gemini CLI, and Con
 
 ### 10.5 CLI
 
-Eighteen commands:
+Twenty commands:
 
 ```text
 tm init          # create orphan branch, default policy.yaml, local index;
@@ -455,8 +455,10 @@ tm init          # create orphan branch, default policy.yaml, local index;
 tm sync          # fetch + union-merge + push the teammemory branch
 tm check-action  # query memory for an action (--hook mode for the plugin)
 tm signal        # record nudge signals from a PostToolUse event, or a prompt marker (--hook; --prompt; --harness)
-tm nudge         # emit at most one near-moment nudge from a Stop event (--hook; --harness)
+tm nudge         # emit at most one near-moment nudge (--hook; --harness), or
+                 # summarize local outcomes (report [--session <id>] [--json])
 tm brief         # session-start briefing for agent hooks (live counts + instructions)
+tm mcp           # serve the TeamMemory MCP tools over stdio
 tm propose       # create a memory record
 tm observe       # add an observation: confirm|contradict|adjust_scope|mark_stale|
                  # mark_duplicate (--canonical-id) | supersede (--supersedes)
@@ -471,6 +473,7 @@ tm search        # lexical search
 tm export        # generate AGENTS.md / CLAUDE.md / .cursor/rules blocks / JSON
 tm status        # ledger overview, items needing human attention, sync state
 tm doctor        # validate setup: ledger branch, index, hooks, MCP, remote
+tm version       # print the tm version
 ```
 
 `tm approve` and `tm reject` write `approve`/`reject` observation records with `actor.kind: human`.
@@ -527,7 +530,7 @@ Symbol matching, error-signature matching, and semantic ranking are roadmap.
 ### 12.1 Must Have
 
 1. Open-source repo, docs, and a quickstart that works in under 10 minutes.
-2. Go CLI (all 13 commands).
+2. Go CLI (all 20 commands in §10.5).
 3. Orphan-branch ledger via git plumbing; ULID record files; union-merge sync.
 4. Local SQLite index with full-replay rebuild and incremental update.
 5. Derived-state function exactly per Section 8, with golden-file tests.
@@ -659,7 +662,7 @@ The demo shows the deterministic path (hook), not the voluntary one — and ever
 - **Identity-aware independent confirmation** — **Shipped.** Independence can now use a stricter `different_actor` policy mode keyed on `actor.email` (§8.2, §9.1), preventing one Git identity from self-activating a memory across sessions. CLI/MCP-created agent records stamp `actor.email` from `git config user.email`; old ledgers and records without email degrade to the existing session-only rule, preserving compatibility for solo devs, CI bots, and unset Git identities. The default remains `different_session`, so teams opt into the stricter behavior deliberately.
 - **Lightweight nudge outcome instrumentation** — **Shipped.** The anti-spam budget (§10.1) bounds nudge *volume*, and `tm nudge report` now summarizes the existing local nudge journal: nudges fired, suppressions by reason, pending/drained delivery counts, follow-up `propose`/`observe` actions in the same session, and approximate injected-context size. The diagnostic state stays out of the synced ledger like acks and the nudge journal (§10.1, §10.2). Use this first pass to tune defaults only when the signal is obvious; otherwise carry the measurements into the later A/B eval.
 
-  Deferred: formal nudge A/B capability evaluation — identical tasks with nudges on vs off, comparing useful memory follow-through, repeated-mistake avoidance, and context/turn cost beyond the trap-repo mistake-avoidance metric (§14, metric 5). This is valuable, but noisy and easy to overfit before the product has enough live usage. Defer it until lightweight telemetry shows a concrete budget/defaults question worth answering or a product decision depends on it.
+  Deferred: formal nudge A/B capability evaluation — identical tasks with nudges on vs off, comparing useful memory follow-through, repeated-mistake avoidance, and context/turn cost beyond the trap-repo mistake-avoidance metric (§14, metric 5). This is valuable, but noisy and easy to overfit before the product has enough live usage. Defer it until local diagnostics show a concrete budget/defaults question worth answering or a product decision depends on it.
 
   Deferred: proactive verification via background sub-agents (spin off a cheap agent to reproduce a provisional memory's claim rather than waiting for an organic encounter) — the dedicated-reviewer-agents family held out of MVP scope (§12.3 item 7), held back here in favor of first maximizing in-session participation without extra turns or cost. Revisit in Phase 7 governance depth.
 

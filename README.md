@@ -194,8 +194,9 @@ tm init          create orphan branch, default policy, local index; install Clau
 tm sync          fetch + union-merge + push the teammemory branch
 tm check-action  query memory for an action (--hook mode for the PreToolUse hook)
 tm signal        record nudge signals (PostToolUse) or a prompt marker (--prompt) for the nudge engine
-tm nudge         emit at most one propose/observe nudge at turn end (--hook mode for the Stop hook)
+tm nudge         emit a bounded propose/observe nudge (--hook), or summarize local outcomes (report)
 tm brief         session-start briefing for agent hooks (live counts + instructions)
+tm mcp           serve the TeamMemory MCP tools over stdio
 tm propose       create a memory record
 tm observe       add an observation (confirm / contradict / adjust_scope / mark_stale /
                  mark_duplicate --canonical-id / supersede --supersedes)
@@ -210,6 +211,7 @@ tm search        lexical search over titles, summaries, guidance
 tm export        generate AGENTS.md / CLAUDE.md / .cursor/rules blocks or JSON
 tm status        ledger overview, items needing human attention, sync state
 tm doctor        diagnose setup: ledger branch, index, hooks, MCP, remote
+tm version       print the tm version
 ```
 
 Run any command with `--help` for its full flag set. Memories are scoped with `--scope` (path globs) and/or `--scope-command` (command patterns such as `pytest *`); `tm check-action` takes `--path` and/or `--command`. `tm observe mark_duplicate` requires `--canonical-id <other-memory>` (filed on the duplicate, names the kept memory); `tm observe supersede` requires `--supersedes <obsolete-memory>` (filed on the NEW canonical, names the obsolete one). `tm propose` and `tm observe` also accept `--actor`, `--session`, `--ctx-branch`, `--ctx-path`, and `--ctx-command` to attribute records and record code context.
@@ -270,6 +272,22 @@ The session briefing tells an agent *when* to remember; the nudge engine catches
 - **`UserPromptSubmit` → `tm signal --hook --prompt`** records a prompt marker so the engine can detect an edit→prompt→re-edit on the same path (a signal that the user redirected the agent there).
 
 The nudge journal is local state under `.git/tm/nudge` — like acks, it is never committed to the ledger. The verbs themselves stay voluntary; the engine only raises the highest-value moments to a pointed prompt.
+
+For operational tuning, `tm nudge report` summarizes that local journal without
+adding telemetry or ledger records:
+
+```bash
+tm nudge report                 # all retained sessions
+tm nudge report --session <id>  # one session
+tm nudge report --json          # machine-readable output
+```
+
+The report includes fired and suppressed candidates, suppression reasons,
+rendered/queued/pending/drained delivery, approximate rendered or injected
+context bytes,
+and same-session `propose`/`observe` follow-through. Use it to tune nudge policy
+only when the signal is clear; it is lightweight diagnostics, not a formal A/B
+evaluation.
 
 ---
 
