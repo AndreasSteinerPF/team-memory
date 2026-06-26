@@ -75,6 +75,21 @@ func TestCursorFileEditSetsPath(t *testing.T) {
 	}
 }
 
+func TestCursorFileEditPathWithSpaces(t *testing.T) {
+	a, _ := harness.Get("cursor")
+	in := `{"file_path":"docs/space dir/design note.md","edits":[{"old_string":"","new_string":"hi"}],"session_id":"s1","hook_event_name":"afterFileEdit"}`
+	ev, err := a.Parse(harness.PostTool, strings.NewReader(in))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ev.FilePath != "docs/space dir/design note.md" {
+		t.Errorf("FilePath = %q", ev.FilePath)
+	}
+	if ev.Command != "" || ev.HasOutcome {
+		t.Errorf("file edit must not be classified as a command outcome: %+v", ev)
+	}
+}
+
 func TestCursorRenderBlockUsesAgentMessage(t *testing.T) {
 	a, _ := harness.Get("cursor")
 	var b strings.Builder
