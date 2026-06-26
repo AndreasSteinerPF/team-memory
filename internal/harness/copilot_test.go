@@ -85,6 +85,26 @@ func TestCopilotToolArgsVariants(t *testing.T) {
 	}
 }
 
+func TestCopilotParseFilePathWithSpaces(t *testing.T) {
+	a, _ := harness.Get("copilot")
+	cases := []string{
+		`{"sessionId":"s1","hookEventName":"postToolUse","toolName":"edit","toolArgs":"{\"file_path\":\"docs/space dir/design note.md\"}"}`,
+		`{"sessionId":"s1","hookEventName":"postToolUse","toolName":"edit","toolArgs":{"path":"docs/space dir/design note.md"}}`,
+	}
+	for _, in := range cases {
+		ev, err := a.Parse(harness.PostTool, strings.NewReader(in))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ev.FilePath != "docs/space dir/design note.md" {
+			t.Errorf("input %s -> FilePath = %q", in, ev.FilePath)
+		}
+		if ev.Command != "" || ev.HasOutcome {
+			t.Errorf("file edit must not be classified as a command outcome: %+v", ev)
+		}
+	}
+}
+
 func TestCopilotRenderPreToolBlock(t *testing.T) {
 	a, _ := harness.Get("copilot")
 	var b strings.Builder

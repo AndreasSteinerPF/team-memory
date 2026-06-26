@@ -50,6 +50,21 @@ func TestGeminiExitCodeFromLlmContent(t *testing.T) {
 	}
 }
 
+func TestGeminiParseFilePathWithSpaces(t *testing.T) {
+	a, _ := harness.Get("gemini")
+	in := `{"session_id":"s1","tool_name":"write_file","tool_input":{"file_path":"docs/space dir/design note.md"},"tool_response":{}}`
+	ev, err := a.Parse(harness.PostTool, strings.NewReader(in))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ev.FilePath != "docs/space dir/design note.md" {
+		t.Errorf("FilePath = %q", ev.FilePath)
+	}
+	if ev.Command != "" || ev.HasOutcome {
+		t.Errorf("file edit must not be classified as a command outcome: %+v", ev)
+	}
+}
+
 func TestGeminiRenderBlock(t *testing.T) {
 	a, _ := harness.Get("gemini")
 	var b strings.Builder
