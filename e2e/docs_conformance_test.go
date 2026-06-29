@@ -26,6 +26,7 @@ func TestTechnicalDocsConformance(t *testing.T) {
 		"docs/threat-model.md",
 		"docs/evaluation.md",
 		"docs/harnesses.md",
+		"docs/project-constraints-cookbook.md",
 		"docs/roadmap.md",
 	}
 	assertTechnicalDocLinksResolve(t, repo, readme, docs)
