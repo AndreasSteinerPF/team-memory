@@ -1,5 +1,9 @@
 # Cross-harness configuration
 
+> This document is an explanatory projection of the authoritative
+> [`prd.md`](../prd.md). If they differ, `prd.md` governs intended behavior;
+> code and tests determine what is implemented.
+
 TeamMemory uses the same ledger, memories, policy, and shared engine across
 supported coding agents. Delivery and enforcement capabilities vary with each
 agent's hook API. `tm init --harness <name>` writes the relevant configuration.
