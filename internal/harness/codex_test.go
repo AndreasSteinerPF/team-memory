@@ -69,6 +69,27 @@ func TestCodexParseApplyPatchUpdateAndDelete(t *testing.T) {
 	}
 }
 
+func TestCodexParseApplyPatchPathsWithSpaces(t *testing.T) {
+	a, _ := harness.Get("codex")
+	for _, tc := range []struct{ header, want string }{
+		{"*** Add File: docs/space dir/new note.md", "docs/space dir/new note.md"},
+		{"*** Update File: docs/space dir/existing note.md", "docs/space dir/existing note.md"},
+		{"*** Delete File: docs/space dir/old note.md", "docs/space dir/old note.md"},
+	} {
+		in := `{"tool_name":"apply_patch","tool_input":{"command":"*** Begin Patch\n` + tc.header + `\n*** End Patch\n"}}`
+		ev, err := a.Parse(harness.PreTool, strings.NewReader(in))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ev.FilePath != tc.want {
+			t.Errorf("%s: FilePath = %q, want %q", tc.header, ev.FilePath, tc.want)
+		}
+		if ev.Command != "" || ev.HasOutcome {
+			t.Errorf("%s: apply_patch must stay classified as an edit, got %+v", tc.header, ev)
+		}
+	}
+}
+
 func TestCodexRenderPreToolBlock(t *testing.T) {
 	a, _ := harness.Get("codex")
 	var b bytes.Buffer

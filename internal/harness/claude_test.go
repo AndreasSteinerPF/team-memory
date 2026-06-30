@@ -45,6 +45,21 @@ func TestClaudeSuccessPostToolHasNoExitCode(t *testing.T) {
 	}
 }
 
+func TestClaudeParseFilePathWithSpaces(t *testing.T) {
+	a, _ := harness.Get("claude")
+	in := `{"session_id":"s1","tool_name":"Edit","tool_input":{"file_path":"docs/space dir/design note.md"}}`
+	ev, err := a.Parse(harness.PreTool, strings.NewReader(in))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ev.FilePath != "docs/space dir/design note.md" {
+		t.Errorf("FilePath = %q", ev.FilePath)
+	}
+	if ev.Command != "" || ev.HasOutcome {
+		t.Errorf("file edit must not be classified as a command outcome: %+v", ev)
+	}
+}
+
 func TestClaudeRenderPreToolBlock(t *testing.T) {
 	a, _ := harness.Get("claude")
 	var b bytes.Buffer

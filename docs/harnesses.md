@@ -9,6 +9,7 @@ supported coding agents. Delivery and enforcement capabilities vary with each
 agent's hook API. `tm init --harness <name>` writes the relevant configuration.
 This page covers those differences; the README's
 [Other agents](../README.md#other-agents) section has the high-level matrix.
+This document is an explanatory projection of `prd.md §10.6`.
 
 ## How enforcement works across harnesses
 
