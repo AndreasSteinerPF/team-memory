@@ -78,16 +78,19 @@ apply to release commands rather than every repository action (`prd.md §§5.1,
 ```bash
 tm propose constraint \
   --title "Run release verification before tagging" \
-  --summary "Maintainers expect the release verification script before creating v* tags." \
-  --guidance "Run ./scripts/release-check.sh before git tag v* or gh release create v*." \
-  --scope-command "git tag v*" \
-  --scope-command "gh release create v*" \
+  --summary "Maintainers expect the release verification script before creating release tags." \
+  --guidance "Run ./scripts/release-check.sh before git tag <version> or gh release create <version>." \
+  --scope-command "git tag *" \
+  --scope-command "gh release create *" \
   --session "agent-a"
 ```
 
 This scope avoids turning the release sequence into global advice. A future
 agent running an unrelated `git` command should not see it; an agent preparing a
 tag should (`prd.md §§8.1, 11`).
+Command scopes use token-based matching, so the standalone trailing `*` matches
+the remaining command tokens; filtering only v-prefixed tag names is not
+expressible with the current matcher semantics.
 
 **Confirm when the same rule appears in a later release.**
 
