@@ -153,6 +153,7 @@ organized by intent:
 **Users and contributors**
 
 - [Harness compatibility](docs/harnesses.md) — how enforcement differs across Claude Code, Codex, Cursor, Continue, Copilot, Gemini CLI, and generic MCP clients.
+- [Project constraints cookbook](docs/project-constraints-cookbook.md) — worked examples for generated code, release sequences, and external API compatibility rules.
 - [Roadmap](docs/roadmap.md) — current status, near-term priorities, long-term questions, and non-goals.
 
 These documents are explanatory projections of the authoritative
